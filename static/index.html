@@ -115,6 +115,54 @@
             </svg>
             <span>📊 Variance</span>
           </button>
+
+          <!-- Institutional Banking & Treasury Disbursement Dropdown -->
+          <div class="dropdown-wrap" id="wrap-disbursement-dropdown">
+            <button class="header-btn btn-disburse" id="btn-disburse-menu" title="Banking NEFT, Bulk Pay Slips, Executive Summary, and Cash Denominations">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v4M12 14v4M16 14v4"/>
+              </svg>
+              <span>🏦 Banking & Treasury ▼</span>
+            </button>
+            <div class="dropdown-menu-box" id="menu-disbursement">
+              <a href="javascript:void(0)" class="dropdown-item" id="item-export-neft">
+                <span class="d-icon">🏦</span>
+                <div>
+                  <strong>Bank NEFT / RTGS File (.csv)</strong>
+                  <div class="d-sub">Direct upload for PNB / SBI corporate net banking</div>
+                </div>
+              </a>
+              <a href="javascript:void(0)" class="dropdown-item" id="item-export-slips-zip">
+                <span class="d-icon">📦</span>
+                <div>
+                  <strong>All Pay Slips (.zip)</strong>
+                  <div class="d-sub">Individual official PDF payslips for all staff</div>
+                </div>
+              </a>
+              <a href="javascript:void(0)" class="dropdown-item" id="item-export-slips-pdf">
+                <span class="d-icon">📄</span>
+                <div>
+                  <strong>All Pay Slips Merged (.pdf)</strong>
+                  <div class="d-sub">Single multi-page PDF document for office archives</div>
+                </div>
+              </a>
+              <div class="dropdown-divider"></div>
+              <a href="javascript:void(0)" class="dropdown-item" id="item-open-exec-summary">
+                <span class="d-icon">📊</span>
+                <div>
+                  <strong>Executive Summary (1-Page Note)</strong>
+                  <div class="d-sub">Department & Statutory remittance breakdown</div>
+                </div>
+              </a>
+              <a href="javascript:void(0)" class="dropdown-item" id="item-open-cash-denominations">
+                <span class="d-icon">💵</span>
+                <div>
+                  <strong>Cash Denominations Requisition</strong>
+                  <div class="d-sub">Currency notes breakdown for attenders & support staff</div>
+                </div>
+              </a>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -862,6 +910,60 @@
 
       <div class="modal-content-area print-container" id="printable-pay-slip-content">
         <!-- Formal Institutional Pay Slip Template rendered dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: EXECUTIVE 1-PAGE SUMMARY & MANAGEMENT NOTE -->
+  <div class="modal-overlay" id="modal-executive-summary">
+    <div class="modal-window modal-wide">
+      <div class="modal-header-bar no-print">
+        <div>
+          <div class="modal-header-pill">Executive Note</div>
+          <h2 class="modal-emp-name">📊 Executive Payroll & Statutory Remittance Summary</h2>
+          <p class="modal-emp-meta" id="exec-summary-meta">1-Page Management Summary for Principal & Governing Body</p>
+        </div>
+        <div style="display:flex; gap:0.5rem; align-items:center;">
+          <button class="btn-navy-pill" id="btn-print-exec-summary" style="padding: 0.45rem 1rem;">
+            🖨️ Print Executive Note
+          </button>
+          <button class="modal-close-btn" id="btn-close-exec-summary">&times;</button>
+        </div>
+      </div>
+
+      <div class="modal-content-area print-container" id="printable-exec-content">
+        <!-- Dynamic Executive Summary rendered here -->
+      </div>
+
+      <div class="modal-footer-bar no-print">
+        <button class="btn-secondary-pill" id="btn-done-exec-summary">Close Summary</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: CASH DENOMINATIONS & BANK WITHDRAWAL SLIP -->
+  <div class="modal-overlay" id="modal-cash-denominations">
+    <div class="modal-window modal-wide">
+      <div class="modal-header-bar no-print">
+        <div>
+          <div class="modal-header-pill">Treasury Operations</div>
+          <h2 class="modal-emp-name">💵 Support Staff Cash Currency Notes Requisition</h2>
+          <p class="modal-emp-meta" id="cash-denom-meta">Exact Currency Note Denominations (₹500, ₹200, ₹100, ₹50, ₹20, ₹10, Coins)</p>
+        </div>
+        <div style="display:flex; gap:0.5rem; align-items:center;">
+          <button class="btn-navy-pill" id="btn-print-cash-denom" style="padding: 0.45rem 1rem;">
+            🖨️ Print Teller Requisition
+          </button>
+          <button class="modal-close-btn" id="btn-close-cash-denom">&times;</button>
+        </div>
+      </div>
+
+      <div class="modal-content-area print-container" id="printable-cash-content">
+        <!-- Dynamic Cash Denomination Content rendered here -->
+      </div>
+
+      <div class="modal-footer-bar no-print">
+        <button class="btn-secondary-pill" id="btn-done-cash-denom">Close</button>
       </div>
     </div>
   </div>

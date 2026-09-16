@@ -6,6 +6,8 @@ import database
 from attendance_engine import AttendanceEngine
 from export_excel import export_to_xls
 from export_salary_excel import export_salary_to_xlsx
+import disbursement_engine
+
 
 app = Flask(__name__, static_folder='static', static_url_path='')
 
@@ -439,7 +441,77 @@ def export_salary_file():
 
     return send_file(temp_out, as_attachment=True, download_name=f'SVCET_Salary_Bill_{month_year}.xlsx')
 
+@app.route('/api/salary/export-neft', methods=['GET'])
+def export_neft_file():
+    """Stream corporate banking upload file (.csv) with Account, Net Amount, Name, IFSC, Narration."""
+    month_year = request.args.get('month', 'August -2026')
+    active_only = request.args.get('active_only', 'true').lower() == 'true'
+    bank_filter = request.args.get('bank', 'ALL')
+
+    data = database.get_month_salary_records(month_year, active_only=active_only, reference_codes=REFERENCE_CODES)
+    records = data.get('records', [])
+
+    csv_content = disbursement_engine.generate_bank_neft_csv(records, month_year, bank_filter)
+    temp_out = os.path.join(tempfile.gettempdir(), f'SVCET_Bank_NEFT_Transfer_{month_year}.csv')
+    with open(temp_out, 'w', newline='', encoding='utf-8') as f:
+        f.write(csv_content)
+
+    return send_file(temp_out, as_attachment=True, download_name=f'SVCET_Bank_NEFT_Transfer_{month_year}.csv', mimetype='text/csv')
+
+@app.route('/api/salary/export-slips-zip', methods=['GET'])
+def export_slips_zip():
+    """Stream a ZIP archive containing individual PDF payslips for all staff."""
+    month_year = request.args.get('month', 'August -2026')
+    active_only = request.args.get('active_only', 'true').lower() == 'true'
+
+    data = database.get_month_salary_records(month_year, active_only=active_only, reference_codes=REFERENCE_CODES)
+    records = data.get('records', [])
+
+    temp_zip = os.path.join(tempfile.gettempdir(), f'SVCET_PaySlips_{month_year}.zip')
+    disbursement_engine.generate_bulk_payslips_zip(records, month_year, temp_zip)
+
+    return send_file(temp_zip, as_attachment=True, download_name=f'SVCET_PaySlips_{month_year}.zip', mimetype='application/zip')
+
+@app.route('/api/salary/export-slips-pdf', methods=['GET'])
+def export_slips_pdf():
+    """Stream a single merged multi-page PDF containing all payslips."""
+    month_year = request.args.get('month', 'August -2026')
+    active_only = request.args.get('active_only', 'true').lower() == 'true'
+
+    data = database.get_month_salary_records(month_year, active_only=active_only, reference_codes=REFERENCE_CODES)
+    records = data.get('records', [])
+
+    temp_pdf = os.path.join(tempfile.gettempdir(), f'SVCET_Consolidated_PaySlips_{month_year}.pdf')
+    disbursement_engine.generate_consolidated_payslips_pdf(records, month_year, temp_pdf)
+
+    return send_file(temp_pdf, as_attachment=True, download_name=f'SVCET_Consolidated_PaySlips_{month_year}.pdf', mimetype='application/pdf')
+
+@app.route('/api/salary/executive-summary', methods=['GET'])
+def get_executive_summary():
+    """Return JSON department-wise, category-wise, and statutory remittance summary."""
+    month_year = request.args.get('month', 'August -2026')
+    active_only = request.args.get('active_only', 'true').lower() == 'true'
+
+    data = database.get_month_salary_records(month_year, active_only=active_only, reference_codes=REFERENCE_CODES)
+    records = data.get('records', [])
+
+    res = disbursement_engine.generate_executive_summary_data(records, month_year)
+    return jsonify(res)
+
+@app.route('/api/salary/cash-denominations', methods=['GET'])
+def get_cash_denominations():
+    """Return JSON currency note calculation for attenders and support staff."""
+    month_year = request.args.get('month', 'August -2026')
+    active_only = request.args.get('active_only', 'true').lower() == 'true'
+
+    data = database.get_month_salary_records(month_year, active_only=active_only, reference_codes=REFERENCE_CODES)
+    records = data.get('records', [])
+
+    res = disbursement_engine.calculate_cash_denominations(records)
+    return jsonify(res)
+
 if __name__ == '__main__':
     print("Starting RVS Multi-Month Salary Platform on http://localhost:5000...")
     app.run(host='0.0.0.0', port=5000, debug=False)
+
 

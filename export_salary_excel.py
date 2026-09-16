@@ -334,8 +334,169 @@ def export_salary_to_xlsx(records: List[Dict[str, Any]], output_filepath: str, m
     ws_bank[f'H{curr_r}'].number_format = '₹#,##0.00'
     ws_bank[f'H{curr_r}'].fill = fill_total
 
+    # -------------------------------------------------------------------------
+    # 5. EXECUTIVE SUMMARY SHEET
+    # -------------------------------------------------------------------------
+    import disbursement_engine
+    exec_data = disbursement_engine.generate_executive_summary_data(records, month_year_str)
+    ws_exec = wb.create_sheet(title="Executive Summary")
+    ws_exec.append(["Sri Venkateswara College of Engineering and Technology (Autonomous)"])
+    ws_exec.append([f"Executive Salary & Statutory Remittance Summary - {month_year_str}"])
+    ws_exec.append([])
+
+    ws_exec.merge_cells('A1:G1')
+    ws_exec.merge_cells('A2:G2')
+    ws_exec['A1'].font = font_title
+    ws_exec['A1'].alignment = align_center
+    ws_exec['A2'].font = font_sub
+    ws_exec['A2'].alignment = align_center
+
+    # Section 1: Department Breakdown
+    ws_exec.append(["1. Department-Wise Payroll Allocation"])
+    ws_exec.cell(ws_exec.max_row, 1).font = font_bold
+    dept_headers = ["Department", "Staff Count", "Monthly Budget", "Gross Disbursed", "Total Deductions", "Net Disbursed"]
+    ws_exec.append(dept_headers)
+    curr_r = ws_exec.max_row
+    for c_idx in range(1, len(dept_headers) + 1):
+        c = ws_exec.cell(curr_r, c_idx)
+        c.font = font_header
+        c.fill = fill_slate
+        c.alignment = align_center
+        c.border = border_thin
+
+    for d in exec_data['department_summary']:
+        row_vals = [
+            d['department'],
+            d['staff_count'],
+            d['base_salary'],
+            d['gross_salary'],
+            (d['pt'] + d['wf'] + d['epf'] + d['it'] + d['other']),
+            d['net_salary']
+        ]
+        ws_exec.append(row_vals)
+        r_idx = ws_exec.max_row
+        for c_idx in range(1, len(row_vals) + 1):
+            cell = ws_exec.cell(r_idx, c_idx)
+            cell.border = border_thin
+            cell.font = font_data
+            if c_idx == 1: cell.alignment = align_left
+            elif c_idx == 2: cell.alignment = align_center
+            else:
+                cell.alignment = align_right
+                cell.number_format = '₹#,##0.00'
+                if c_idx == 6: cell.font = font_currency
+
+    ws_exec.append([])
+    # Section 2: Statutory Remittances
+    ws_exec.append(["2. Statutory & Regulatory Remittance Schedule"])
+    ws_exec.cell(ws_exec.max_row, 1).font = font_bold
+    stat_headers = ["Remittance Head", "Designated Beneficiary", "Remittance Amount (₹)"]
+    ws_exec.append(stat_headers)
+    curr_r = ws_exec.max_row
+    for c_idx in range(1, len(stat_headers) + 1):
+        c = ws_exec.cell(curr_r, c_idx)
+        c.font = font_header
+        c.fill = fill_navy
+        c.alignment = align_center
+        c.border = border_thin
+
+    for st in exec_data['statutory_remittances']:
+        row_vals = [st['remittance_head'], st['beneficiary'], st['amount']]
+        ws_exec.append(row_vals)
+        r_idx = ws_exec.max_row
+        for c_idx in range(1, len(row_vals) + 1):
+            cell = ws_exec.cell(r_idx, c_idx)
+            cell.border = border_thin
+            cell.font = font_data
+            if c_idx in [1, 2]: cell.alignment = align_left
+            else:
+                cell.alignment = align_right
+                cell.number_format = '₹#,##0.00'
+                cell.font = font_bold
+
+    # -------------------------------------------------------------------------
+    # 6. CASH DENOMINATIONS SHEET
+    # -------------------------------------------------------------------------
+    cash_data = disbursement_engine.calculate_cash_denominations(records)
+    ws_cash = wb.create_sheet(title="Cash Denominations")
+    ws_cash.append(["Sri Venkateswara College of Engineering and Technology"])
+    ws_cash.append([f"Support Staff Cash Currency Notes Requisition - {month_year_str}"])
+    ws_cash.append([])
+
+    ws_cash.merge_cells('A1:L1')
+    ws_cash.merge_cells('A2:L2')
+    ws_cash['A1'].font = font_title
+    ws_cash['A1'].alignment = align_center
+    ws_cash['A2'].font = font_sub
+    ws_cash['A2'].alignment = align_center
+
+    # Bank note summary table
+    ws_cash.append(["Currency Denomination Summary (For Bank Withdrawal Slip):"])
+    ws_cash.cell(ws_cash.max_row, 1).font = font_bold
+    den_headers = ["Denomination (₹)", "Required Notes Count", "Total Amount (₹)"]
+    ws_cash.append(den_headers)
+    curr_r = ws_cash.max_row
+    for c_idx in range(1, len(den_headers) + 1):
+        c = ws_cash.cell(curr_r, c_idx)
+        c.font = font_header
+        c.fill = fill_green
+        c.alignment = align_center
+        c.border = border_thin
+
+    for item in cash_data['denomination_summary']:
+        row_vals = [
+            f"₹ {item['denom']}" if str(item['denom']) != 'Coins' else 'Coins / Change',
+            item['count'],
+            item['total']
+        ]
+        ws_cash.append(row_vals)
+        r_idx = ws_cash.max_row
+        for c_idx in range(1, len(row_vals) + 1):
+            cell = ws_cash.cell(r_idx, c_idx)
+            cell.border = border_thin
+            cell.font = font_data
+            if c_idx == 1: cell.alignment = align_center
+            elif c_idx == 2: cell.alignment = align_center; cell.font = font_bold
+            else:
+                cell.alignment = align_right
+                cell.number_format = '₹#,##0.00'
+                cell.font = font_bold
+
+    ws_cash.append([])
+    # Detailed staff breakdown
+    ws_cash.append(["Individual Staff Cash Pay-out Breakdown:"])
+    ws_cash.cell(ws_cash.max_row, 1).font = font_bold
+    staff_headers = ["Emp Code", "Staff Name", "Category", "Department", "Net Payable", "₹500", "₹200", "₹100", "₹50", "₹20", "₹10", "Coins"]
+    ws_cash.append(staff_headers)
+    curr_r = ws_cash.max_row
+    for c_idx in range(1, len(staff_headers) + 1):
+        c = ws_cash.cell(curr_r, c_idx)
+        c.font = font_header
+        c.fill = fill_slate
+        c.alignment = align_center
+        c.border = border_thin
+
+    for s in cash_data['staff_records']:
+        row_vals = [
+            s['emp_code'], s['name'], s['category'], s['department'], s['net_salary'],
+            s['n500'], s['n200'], s['n100'], s['n50'], s['n20'], s['n10'], s['coins']
+        ]
+        ws_cash.append(row_vals)
+        r_idx = ws_cash.max_row
+        for c_idx in range(1, len(row_vals) + 1):
+            cell = ws_cash.cell(r_idx, c_idx)
+            cell.border = border_thin
+            cell.font = font_data
+            if c_idx in [1, 2, 3, 4]: cell.alignment = align_left
+            elif c_idx == 5:
+                cell.alignment = align_right
+                cell.number_format = '₹#,##0.00'
+                cell.font = font_currency
+            else:
+                cell.alignment = align_center
+
     # Adjust column widths automatically
-    for ws in [ws_teach, ws_nt, ws_sup, ws_bank]:
+    for ws in [ws_teach, ws_nt, ws_sup, ws_bank, ws_exec, ws_cash]:
         for col in ws.columns:
             max_len = 0
             col_letter = get_column_letter(col[0].column)
@@ -346,3 +507,4 @@ def export_salary_to_xlsx(records: List[Dict[str, Any]], output_filepath: str, m
 
     wb.save(output_filepath)
     print(f"Successfully exported Institutional Salary Bill to: {output_filepath}")
+

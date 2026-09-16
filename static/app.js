@@ -314,6 +314,66 @@ function setupEventListeners() {
   if (btnPrintPayslip) btnPrintPayslip.addEventListener('click', () => openFormalPaySlip(activePortfolioEmpCode));
   const btnExecPrint = document.getElementById('btn-execute-print');
   if (btnExecPrint) btnExecPrint.addEventListener('click', () => window.print());
+
+  // Banking & Treasury Dropdown
+  const btnDisburseMenu = document.getElementById('btn-disburse-menu');
+  const menuDisburse = document.getElementById('menu-disbursement');
+  if (btnDisburseMenu && menuDisburse) {
+    btnDisburseMenu.addEventListener('click', (e) => {
+      e.stopPropagation();
+      menuDisburse.classList.toggle('show');
+    });
+    document.addEventListener('click', () => menuDisburse.classList.remove('show'));
+  }
+
+  // Export NEFT CSV
+  const itemExportNeft = document.getElementById('item-export-neft');
+  if (itemExportNeft) {
+    itemExportNeft.addEventListener('click', () => {
+      showToast(`⚡ Downloading Bank Corporate NEFT (.csv) for ${currentMonth}...`);
+      window.location.href = `/api/salary/export-neft?month=${encodeURIComponent(currentMonth)}&active_only=${activeOnly}`;
+    });
+  }
+
+  // Export Bulk Pay Slips ZIP
+  const itemExportZip = document.getElementById('item-export-slips-zip');
+  if (itemExportZip) {
+    itemExportZip.addEventListener('click', () => {
+      showToast(`📦 Generating Official PDF Pay Slips (.zip) for all staff...`);
+      window.location.href = `/api/salary/export-slips-zip?month=${encodeURIComponent(currentMonth)}&active_only=${activeOnly}`;
+    });
+  }
+
+  // Export Merged Pay Slips PDF
+  const itemExportPdf = document.getElementById('item-export-slips-pdf');
+  if (itemExportPdf) {
+    itemExportPdf.addEventListener('click', () => {
+      showToast(`📄 Generating Consolidated Multi-Page PDF for ${currentMonth}...`);
+      window.location.href = `/api/salary/export-slips-pdf?month=${encodeURIComponent(currentMonth)}&active_only=${activeOnly}`;
+    });
+  }
+
+  // Executive Summary Modal
+  const execModal = document.getElementById('modal-executive-summary');
+  const itemOpenExec = document.getElementById('item-open-exec-summary');
+  if (itemOpenExec) itemOpenExec.addEventListener('click', openExecutiveSummaryModal);
+  const btnCloseExec = document.getElementById('btn-close-exec-summary');
+  if (btnCloseExec) btnCloseExec.addEventListener('click', () => execModal.classList.remove('active'));
+  const btnDoneExec = document.getElementById('btn-done-exec-summary');
+  if (btnDoneExec) btnDoneExec.addEventListener('click', () => execModal.classList.remove('active'));
+  const btnPrintExec = document.getElementById('btn-print-exec-summary');
+  if (btnPrintExec) btnPrintExec.addEventListener('click', () => window.print());
+
+  // Cash Denominations Modal
+  const cashModal = document.getElementById('modal-cash-denominations');
+  const itemOpenCash = document.getElementById('item-open-cash-denominations');
+  if (itemOpenCash) itemOpenCash.addEventListener('click', openCashDenominationsModal);
+  const btnCloseCash = document.getElementById('btn-close-cash-denom');
+  if (btnCloseCash) btnCloseCash.addEventListener('click', () => cashModal.classList.remove('active'));
+  const btnDoneCash = document.getElementById('btn-done-cash-denom');
+  if (btnDoneCash) btnDoneCash.addEventListener('click', () => cashModal.classList.remove('active'));
+  const btnPrintCash = document.getElementById('btn-print-cash-denom');
+  if (btnPrintCash) btnPrintCash.addEventListener('click', () => window.print());
 }
 
 // Switch between Attendance and Salary View
@@ -1385,5 +1445,294 @@ async function openFormalPaySlip(empCode) {
     document.getElementById('modal-pay-slip').classList.add('active');
   } catch (err) {
     alert('Network error generating pay slip');
+  }
+}
+
+// -----------------------------------------------------------------------------
+// 5. EXECUTIVE DEPARTMENT-WISE SUMMARY SHEET
+// -----------------------------------------------------------------------------
+async function openExecutiveSummaryModal() {
+  document.getElementById('exec-summary-meta').textContent = `Executive Management Note • ${currentMonth}`;
+  document.getElementById('modal-executive-summary').classList.add('active');
+
+  const f = (n) => '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+
+  try {
+    const res = await fetch(`/api/salary/executive-summary?month=${encodeURIComponent(currentMonth)}&active_only=${activeOnly}`);
+    const data = await res.json();
+    if (data.status !== 'success') {
+      alert('Error fetching executive summary');
+      return;
+    }
+
+    const g = data.grand_totals;
+
+    let statRows = '';
+    data.statutory_remittances.forEach(st => {
+      statRows += `
+        <tr>
+          <td><strong>${st.remittance_head}</strong></td>
+          <td style="color:#475569;">${st.beneficiary}</td>
+          <td style="text-align:right; font-weight:800; color:#1e3a8a;">${f(st.amount)}</td>
+        </tr>
+      `;
+    });
+
+    let catRows = '';
+    let cSno = 1;
+    (data.category_summary || []).forEach(c => {
+      const totDed = (c.gross_salary || 0) - (c.net_salary || 0);
+      catRows += `
+        <tr>
+          <td style="text-align:center; color:#94a3b8;">${cSno++}</td>
+          <td><strong>${c.category}</strong></td>
+          <td style="text-align:center; font-weight:700;">${c.staff_count}</td>
+          <td style="text-align:right;">${f(c.base_salary)}</td>
+          <td style="text-align:right; font-weight:700; color:#475569;">${f(c.gross_salary)}</td>
+          <td style="text-align:right; color:#b45309;">${f(totDed)}</td>
+          <td style="text-align:right; font-weight:800; color:#15803d; background:#f0fdf4;">${f(c.net_salary)}</td>
+        </tr>
+      `;
+    });
+
+    let deptRows = '';
+    let dSno = 1;
+    data.department_summary.forEach(d => {
+      const totDed = d.pt + d.wf + d.epf + d.it + d.other;
+      deptRows += `
+        <tr>
+          <td style="text-align:center; color:#94a3b8;">${dSno++}</td>
+          <td><strong>${d.department}</strong></td>
+          <td style="text-align:center; font-weight:700;">${d.staff_count}</td>
+          <td style="text-align:right;">${f(d.base_salary)}</td>
+          <td style="text-align:right; font-weight:700; color:#475569;">${f(d.gross_salary)}</td>
+          <td style="text-align:right; color:#b45309;">${f(totDed)}</td>
+          <td style="text-align:right; font-weight:800; color:#15803d; background:#f0fdf4;">${f(d.net_salary)}</td>
+        </tr>
+      `;
+    });
+
+    const html = `
+      <div class="official-payslip-doc" style="max-width:100%;">
+        <div class="slip-header-block">
+          <div class="slip-univ-name">SRI VENKATESWARA COLLEGE OF ENGINEERING & TECHNOLOGY</div>
+          <div class="slip-univ-sub">(AUTONOMOUS) • RVS GROUP OF INSTITUTIONS • CHITTOOR</div>
+          <div class="slip-doc-title">EXECUTIVE PAYROLL & STATUTORY ALLOCATION NOTE - ${currentMonth.toUpperCase()}</div>
+        </div>
+
+        <!-- 4 Top Executive KPI Metrics -->
+        <div class="exec-kpi-grid">
+          <div class="exec-kpi-card">
+            <span class="exec-kpi-label">Active Staff Count</span>
+            <span class="exec-kpi-val">${g.total_staff}</span>
+          </div>
+          <div class="exec-kpi-card">
+            <span class="exec-kpi-label">Total Monthly Budget</span>
+            <span class="exec-kpi-val" style="color:#1d4ed8;">${f(g.total_budget)}</span>
+          </div>
+          <div class="exec-kpi-card">
+            <span class="exec-kpi-label">Earned Gross Total</span>
+            <span class="exec-kpi-val" style="color:#7e22ce;">${f(g.total_gross)}</span>
+          </div>
+          <div class="exec-kpi-card" style="background:#f0fdf4; border-color:#86efac;">
+            <span class="exec-kpi-label" style="color:#065f46;">Net Bank Disbursement</span>
+            <span class="exec-kpi-val" style="color:#047857;">${f(g.total_net_disbursed)}</span>
+          </div>
+        </div>
+
+        <!-- Statutory Remittance Table -->
+        <h4 style="font-size:0.85rem; font-weight:800; color:#1e3a8a; text-transform:uppercase; margin-bottom:0.5rem;">
+          1. Statutory & Regulatory Remittance Schedule (Taxes, Provident Fund & Society)
+        </h4>
+        <table class="payroll-table" style="margin-bottom:1.5rem;">
+          <thead>
+            <tr>
+              <th>Remittance Head</th>
+              <th>Designated Beneficiary Account</th>
+              <th style="text-align:right;">Remittance Amount (₹)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${statRows}
+          </tbody>
+        </table>
+
+        <!-- Category Breakdown Table -->
+        <h4 style="font-size:0.85rem; font-weight:800; color:#1e3a8a; text-transform:uppercase; margin-bottom:0.5rem;">
+          2. Category-Wise Payroll Allocation Summary (Teaching & Non-Teaching)
+        </h4>
+        <table class="payroll-table" style="margin-bottom:1.5rem;">
+          <thead>
+            <tr>
+              <th style="width:40px; text-align:center;">#</th>
+              <th>Category</th>
+              <th style="text-align:center;">Staff</th>
+              <th style="text-align:right;">Budget (₹)</th>
+              <th style="text-align:right;">Gross (₹)</th>
+              <th style="text-align:right;">Deductions (₹)</th>
+              <th style="text-align:right;">Net Disbursement (₹)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${catRows}
+          </tbody>
+        </table>
+
+        <!-- Department Breakdown Table -->
+        <h4 style="font-size:0.85rem; font-weight:800; color:#1e3a8a; text-transform:uppercase; margin-bottom:0.5rem;">
+          3. Department-Wise Payroll Allocation Summary
+        </h4>
+        <div style="max-height: 380px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:8px;">
+          <table class="payroll-table">
+            <thead>
+              <tr>
+                <th style="width:40px;">#</th>
+                <th>Department</th>
+                <th style="text-align:center;">Staff</th>
+                <th style="text-align:right;">Budget (₹)</th>
+                <th style="text-align:right;">Gross (₹)</th>
+                <th style="text-align:right;">Deductions (₹)</th>
+                <th style="text-align:right;">Net Disbursement (₹)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${deptRows}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="slip-signatures-grid" style="margin-top:2rem;">
+          <div class="signature-box">Prepared by Accounts Section</div>
+          <div class="signature-box">Internal Financial Auditor</div>
+          <div class="signature-box">Principal / Vice-Chairman Approval</div>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('printable-exec-content').innerHTML = html;
+  } catch (err) {
+    alert('Network error loading executive summary');
+  }
+}
+
+// -----------------------------------------------------------------------------
+// 6. CASH DENOMINATIONS REQUISITION SLIP
+// -----------------------------------------------------------------------------
+async function openCashDenominationsModal() {
+  document.getElementById('cash-denom-meta').textContent = `Cash Requisition Slip • ${currentMonth}`;
+  document.getElementById('modal-cash-denominations').classList.add('active');
+
+  const f = (n) => '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+
+  try {
+    const res = await fetch(`/api/salary/cash-denominations?month=${encodeURIComponent(currentMonth)}&active_only=${activeOnly}`);
+    const data = await res.json();
+    if (data.status !== 'success') {
+      alert('Error fetching cash denominations');
+      return;
+    }
+
+    let denomCards = '';
+    data.denomination_summary.forEach(d => {
+      const isCoins = String(d.denom) === 'Coins';
+      denomCards += `
+        <div class="denom-card">
+          <div class="denom-badge-val">${isCoins ? 'Coins' : '₹' + d.denom}</div>
+          <div class="denom-notes-count">${d.count} notes</div>
+          <div class="denom-tot-amt">${f(d.total)}</div>
+        </div>
+      `;
+    });
+
+    let staffRows = '';
+    let sIdx = 1;
+    data.staff_records.forEach(s => {
+      staffRows += `
+        <tr>
+          <td style="text-align:center; color:#94a3b8;">${sIdx++}</td>
+          <td style="font-weight:700;">${s.emp_code}</td>
+          <td><strong>${s.name}</strong></td>
+          <td style="font-size:0.75rem;">${s.category}</td>
+          <td style="font-size:0.75rem; color:#64748b;">${s.department}</td>
+          <td style="text-align:right; font-weight:800; color:#15803d; background:#f0fdf4;">${f(s.net_salary)}</td>
+          <td style="text-align:center; font-weight:700;">${s.n500 || '-'}</td>
+          <td style="text-align:center; font-weight:700;">${s.n200 || '-'}</td>
+          <td style="text-align:center; font-weight:700;">${s.n100 || '-'}</td>
+          <td style="text-align:center; font-weight:700;">${s.n50 || '-'}</td>
+          <td style="text-align:center; font-weight:700;">${s.n20 || '-'}</td>
+          <td style="text-align:center; font-weight:700;">${s.n10 || '-'}</td>
+          <td style="text-align:center; color:#64748b;">${s.coins || '-'}</td>
+        </tr>
+      `;
+    });
+
+    const html = `
+      <div class="official-payslip-doc" style="max-width:100%;">
+        <div class="slip-header-block">
+          <div class="slip-univ-name">SRI VENKATESWARA COLLEGE OF ENGINEERING & TECHNOLOGY</div>
+          <div class="slip-univ-sub">(AUTONOMOUS) • RVS GROUP OF INSTITUTIONS • CHITTOOR</div>
+          <div class="slip-doc-title">BANK TELLER CASH WITHDRAWAL REQUISITION - ${currentMonth.toUpperCase()}</div>
+        </div>
+
+        <!-- Bank Teller Requisition Banner -->
+        <div class="teller-requisition-banner">
+          <div>
+            <div class="teller-heading">Official Bank Cash Withdrawal Requisition</div>
+            <div class="teller-sub">For disbursement to ${data.staff_count} Support, Attender & Unbanked Staff</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:0.72rem; font-weight:800; color:#92400e; text-transform:uppercase;">Grand Cash Required:</div>
+            <div class="teller-total-cash">${f(data.total_cash_amount)}</div>
+          </div>
+        </div>
+
+        <!-- Currency Note Denomination Grid -->
+        <h4 style="font-size:0.85rem; font-weight:800; color:#1e3a8a; text-transform:uppercase; margin-bottom:0.5rem;">
+          Currency Notes Needed (By Denomination):
+        </h4>
+        <div class="denom-grid">
+          ${denomCards}
+        </div>
+
+        <!-- Detailed Individual Staff Breakdown Table -->
+        <h4 style="font-size:0.85rem; font-weight:800; color:#1e3a8a; text-transform:uppercase; margin-bottom:0.5rem;">
+          Staff Cash Payout & Denomination Breakdown:
+        </h4>
+        <div style="max-height:360px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:8px;">
+          <table class="payroll-table">
+            <thead>
+              <tr>
+                <th style="width:35px;">#</th>
+                <th>Emp Code</th>
+                <th>Staff Name</th>
+                <th>Category</th>
+                <th>Department</th>
+                <th style="text-align:right;">Net Cash (₹)</th>
+                <th style="text-align:center;">₹500</th>
+                <th style="text-align:center;">₹200</th>
+                <th style="text-align:center;">₹100</th>
+                <th style="text-align:center;">₹50</th>
+                <th style="text-align:center;">₹20</th>
+                <th style="text-align:center;">₹10</th>
+                <th style="text-align:center;">Coins</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${staffRows}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="slip-signatures-grid" style="margin-top:2rem;">
+          <div class="signature-box">Disbursement Cashier Signature</div>
+          <div class="signature-box">Accounts Officer Verification</div>
+          <div class="signature-box">Bank Branch Teller Stamp & Seal</div>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('printable-cash-content').innerHTML = html;
+  } catch (err) {
+    alert('Network error loading cash denominations');
   }
 }

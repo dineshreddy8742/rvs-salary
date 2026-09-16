@@ -95,7 +95,7 @@ body {
   border-radius: 18px;
   box-shadow: 0 10px 30px -5px rgba(15, 23, 42, 0.08), 0 2px 6px -1px rgba(0, 0, 0, 0.04);
   transition: all 0.2s ease;
-  overflow: hidden;
+  overflow: visible;
 }
 
 /* Main Tier: Logo, Active Month, and Primary Actions */
@@ -1609,6 +1609,159 @@ input:checked + .slider-circle:before { transform: translateX(16px); }
   font-size: 0.76rem;
   font-weight: 700;
   color: #475569;
+}
+
+/* Banking & Treasury Disbursement Dropdown */
+.dropdown-wrap {
+  position: relative;
+  display: inline-block;
+}
+.btn-disburse {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%) !important;
+  color: #1e1b4b !important;
+  font-weight: 800 !important;
+  border: 1px solid rgba(255, 255, 255, 0.4) !important;
+  box-shadow: 0 2px 6px rgba(217, 119, 6, 0.25);
+}
+.btn-disburse:hover {
+  background: linear-gradient(135deg, #d97706 0%, #b45309 100%) !important;
+  color: #ffffff !important;
+  transform: translateY(-1px);
+}
+.dropdown-menu-box {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  background: #ffffff;
+  min-width: 320px;
+  border-radius: 12px;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  padding: 6px;
+  overflow: hidden;
+}
+.dropdown-menu-box.show {
+  display: block;
+}
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  text-decoration: none;
+  border-radius: 8px;
+  color: #1e293b;
+  transition: background 0.15s;
+}
+.dropdown-item:hover {
+  background: #f1f5f9;
+}
+.dropdown-item strong {
+  display: block;
+  font-size: 0.82rem;
+  color: #0f172a;
+}
+.d-icon {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+.d-sub {
+  font-size: 0.7rem;
+  color: #64748b;
+  margin-top: 1px;
+}
+.dropdown-divider {
+  height: 1px;
+  background: #e2e8f0;
+  margin: 6px 0;
+}
+
+/* Executive Summary Modal */
+.exec-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.exec-kpi-card {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 0.9rem 1.1rem;
+}
+.exec-kpi-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.exec-kpi-val {
+  font-size: 1.35rem;
+  font-weight: 900;
+  color: #0f172a;
+}
+
+/* Cash Denomination Badges & Requisition */
+.denom-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+.denom-card {
+  background: #f0fdf4;
+  border: 1.5px solid #86efac;
+  border-radius: 10px;
+  padding: 0.75rem 0.5rem;
+  text-align: center;
+}
+.denom-badge-val {
+  font-size: 1.1rem;
+  font-weight: 900;
+  color: #15803d;
+}
+.denom-notes-count {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #065f46;
+  margin-top: 2px;
+}
+.denom-tot-amt {
+  font-size: 0.7rem;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.teller-requisition-banner {
+  background: #fef3c7;
+  border: 1.5px solid #f59e0b;
+  border-radius: 10px;
+  padding: 1rem 1.5rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.teller-heading {
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: #92400e;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.teller-sub {
+  font-size: 0.76rem;
+  color: #b45309;
+  margin-top: 2px;
+}
+.teller-total-cash {
+  font-size: 1.6rem;
+  font-weight: 900;
+  color: #92400e;
 }
 
 /* =============================================================================
