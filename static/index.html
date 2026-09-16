@@ -168,13 +168,16 @@
 
       <!-- Sub Tier: View Switcher, Navigation Tabs & Status Counts Strip -->
       <div class="header-sub-row">
-        <!-- View Switcher -->
-        <div class="view-switch-cluster">
-          <button class="view-pill active" id="pill-view-attendance">
+        <!-- 3-Way Mode Switcher: Unified Master, Attendance Grid, Salary Ledger -->
+        <div class="view-switch-cluster" id="view-mode-cluster">
+          <button class="view-pill active" id="mode-unified" data-mode="unified" title="View both attendance and salary with full inline editing side-by-side">
+            🌟 Unified Master
+          </button>
+          <button class="view-pill" id="mode-attendance" data-mode="attendance" title="Dedicated attendance register with editable CL, OD, Pay Days, and 1-Click Full Pay">
             📋 Attendance Grid
           </button>
-          <button class="view-pill" id="pill-view-salary">
-            💰 Salary & Payroll Ledger
+          <button class="view-pill" id="mode-salary" data-mode="salary" title="Dedicated salary bill with Base, Gross, PT, WF, Other Ded, Net, and Bank Accounts">
+            💰 Salary & Bank Ledger
           </button>
         </div>
 
@@ -214,8 +217,8 @@
     <!-- Hero Announcement & Header -->
     <section class="hero-section">
       <div class="hero-badge">
-        <span class="badge-tag">ENTERPRISE</span>
-        <span>🚀 Multi-Month & Yearly Ledger Active with Individual 360° Portfolios!</span>
+        <span class="badge-tag">UNIFIED</span>
+        <span>🚀 Single Master Ledger: Attendance Days & Net Salary Consolidated in One Screen!</span>
       </div>
 
       <h1 class="hero-title">
@@ -226,10 +229,9 @@
       </p>
     </section>
 
-    <!-- KPI Stats Section -->
+    <!-- Unified KPI Stats Section -->
     <section class="stats-section" id="stats-section">
-      <!-- Attendance KPI Cards (Visible in Attendance View) -->
-      <div class="stats-grid" id="attendance-stats-grid">
+      <div class="stats-grid stats-grid-unified" id="unified-stats-grid">
         <div class="stat-card">
           <div class="stat-icon-wrap icon-orange">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
@@ -240,66 +242,13 @@
           </div>
         </div>
 
-        <div class="stat-card stat-alert-card" id="card-needs-review">
-          <div class="stat-icon-wrap icon-amber">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          </div>
-          <div class="stat-details">
-            <span class="stat-label">Needs Review / Missed Punch</span>
-            <span class="stat-number" id="stat-needs-review">--</span>
-          </div>
-        </div>
-
-        <div class="stat-card">
-          <div class="stat-icon-wrap icon-purple">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          </div>
-          <div class="stat-details">
-            <span class="stat-label">Month Availed Leaves (CL)</span>
-            <span class="stat-number" id="stat-total-leaves">--</span>
-          </div>
-        </div>
-
-        <div class="stat-card">
-          <div class="stat-icon-wrap icon-teal">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-          </div>
-          <div class="stat-details">
-            <span class="stat-label">Approved On-Duty (OD)</span>
-            <span class="stat-number" id="stat-total-od">--</span>
-          </div>
-        </div>
-
-        <div class="stat-card stat-total-card">
-          <div class="stat-icon-wrap icon-green">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4L12 14.01l-3-3"/></svg>
-          </div>
-          <div class="stat-details">
-            <span class="stat-label">Month Total Pay Days</span>
-            <span class="stat-number" id="stat-total-pay-days">--</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Financial Salary KPI Cards (Visible in Salary & Payroll View) -->
-      <div class="stats-grid" id="salary-stats-grid" style="display: none;">
-        <div class="stat-card">
-          <div class="stat-icon-wrap icon-orange">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-          </div>
-          <div class="stat-details">
-            <span class="stat-label">Staff in Payroll</span>
-            <span class="stat-number" id="stat-salary-staff">--</span>
-          </div>
-        </div>
-
         <div class="stat-card">
           <div class="stat-icon-wrap icon-blue">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
           </div>
           <div class="stat-details">
-            <span class="stat-label">Total Monthly Budget</span>
-            <span class="stat-number" id="stat-salary-budget" style="color: #1d4ed8;">--</span>
+            <span class="stat-label">Monthly Total Budget</span>
+            <span class="stat-number" id="stat-total-budget" style="color: #1d4ed8;">--</span>
           </div>
         </div>
 
@@ -309,17 +258,17 @@
           </div>
           <div class="stat-details">
             <span class="stat-label">Earned Gross Total</span>
-            <span class="stat-number" id="stat-salary-gross" style="color: #7e22ce;">--</span>
+            <span class="stat-number" id="stat-total-gross" style="color: #7e22ce;">--</span>
           </div>
         </div>
 
-        <div class="stat-card stat-alert-card">
+        <div class="stat-card stat-alert-card" id="card-needs-review" style="cursor: pointer;" title="Click to filter employees needing review or with LOP">
           <div class="stat-icon-wrap icon-amber">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
           </div>
           <div class="stat-details">
             <span class="stat-label">Deductions (PT+WF+EPF)</span>
-            <span class="stat-number" id="stat-salary-deductions" style="color: #b45309;">--</span>
+            <span class="stat-number" id="stat-total-deductions" style="color: #b45309;">--</span>
           </div>
         </div>
 
@@ -328,8 +277,18 @@
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
           </div>
           <div class="stat-details">
-            <span class="stat-label">Net Payable Disbursement</span>
-            <span class="stat-number" id="stat-salary-net" style="color: #15803d; font-weight: 800;">--</span>
+            <span class="stat-label">Net Bank Payout</span>
+            <span class="stat-number" id="stat-total-net" style="color: #15803d; font-weight: 800;">--</span>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon-wrap icon-teal">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4L12 14.01l-3-3"/></svg>
+          </div>
+          <div class="stat-details">
+            <span class="stat-label">Payable Days (Worked)</span>
+            <span class="stat-number" id="stat-total-pay-days" style="color: #0f172a;">--</span>
           </div>
         </div>
       </div>
@@ -353,8 +312,8 @@
         </select>
       </div>
 
-      <!-- Category Selector (Visible in Salary Mode) -->
-      <div class="select-field" id="category-filter-box" style="display: none;">
+      <!-- Category Selector (Always Available in Unified Mode) -->
+      <div class="select-field" id="category-filter-box">
         <label for="category-select">Category:</label>
         <select id="category-select">
           <option value="all">All Categories</option>
@@ -372,10 +331,11 @@
       <!-- Quick Filter Pills -->
       <div class="filter-tabs">
         <button class="tab-pill active" data-filter="all">All Staff</button>
-        <button class="tab-pill" data-filter="review">⚠️ Needs Review</button>
+        <button class="tab-pill" data-filter="teaching">🎓 Teaching</button>
+        <button class="tab-pill" data-filter="non-teaching">👔 Non-Teaching</button>
+        <button class="tab-pill" data-filter="support">🧹 Support / Attender</button>
+        <button class="tab-pill" data-filter="review">⚠️ Needs Review / LOP</button>
         <button class="tab-pill" data-filter="vip">👑 VIP / Exempt</button>
-        <button class="tab-pill" data-filter="absent">🔴 Absent</button>
-        <button class="tab-pill" data-filter="leaves">📄 CL / OD</button>
         <button class="tab-pill tab-missing-bank" id="tab-missing-bank" data-filter="missing_bank">⚠️ Missing Bank Info</button>
       </div>
 
@@ -391,13 +351,13 @@
 
     <!-- Guidance Bar -->
     <div class="guidance-bar">
-      <div class="guide-tag">Pro Tip</div>
+      <div class="guide-tag">Unified Ledger</div>
       <div class="guide-content" id="guidance-content">
-        <span>Click on any <strong>Teacher's Name</strong> to open their <strong>360° Annual Portfolio & Monthly Pay Slip</strong>.</span>
+        <span>💡 <strong>All-in-One Master View:</strong> Attendance days and resulting salary amounts are consolidated in one place.</span>
         <span>•</span>
-        <span>Toggle to <strong>"💰 Salary & Payroll Ledger"</strong> above to view gross & net payable amounts calculated directly from attendance days.</span>
+        <span>Edit <strong>Payable Days</strong> or <strong>Base Salary</strong> inline to instantly recalculate Gross and Net Bank Payout in real time.</span>
         <span>•</span>
-        <span>Click <strong>"Salary Bill (.xlsx)"</strong> to export the institutional payroll sheets with bank accounts.</span>
+        <span>Click <strong>📄 Pay Slip</strong> for formal printout, <strong>📅 Punches</strong> for daily 1–31 calendar, or <strong>✏️ Edit</strong> to adjust packages.</span>
       </div>
     </div>
 

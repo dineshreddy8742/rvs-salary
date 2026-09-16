@@ -10,6 +10,8 @@ let activeOnly = true;
 let currentMonth = 'August -2026';
 let activePortfolioEmpCode = null;
 let currentViewMode = 'attendance'; // 'attendance' or 'salary'
+let currentDashboardMode = 'unified'; // 'unified', 'attendance', or 'salary'
+let unifiedRecords = [];
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -63,15 +65,16 @@ function setupEventListeners() {
   const navLeaves = document.getElementById('nav-filter-leaves');
   if (navLeaves) navLeaves.addEventListener('click', () => setFilterPill('leaves'));
 
-  // View Switcher (Attendance Grid vs Salary & Payroll Ledger)
-  const pillAtt = document.getElementById('pill-view-attendance');
-  const pillSal = document.getElementById('pill-view-salary');
-
-  if (pillAtt) {
-    pillAtt.addEventListener('click', () => switchViewMode('attendance'));
-  }
-  if (pillSal) {
-    pillSal.addEventListener('click', () => switchViewMode('salary'));
+  // 3-Way Mode Switcher (Unified Master vs Attendance Grid vs Salary & Bank Ledger)
+  const modeCluster = document.getElementById('view-mode-cluster');
+  if (modeCluster) {
+    modeCluster.querySelectorAll('.view-pill').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        modeCluster.querySelectorAll('.view-pill').forEach(b => b.classList.remove('active'));
+        e.currentTarget.classList.add('active');
+        switchDashboardMode(e.currentTarget.dataset.mode);
+      });
+    });
   }
 
   // Active Only toggle
@@ -262,9 +265,12 @@ function setupEventListeners() {
   });
 
   // Needs review card click
-  document.getElementById('card-needs-review').addEventListener('click', () => {
-    setFilterPill('review');
-  });
+  const cardReview = document.getElementById('card-needs-review');
+  if (cardReview) {
+    cardReview.addEventListener('click', () => {
+      setFilterPill('review');
+    });
+  }
 
   // Bulk Adjust Modal
   const bulkAdjustModal = document.getElementById('modal-bulk-adjust');
@@ -376,27 +382,59 @@ function setupEventListeners() {
   if (btnPrintCash) btnPrintCash.addEventListener('click', () => window.print());
 }
 
-// Switch between Attendance and Salary View
-function switchViewMode(mode) {
-  currentViewMode = mode;
-  const pillAtt = document.getElementById('pill-view-attendance');
-  const pillSal = document.getElementById('pill-view-salary');
-  const attGrid = document.getElementById('attendance-stats-grid');
-  const salGrid = document.getElementById('salary-stats-grid');
-  const catBox = document.getElementById('category-filter-box');
+// Switch Dashboard Mode: 'unified', 'attendance', or 'salary'
+function switchDashboardMode(mode) {
+  currentDashboardMode = mode || 'unified';
 
-  if (mode === 'salary') {
-    pillAtt.classList.remove('active');
-    pillSal.classList.add('active');
-    if (attGrid) attGrid.style.display = 'none';
-    if (salGrid) salGrid.style.display = 'grid';
-    if (catBox) catBox.style.display = 'flex';
-  } else {
-    pillSal.classList.remove('active');
-    pillAtt.classList.add('active');
-    if (salGrid) salGrid.style.display = 'none';
-    if (attGrid) attGrid.style.display = 'grid';
-    if (catBox) catBox.style.display = 'none';
+  // Highlight active pill in switcher cluster
+  const modeCluster = document.getElementById('view-mode-cluster');
+  if (modeCluster) {
+    modeCluster.querySelectorAll('.view-pill').forEach(btn => {
+      if (btn.dataset.mode === currentDashboardMode) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+  }
+
+  // Update guidance bar text dynamically for instant user clarity
+  const guideTag = document.querySelector('.guidance-bar .guide-tag');
+  const guideContent = document.getElementById('guidance-content');
+
+  if (currentDashboardMode === 'unified') {
+    if (guideTag) guideTag.textContent = '🌟 Unified Master';
+    if (guideContent) {
+      guideContent.innerHTML = `
+        <span>💡 <strong>Unified Master Mode:</strong> Attendance & Salary consolidated side-by-side with full inline editing.</span>
+        <span>•</span>
+        <span>Edit <strong>CL ✎</strong>, <strong>OD ✎</strong>, <strong>Pay Days ✎</strong>, <strong>Base Rate ✎</strong>, or <strong>Other Ded ✎</strong> directly.</span>
+        <span>•</span>
+        <span>Notice <strong>₹275</strong> is split transparently: <strong>PT: ₹200</strong> (AP State Tax) + <strong>WF: ₹75</strong> (Staff Welfare).</span>
+      `;
+    }
+  } else if (currentDashboardMode === 'attendance') {
+    if (guideTag) guideTag.textContent = '📋 Attendance Register';
+    if (guideContent) {
+      guideContent.innerHTML = `
+        <span>📋 <strong>Attendance Grid Mode:</strong> Register of biometric punches, holiday credits, and leave slips.</span>
+        <span>•</span>
+        <span>Edit <strong>CL ✎</strong> or <strong>OD ✎</strong> inline to recalculate pay days automatically, or click <strong>✔ Full Pay</strong> for 1-click 31 days.</span>
+        <span>•</span>
+        <span>Click <strong>📅 Punches</strong> to view daily 1–31 biometric in/out times and apply regularization.</span>
+      `;
+    }
+  } else if (currentDashboardMode === 'salary') {
+    if (guideTag) guideTag.textContent = '💰 Salary & Bank Ledger';
+    if (guideContent) {
+      guideContent.innerHTML = `
+        <span>💰 <strong>Salary & Bank Ledger Mode:</strong> Official institutional salary bill with Bank Account Numbers & IFSC codes.</span>
+        <span>•</span>
+        <span>Clear breakdown of statutory deductions: <strong>PT ₹200</strong>, <strong>WF ₹75</strong>, <strong>EPF</strong>, and <strong>Other Ded ✎</strong>.</span>
+        <span>•</span>
+        <span>Click <strong>🖨️ Slip</strong> for formal printable pay slip, or <strong>⚙️ Edit</strong> to adjust packages & bank details.</span>
+      `;
+    }
   }
 
   renderTable();
@@ -438,66 +476,137 @@ async function loadMonths() {
   }
 }
 
-// Load both attendance and salary data
+// Load both attendance and salary data concurrently for the Single Unified Dashboard
 async function loadData() {
   try {
-    // 1. Fetch Attendance Records
-    const resAtt = await fetch(`/api/data?month=${encodeURIComponent(currentMonth)}&active_only=${activeOnly}`);
+    const [resAtt, resSal] = await Promise.all([
+      fetch(`/api/data?month=${encodeURIComponent(currentMonth)}&active_only=${activeOnly}`),
+      fetch(`/api/salary/data?month=${encodeURIComponent(currentMonth)}&active_only=${activeOnly}`)
+    ]);
+
     const dataAtt = await resAtt.json();
-
-    if (dataAtt.status === 'success') {
-      allEmployees = dataAtt.employees;
-      renderAttendanceKPIs(dataAtt.stats);
-      populateDepartmentSelect(dataAtt.departments);
-    }
-
-    // 2. Fetch Salary Records
-    const resSal = await fetch(`/api/salary/data?month=${encodeURIComponent(currentMonth)}&active_only=${activeOnly}`);
     const dataSal = await resSal.json();
 
-    if (dataSal.status === 'success') {
-      allSalaryRecords = dataSal.records;
-      renderSalaryKPIs(dataSal.stats);
-      populateCategorySelect(dataSal.categories);
+    if (dataAtt.status === 'success') {
+      allEmployees = dataAtt.employees || [];
+      populateDepartmentSelect(dataAtt.departments || []);
     }
 
+    if (dataSal.status === 'success') {
+      allSalaryRecords = dataSal.records || [];
+      populateCategorySelect(dataSal.categories || []);
+    }
+
+    buildUnifiedRecords(dataAtt.stats || {}, dataSal.stats || {});
     renderTable();
   } catch (err) {
-    console.error('Error fetching data:', err);
+    console.error('Error fetching unified data:', err);
     showToast('Error loading platform data');
   }
 }
 
-function renderAttendanceKPIs(stats) {
-  document.getElementById('stat-total-staff').textContent = stats.total_staff;
-  document.getElementById('stat-needs-review').textContent = stats.needs_review_count;
-  document.getElementById('stat-total-leaves').textContent = stats.total_leaves;
-  document.getElementById('stat-total-od').textContent = stats.total_od;
-  document.getElementById('stat-total-pay-days').textContent = stats.total_pay_days;
+// Merge Attendance & Salary data by emp_code into a Single Master Model
+function buildUnifiedRecords(attStats, salStats) {
+  const salMap = new Map();
+  allSalaryRecords.forEach(s => salMap.set(String(s.emp_code), s));
 
-  const navReview = document.getElementById('nav-review-count');
-  if (navReview) navReview.textContent = stats.needs_review_count;
+  unifiedRecords = allEmployees.map(att => {
+    const code = String(att.emp_code);
+    const sal = salMap.get(code) || {};
 
-  const navVip = document.getElementById('nav-vip-count');
-  if (navVip) navVip.textContent = stats.vip_count || 0;
+    const monthDays = att.days_in_month || sal.days_in_month || 31;
+    const payDays = (sal.total_pay_days !== undefined && sal.total_pay_days !== null) 
+                    ? Number(sal.total_pay_days) 
+                    : (att.total_pay_days !== undefined ? Number(att.total_pay_days) : monthDays);
+    
+    const baseSalary = Number(sal.base_salary || 0);
+    const grossSalary = (sal.gross_salary !== undefined && sal.gross_salary !== null)
+                        ? Number(sal.gross_salary) 
+                        : Math.round((baseSalary / monthDays) * payDays);
+
+    const pt = Number(sal.pt_deduction || 0);
+    const wf = Number(sal.wf_deduction || 0);
+    const epf = Number(sal.epf_deduction || 0);
+    const it = Number(sal.it_deduction || 0);
+    const other = Number(sal.other_deductions || 0);
+    const totalDed = (sal.total_deductions !== undefined && sal.total_deductions !== null) 
+                     ? Number(sal.total_deductions) 
+                     : (pt + wf + epf + it + other);
+    
+    const netSalary = (sal.net_salary !== undefined && sal.net_salary !== null)
+                      ? Number(sal.net_salary)
+                      : Math.max(0, grossSalary - totalDed);
+
+    const cl = Number(att.availed_leaves !== undefined ? att.availed_leaves : (att.cl_days || 0));
+    const od = Number(att.sv_od !== undefined ? att.sv_od : (att.od_days || 0));
+    const present = Number(att.biometric_present_days !== undefined ? att.biometric_present_days : (att.present_days || payDays));
+    const lopDays = Math.max(0, Math.round((monthDays - payDays) * 10) / 10);
+
+    return {
+      ...att,
+      ...sal,
+      emp_code: code,
+      name: att.name || sal.name || 'Staff',
+      department: att.department || sal.department || 'General',
+      category: sal.category || att.category || 'Non-Teaching',
+      designation: att.designation || sal.designation || 'Staff',
+      month_days: monthDays,
+      present_days: present,
+      cl_days: cl,
+      od_days: od,
+      lop_days: lopDays,
+      total_pay_days: payDays,
+      base_salary: baseSalary,
+      gross_salary: grossSalary,
+      pt_deduction: pt,
+      wf_deduction: wf,
+      epf_deduction: epf,
+      it_deduction: it,
+      other_deductions: other,
+      total_deductions: totalDed,
+      net_salary: netSalary,
+      account_no: sal.account_no || '',
+      ifsc_code: sal.ifsc_code || '',
+      bank_name: sal.bank_name || '',
+      needs_review: Boolean(att.needs_review || (att.missed_punch_days > 0) || (lopDays > 0)),
+      is_vip: Boolean(att.attendance_policy === 'exempt_full' || att.is_vip)
+    };
+  });
+
+  renderUnifiedKPIs(attStats, salStats);
 }
 
-function renderSalaryKPIs(stats) {
+// Render the 6-Card Executive Master KPI Strip
+function renderUnifiedKPIs(attStats, salStats) {
   const f = (n) => '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
-  const elStaff = document.getElementById('stat-salary-staff');
-  if (elStaff) elStaff.textContent = stats.total_staff;
 
-  const elBud = document.getElementById('stat-salary-budget');
-  if (elBud) elBud.textContent = f(stats.total_payroll_budget);
+  const totalStaff = attStats.total_staff || unifiedRecords.length;
+  const elStaff = document.getElementById('stat-total-staff');
+  if (elStaff) elStaff.textContent = totalStaff;
 
-  const elGross = document.getElementById('stat-salary-gross');
-  if (elGross) elGross.textContent = f(stats.total_gross_disbursed);
+  const elBudget = document.getElementById('stat-total-budget');
+  if (elBudget) elBudget.textContent = f(salStats.total_payroll_budget);
 
-  const elDed = document.getElementById('stat-salary-deductions');
-  if (elDed) elDed.textContent = f(stats.total_all_deductions);
+  const elGross = document.getElementById('stat-total-gross');
+  if (elGross) elGross.textContent = f(salStats.total_gross_disbursed);
 
-  const elNet = document.getElementById('stat-salary-net');
-  if (elNet) elNet.textContent = f(stats.total_net_disbursed);
+  const elDed = document.getElementById('stat-total-deductions');
+  if (elDed) elDed.textContent = f(salStats.total_all_deductions);
+
+  const elNet = document.getElementById('stat-total-net');
+  if (elNet) elNet.textContent = f(salStats.total_net_disbursed);
+
+  const elDays = document.getElementById('stat-total-pay-days');
+  if (elDays) {
+    const payDays = attStats.total_pay_days || unifiedRecords.reduce((acc, r) => acc + (r.total_pay_days || 0), 0);
+    elDays.textContent = `${Math.round(payDays)} Days`;
+  }
+
+  const navReview = document.getElementById('nav-review-count');
+  if (navReview) navReview.textContent = attStats.needs_review_count || 0;
+
+  const navVip = document.getElementById('nav-vip-count');
+  if (navVip) navVip.textContent = attStats.vip_count || 0;
 }
 
 function populateDepartmentSelect(depts) {
@@ -527,60 +636,114 @@ function populateCategorySelect(cats) {
   });
 }
 
-// Render Table Header & Body dynamically based on currentViewMode
+// -----------------------------------------------------------------------------
+// RENDER DYNAMIC MASTER TABLE (3 MODES: UNIFIED MASTER, ATTENDANCE, SALARY)
+// -----------------------------------------------------------------------------
 function renderTable() {
   const thead = document.getElementById('table-head');
   const tbody = document.getElementById('table-body');
+  if (!thead || !tbody) return;
   tbody.innerHTML = '';
 
-  if (currentViewMode === 'salary') {
-    renderSalaryTable(thead, tbody);
-  } else {
-    renderAttendanceTable(thead, tbody);
+  const mode = currentDashboardMode || 'unified';
+
+  // 1. Render Table Headers based on Active Dashboard Mode
+  if (mode === 'unified') {
+    thead.innerHTML = `
+      <tr>
+        <th style="width: 38px; text-align: center;" class="sticky-col-code">#</th>
+        <th style="width: 78px; text-align: center;" class="sticky-col-code">Emp Code</th>
+        <th style="min-width: 190px;">Staff Member</th>
+        <th style="width: 65px;">Dept</th>
+        
+        <!-- Biometric Attendance Columns -->
+        <th style="width: 50px; text-align: center;" class="th-section-att" title="Total Calendar Days in Month">Month</th>
+        <th style="width: 55px; text-align: center;" class="th-section-att" title="Biometric Punch Present Days">Present</th>
+        <th style="width: 58px; text-align: center;" class="th-section-att" title="Casual Leave (CL) Slips - Click to edit directly">CL ✎</th>
+        <th style="width: 58px; text-align: center;" class="th-section-att" title="On Duty (OD) Slips - Click to edit directly">OD ✎</th>
+        <th style="width: 65px; text-align: center;" class="th-section-att" title="Loss of Pay (Unpaid Absent Days)">LOP</th>
+        <th style="width: 68px; text-align: center;" class="th-section-att" title="Final Payable Days used for Salary calculation - Click to edit directly">Pay Days ✎</th>
+        
+        <!-- Financial Salary Columns -->
+        <th style="width: 90px; text-align: right;" class="th-section-sal" title="Monthly Base Salary Package - Click to edit directly">Base Rate ✎</th>
+        <th style="width: 90px; text-align: right;" class="th-section-sal" title="Earned Gross salary computed from Pay Days">Earned Gross</th>
+        <th style="width: 72px; text-align: center;" class="th-section-sal" title="AP Statutory Professional Tax Slab (> ₹20,000 = ₹200)">PT (₹200)</th>
+        <th style="width: 72px; text-align: center;" class="th-section-sal" title="SVCET Staff Welfare Fund (Teaching = ₹75, Non-Teaching = ₹30)">WF (₹75)</th>
+        <th style="width: 75px; text-align: right;" class="th-section-sal" title="Other Deductions (Mess, Bus, Advance) - Click to edit directly">Other Ded ✎</th>
+        <th style="width: 110px; text-align: right; background: #ecfdf5; color: #047857; font-weight: 800;">Net Pay (₹)</th>
+        
+        <th style="width: 185px; text-align: center;">Actions</th>
+      </tr>
+    `;
+  } else if (mode === 'attendance') {
+    thead.innerHTML = `
+      <tr>
+        <th style="width: 40px; text-align: center;">#</th>
+        <th style="width: 80px; text-align: center;">Emp Code</th>
+        <th style="min-width: 210px;">Employee Name</th>
+        <th style="width: 95px;">Designation</th>
+        <th style="width: 75px;">Dept</th>
+        <th style="width: 60px; text-align: center;" title="Total Days in Month">Month</th>
+        <th style="width: 68px; text-align: center;" title="Biometric Punch Present Days">Biometric</th>
+        <th style="width: 65px; text-align: center;" title="Sundays & Institutional Holidays">Holiday</th>
+        <th style="width: 68px; text-align: center;" title="Casual Leave (CL) Slips - Click to edit directly">CL ✎</th>
+        <th style="width: 68px; text-align: center;" title="On Duty (OD) Slips - Click to edit directly">OD ✎</th>
+        <th style="width: 78px; text-align: center;" title="Total Payable Days - Click to edit directly">Pay Days ✎</th>
+        <th style="min-width: 150px;">Remarks / Policy</th>
+        <th style="width: 195px; text-align: center;">Actions</th>
+      </tr>
+    `;
+  } else if (mode === 'salary') {
+    thead.innerHTML = `
+      <tr>
+        <th style="width: 40px; text-align: center;">#</th>
+        <th style="width: 80px; text-align: center;">Emp Code</th>
+        <th style="min-width: 190px;">Staff Member</th>
+        <th style="width: 100px;">Category</th>
+        <th style="width: 75px;">Dept</th>
+        <th style="width: 75px; text-align: center;" title="Eligible Pay Days - Click to edit directly">Pay Days ✎</th>
+        <th style="width: 95px; text-align: right;" title="Base Monthly Package - Click to edit directly">Base Package ✎</th>
+        <th style="width: 95px; text-align: right;" title="Earned Gross Salary">Earned Gross</th>
+        <th style="width: 75px; text-align: center;" title="AP State Professional Tax">PT (₹200)</th>
+        <th style="width: 75px; text-align: center;" title="SVCET Staff Welfare Fund">WF (₹75)</th>
+        <th style="width: 80px; text-align: right;" title="Other Deductions - Click to edit directly">Other Ded ✎</th>
+        <th style="width: 85px; text-align: right;" title="Total Statutory & Other Deductions">Total Ded</th>
+        <th style="width: 115px; text-align: right; background: #ecfdf5; color: #047857; font-weight: 800;">Net Salary (₹)</th>
+        <th style="min-width: 160px;">Bank Account & IFSC</th>
+        <th style="width: 145px; text-align: center;">Actions</th>
+      </tr>
+    `;
   }
-}
 
-// -----------------------------------------------------------------------------
-// RENDER ATTENDANCE TABLE
-// -----------------------------------------------------------------------------
-function renderAttendanceTable(thead, tbody) {
-  thead.innerHTML = `
-    <tr>
-      <th style="width: 48px;">S.No</th>
-      <th style="width: 85px;">Emp Code</th>
-      <th style="width: 220px;">Employee Name (Click for Portfolio)</th>
-      <th style="width: 120px;">Designation</th>
-      <th style="width: 80px;">Dept</th>
-      <th style="width: 100px;">Biometric Days</th>
-      <th style="width: 70px;">Holiday</th>
-      <th style="width: 115px;" class="col-leave" title="Option 1: Inline Editable Casual Leaves">Availed Leaves ✎</th>
-      <th style="width: 100px;" class="col-od" title="Option 1: Inline Editable On Duty">SV/OD ✎</th>
-      <th style="width: 110px;" class="col-total-pay" title="Total Pay Days for Salary">Total Pay Days</th>
-      <th style="min-width: 200px;">Remarks / Policy</th>
-      <th style="width: 180px; text-align: center;">Actions</th>
-    </tr>
-  `;
+  const query = (document.getElementById('search-input')?.value || '').toLowerCase().trim();
 
-  const query = document.getElementById('search-input').value.toLowerCase().trim();
-
-  const filtered = allEmployees.filter(emp => {
+  const filtered = unifiedRecords.filter(emp => {
     if (currentDept !== 'all' && emp.department !== currentDept) return false;
-    if (currentFilter === 'review' && !emp.needs_review) return false;
-    if (currentFilter === 'vip' && emp.attendance_policy === 'standard') return false;
-    if (currentFilter === 'absent' && (!emp.absent_days || emp.absent_days.length === 0)) return false;
-    if (currentFilter === 'leaves' && (!emp.availed_leaves && !emp.sv_od)) return false;
+    if (currentCategory !== 'all' && emp.category !== currentCategory) return false;
+
+    if (currentFilter === 'teaching' && emp.category !== 'Teaching') return false;
+    if (currentFilter === 'non-teaching' && emp.category !== 'Non-Teaching') return false;
+    if (currentFilter === 'support' && !['Transport', 'Attender', 'Garden Staff', 'Security'].includes(emp.category)) return false;
+    if (currentFilter === 'review' && !emp.needs_review && emp.lop_days <= 0) return false;
+    if (currentFilter === 'vip' && !emp.is_vip && emp.attendance_policy === 'standard') return false;
+    if (currentFilter === 'missing_bank') {
+      const hasAcc = emp.account_no && emp.account_no.trim() !== '' && emp.account_no !== 'Pending';
+      if (hasAcc) return false;
+    }
 
     if (query) {
-      const matchName = emp.name.toLowerCase().includes(query);
-      const matchCode = emp.emp_code.toLowerCase().includes(query);
+      const matchName = (emp.name || '').toLowerCase().includes(query);
+      const matchCode = (emp.emp_code || '').toLowerCase().includes(query);
       const matchDesig = (emp.designation || '').toLowerCase().includes(query);
       if (!matchName && !matchCode && !matchDesig) return false;
     }
     return true;
   });
 
+  const totalCols = (mode === 'unified') ? 17 : ((mode === 'attendance') ? 13 : 15);
+
   if (filtered.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="12" style="text-align: center; padding: 3rem; color: #94a3b8; font-weight: 500;">No employees found matching the selected filter.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="${totalCols}" style="text-align: center; padding: 3rem; color: #94a3b8; font-weight: 500;">No employees found matching the selected filter.</td></tr>`;
     return;
   }
 
@@ -592,266 +755,398 @@ function renderAttendanceTable(thead, tbody) {
       lastDept = emp.department;
       const deptRow = document.createElement('tr');
       deptRow.className = 'dept-section-row';
-      deptRow.innerHTML = `<td colspan="12">Department: ${lastDept}</td>`;
+      deptRow.innerHTML = `<td colspan="${totalCols}" style="background:#f8fafc; font-weight:800; color:#1e3a8a; padding: 6px 12px; border-top: 1px solid #e2e8f0;">DEPARTMENT: ${lastDept}</td>`;
       tbody.appendChild(deptRow);
     }
 
     const tr = document.createElement('tr');
     tr.id = `row-${emp.emp_code}`;
 
-    let statusBadge = '';
-    if (emp.attendance_policy === 'exempt_full') {
-      statusBadge += `<span class="badge-pill badge-policy-exempt">👑 Full Pay (VIP)</span> `;
-    } else if (emp.attendance_policy === 'visiting_twice_weekly') {
-      statusBadge += `<span class="badge-pill badge-policy-visiting">Visiting Schedule</span> `;
-    }
-
-    if (emp.missed_out_punches && emp.missed_out_punches.length > 0) {
-      statusBadge += `<span class="badge-pill badge-missed" title="Missing Out-Punch on: ${emp.missed_out_punches.join(', ')}">No Out-Punch</span> `;
-    } else if (emp.absent_days && emp.absent_days.length > 0 && emp.attendance_policy === 'standard') {
-      statusBadge += `<span class="badge-pill badge-absent">Absent (${emp.absent_days.length}d)</span> `;
-    }
-
-    const leavesVal = emp.availed_leaves !== null && emp.availed_leaves !== undefined ? emp.availed_leaves : '';
-    const odVal = emp.sv_od !== null && emp.sv_od !== undefined ? emp.sv_od : '';
-
-    tr.innerHTML = `
-      <td style="text-align: center; color: #94a3b8; font-weight: 600;">${sNo++}</td>
-      <td style="text-align: center; font-weight: 700; color: #0f172a;">${emp.emp_code}</td>
-      <td>
-        <span class="emp-name-link" onclick="openPortfolio('${emp.emp_code}')" title="Click to view 360° Annual Dossier & Pay Slip">
-          ${emp.name}
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/></svg>
-        </span>
-      </td>
-      <td style="color: #64748b; font-size: 0.8rem;">${emp.designation || '-'}</td>
-      <td style="color: #64748b; font-weight: 600; font-size: 0.8rem;">${emp.department}</td>
-      <td style="text-align: right; font-weight: 600;" id="bio-${emp.emp_code}">${emp.biometric_days}</td>
-      <td style="text-align: right; color: #64748b;">${emp.holiday}</td>
-      
-      <td style="text-align: right;" class="col-leave">
-        <input type="number" step="0.5" min="0" max="31" 
-               class="cell-input" 
-               value="${leavesVal}" 
-               placeholder="-"
-               onchange="handleInlineEdit('${emp.emp_code}', 'availed_leaves', this.value, this)">
-      </td>
-
-      <td style="text-align: right;" class="col-od">
-        <input type="number" step="0.5" min="0" max="31" 
-               class="cell-input" 
-               value="${odVal}" 
-               placeholder="-"
-               onchange="handleInlineEdit('${emp.emp_code}', 'sv_od', this.value, this)">
-      </td>
-
-      <td style="text-align: right;" class="col-total-pay" id="total-${emp.emp_code}">
-        ${emp.total_pay_days}
-      </td>
-      <td id="rem-${emp.emp_code}">
-        ${statusBadge}
-        <span style="font-size: 0.78rem; color: #475569;">${emp.remarks || '-'}</span>
-      </td>
-      <td style="text-align: center;">
-        <div style="display: flex; gap: 0.35rem; justify-content: center;">
-          <button class="action-timeline-btn" onclick="openTimelineModal('${emp.emp_code}')" title="Option 2: View and regularize 31-day punch logs">
-            📅 Timeline
-          </button>
-          <button class="action-grant-full-btn" onclick="grantFullAttendance('${emp.emp_code}')" title="Grant 31 Full Pay Days instantly for this month">
-            ✔ Full Pay
-          </button>
-        </div>
-      </td>
-    `;
-    tbody.appendChild(tr);
-  });
-}
-
-// -----------------------------------------------------------------------------
-// RENDER SALARY & PAYROLL TABLE
-// -----------------------------------------------------------------------------
-function renderSalaryTable(thead, tbody) {
-  thead.innerHTML = `
-    <tr>
-      <th style="width: 45px;">S.No</th>
-      <th style="width: 80px;">Emp Code</th>
-      <th style="width: 220px;">Staff Name (Click for Payslip)</th>
-      <th style="width: 100px;">Category</th>
-      <th style="width: 70px;">Dept</th>
-      <th style="width: 85px; text-align: right;" title="Directly Editable Attendance Pay Days">Pay Days ✎</th>
-      <th style="width: 110px; text-align: right;" title="Monthly Base Package">Base Package ✎</th>
-      <th style="width: 105px; text-align: right;">Earned Gross</th>
-      <th style="width: 65px; text-align: right;">PT</th>
-      <th style="width: 65px; text-align: right;">WF</th>
-      <th style="width: 90px; text-align: right;" title="Editable Other Deductions">Other Ded ✎</th>
-      <th style="width: 125px; text-align: right; background: #f0fdf4; color: #15803d;">Net Salary (₹)</th>
-      <th style="min-width: 175px;">Bank Account & IFSC</th>
-      <th style="width: 130px; text-align: center;">Actions</th>
-    </tr>
-  `;
-
-  const query = document.getElementById('search-input').value.toLowerCase().trim();
-
-  const filtered = allSalaryRecords.filter(emp => {
-    if (currentDept !== 'all' && emp.department !== currentDept) return false;
-    if (currentCategory !== 'all' && emp.category !== currentCategory) return false;
-
-    if (currentFilter === 'missing_bank') {
-      const hasBank = emp.account_no && emp.account_no.trim() !== '' && emp.account_no !== 'Pending';
-      if (hasBank) return false;
-    }
-
-    if (query) {
-      const matchName = emp.name.toLowerCase().includes(query);
-      const matchCode = emp.emp_code.toLowerCase().includes(query);
-      const matchDesig = (emp.designation || '').toLowerCase().includes(query);
-      if (!matchName && !matchCode && !matchDesig) return false;
-    }
-    return true;
-  });
-
-  if (filtered.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="14" style="text-align: center; padding: 3rem; color: #94a3b8; font-weight: 500;">No salary records found matching the filter.</td></tr>`;
-    return;
-  }
-
-  let lastDept = null;
-  let sNo = 1;
-
-  filtered.forEach(emp => {
-    if (emp.department !== lastDept && currentDept === 'all') {
-      lastDept = emp.department;
-      const deptRow = document.createElement('tr');
-      deptRow.className = 'dept-section-row';
-      deptRow.innerHTML = `<td colspan="14">Department: ${lastDept}</td>`;
-      tbody.appendChild(deptRow);
-    }
-
-    const tr = document.createElement('tr');
-    tr.id = `sal-row-${emp.emp_code}`;
-
     let catBadge = 'badge-cat-nt';
-    if (emp.category === 'Teaching') {
-      catBadge = 'badge-cat-teaching';
-    } else if (emp.category === 'Management') {
-      catBadge = 'badge-cat-mgt';
-    } else if (['Transport', 'Attender', 'Garden Staff', 'Security'].includes(emp.category)) {
-      catBadge = 'badge-cat-support';
+    if (emp.category === 'Teaching') catBadge = 'badge-cat-teaching';
+    else if (emp.category === 'Management') catBadge = 'badge-cat-mgt';
+    else if (['Transport', 'Attender', 'Garden Staff', 'Security'].includes(emp.category)) catBadge = 'badge-cat-support';
+
+    if (mode === 'unified') {
+      // 🌟 UNIFIED MASTER ROW (Attendance + Salary side-by-side with full editability)
+      tr.innerHTML = `
+        <td style="text-align: center; color: #94a3b8; font-weight: 600;" class="sticky-col-code">${sNo++}</td>
+        <td style="text-align: center; font-weight: 700; color: #0f172a;" class="sticky-col-code">${emp.emp_code}</td>
+        <td>
+          <span class="emp-name-link" onclick="openPortfolio('${emp.emp_code}')" title="Click to view 360° Annual Profile & Leave Passbook">
+            <strong>${emp.name}</strong>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/></svg>
+          </span>
+          <div style="display:flex; align-items:center; gap: 4px; margin-top: 2px;">
+            <span class="badge-pill ${catBadge}">${emp.category}</span>
+            <span style="font-size: 0.7rem; color: #94a3b8;">${emp.designation || 'Staff'}</span>
+          </div>
+        </td>
+        <td style="color: #64748b; font-weight: 600; font-size: 0.75rem;">${emp.department}</td>
+        
+        <!-- Biometric Attendance Columns -->
+        <td style="text-align: center; color: #64748b; font-size: 0.8rem;">${emp.month_days}</td>
+        <td style="text-align: center; font-weight: 700; color: #1e3a8a;">${emp.present_days}</td>
+        
+        <!-- Editable CL -->
+        <td style="text-align: center;">
+          <input type="number" step="0.5" min="0" max="31"
+                 class="cell-sal-input input-cl" 
+                 value="${emp.cl_days || 0}" 
+                 title="Casual Leave (CL) Slips - Click to edit directly"
+                 onchange="handleAttendanceInlineEdit('${emp.emp_code}', 'availed_leaves', this.value, this)">
+        </td>
+        
+        <!-- Editable OD -->
+        <td style="text-align: center;">
+          <input type="number" step="0.5" min="0" max="31"
+                 class="cell-sal-input input-od" 
+                 value="${emp.od_days || 0}" 
+                 title="On Duty (OD) Slips - Click to edit directly"
+                 onchange="handleAttendanceInlineEdit('${emp.emp_code}', 'sv_od', this.value, this)">
+        </td>
+        
+        <!-- LOP Badge -->
+        <td style="text-align: center;">
+          ${emp.lop_days > 0 
+            ? `<span class="lop-badge" title="${emp.lop_days} Unpaid Absent Days">${emp.lop_days}d LOP</span>` 
+            : `<span style="color:#94a3b8; font-size:0.75rem;">0</span>`}
+        </td>
+        
+        <!-- Directly Editable Payable Days -->
+        <td style="text-align: center;">
+          <input type="number" step="0.5" min="0" max="31"
+                 class="cell-sal-input input-days" 
+                 value="${emp.total_pay_days}" 
+                 title="Override Payable Days directly"
+                 onchange="handleUnifiedInlineEdit('${emp.emp_code}', 'total_pay_days', this.value, this)">
+        </td>
+
+        <!-- Directly Editable Base Package -->
+        <td style="text-align: right;">
+          <input type="number" step="500" min="0" 
+                 class="cell-sal-input input-money" 
+                 value="${emp.base_salary}" 
+                 title="Edit monthly base salary package"
+                 onchange="handleUnifiedInlineEdit('${emp.emp_code}', 'base_salary', this.value, this)">
+        </td>
+
+        <!-- Earned Gross Salary -->
+        <td style="text-align: right; font-weight: 700; color: #334155;" id="gross-${emp.emp_code}">
+          ₹${Math.round(emp.gross_salary).toLocaleString('en-IN')}
+        </td>
+
+        <!-- Statutory PT (₹200) -->
+        <td style="text-align: center;">
+          <span class="statutory-pill statutory-pill-pt" title="Andhra Pradesh State Professional Tax (Gross > ₹20,000 = ₹200)" id="pt-${emp.emp_code}">
+            ₹${emp.pt_deduction}
+          </span>
+        </td>
+
+        <!-- Statutory WF (₹75) -->
+        <td style="text-align: center;">
+          <span class="statutory-pill statutory-pill-wf" title="SVCET Staff Welfare Fund (Teaching = ₹75, Non-Teaching = ₹30)" id="wf-${emp.emp_code}">
+            ₹${emp.wf_deduction}
+          </span>
+        </td>
+
+        <!-- Editable Other Deductions -->
+        <td style="text-align: right;">
+          <input type="number" step="10" min="0" 
+                 class="cell-sal-input input-ded" 
+                 value="${emp.other_deductions || 0}" 
+                 title="Other Deductions (Mess, Bus, Electricity, Advance) - Click to edit directly"
+                 onchange="handleUnifiedInlineEdit('${emp.emp_code}', 'other_deductions', this.value, this)">
+        </td>
+
+        <!-- Net Salary -->
+        <td style="text-align: right; background: #ecfdf5;">
+          <strong id="net-${emp.emp_code}" style="color: #15803d; font-size: 0.85rem;">
+            ₹${Math.round(emp.net_salary).toLocaleString('en-IN')}
+          </strong>
+        </td>
+
+        <!-- Actions Column -->
+        <td style="text-align: center;">
+          <div class="row-action-cluster">
+            <button class="btn-row-action" style="color: #1e3a8a; font-weight: 800;" onclick="openFormalPaySlip('${emp.emp_code}')" title="Print Official Institutional Pay Slip">
+              📄 Slip
+            </button>
+            <button class="btn-row-action" onclick="openTimelineModal('${emp.emp_code}')" title="View & regularize 1-31 punch logs">
+              📅 Punches
+            </button>
+            <button class="btn-row-action" style="color: #15803d;" onclick="grantFullAttendance('${emp.emp_code}')" title="1-Click Grant 31 Full Pay Days">
+              ✔ Full
+            </button>
+            <button class="btn-row-action" onclick="openEditPackageModal('${emp.emp_code}')" title="Edit Package & Bank Details">
+              ✏️ Edit
+            </button>
+          </div>
+        </td>
+      `;
+    } else if (mode === 'attendance') {
+      // 📋 ATTENDANCE GRID ROW (Dedicated Biometric & Leave focus)
+      let remarkBadges = '';
+      if (emp.is_vip || emp.attendance_policy === 'exempt_full') {
+        remarkBadges = '<span class="badge-pill badge-vip" style="font-size:0.7rem;">👑 Full Pay VIP</span>';
+      } else if (emp.remarks) {
+        remarkBadges = `<span style="font-size:0.75rem; color:#64748b;">${emp.remarks}</span>`;
+      } else {
+        remarkBadges = '<span style="font-size:0.75rem; color:#10b981;">✔ Clean Record</span>';
+      }
+
+      tr.innerHTML = `
+        <td style="text-align: center; color: #94a3b8; font-weight: 600;">${sNo++}</td>
+        <td style="text-align: center; font-weight: 700; color: #0f172a;">${emp.emp_code}</td>
+        <td>
+          <span class="emp-name-link" onclick="openPortfolio('${emp.emp_code}')" title="Click to view 360° Annual Leave Passbook">
+            <strong>${emp.name}</strong>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/></svg>
+          </span>
+          <div style="font-size: 0.7rem; color: #94a3b8;">${emp.category}</div>
+        </td>
+        <td style="font-size: 0.78rem; color: #475569;">${emp.designation || 'Staff'}</td>
+        <td style="color: #64748b; font-weight: 600; font-size: 0.78rem;">${emp.department}</td>
+        <td style="text-align: center; color: #64748b; font-size: 0.8rem;">${emp.month_days}</td>
+        <td style="text-align: center; font-weight: 700; color: #1e3a8a;">${emp.present_days}</td>
+        <td style="text-align: center; color: #0369a1; font-size: 0.8rem;">${emp.holiday || 6}</td>
+        
+        <!-- Editable CL -->
+        <td style="text-align: center;">
+          <input type="number" step="0.5" min="0" max="31"
+                 class="cell-sal-input input-cl" 
+                 value="${emp.cl_days || 0}" 
+                 title="Edit Casual Leave (CL)"
+                 onchange="handleAttendanceInlineEdit('${emp.emp_code}', 'availed_leaves', this.value, this)">
+        </td>
+        
+        <!-- Editable OD -->
+        <td style="text-align: center;">
+          <input type="number" step="0.5" min="0" max="31"
+                 class="cell-sal-input input-od" 
+                 value="${emp.od_days || 0}" 
+                 title="Edit On-Duty (OD)"
+                 onchange="handleAttendanceInlineEdit('${emp.emp_code}', 'sv_od', this.value, this)">
+        </td>
+        
+        <!-- Editable Pay Days -->
+        <td style="text-align: center;">
+          <input type="number" step="0.5" min="0" max="31"
+                 class="cell-sal-input input-days" 
+                 value="${emp.total_pay_days}" 
+                 title="Directly override Payable Days"
+                 onchange="handleUnifiedInlineEdit('${emp.emp_code}', 'total_pay_days', this.value, this)">
+        </td>
+
+        <td>${remarkBadges}</td>
+
+        <!-- Actions -->
+        <td style="text-align: center;">
+          <div class="row-action-cluster">
+            <button class="btn-row-action" onclick="openTimelineModal('${emp.emp_code}')" title="View 1-31 Daily Punch Calendar">
+              📅 Punches
+            </button>
+            <button class="btn-row-action" style="color: #15803d; font-weight: 700;" onclick="grantFullAttendance('${emp.emp_code}')" title="1-Click Grant 31 Full Days">
+              ✔ Full Pay
+            </button>
+            <button class="btn-row-action" onclick="openPortfolio('${emp.emp_code}')" title="Open 360° Leave Passbook">
+              👤 360°
+            </button>
+          </div>
+        </td>
+      `;
+    } else if (mode === 'salary') {
+      // 💰 SALARY & BANK LEDGER ROW (Financial payroll focus)
+      tr.innerHTML = `
+        <td style="text-align: center; color: #94a3b8; font-weight: 600;">${sNo++}</td>
+        <td style="text-align: center; font-weight: 700; color: #0f172a;">${emp.emp_code}</td>
+        <td>
+          <span class="emp-name-link" onclick="openFormalPaySlip('${emp.emp_code}')" title="Click to view Official Printable Pay Slip">
+            <strong>${emp.name}</strong>
+          </span>
+          <div style="font-size: 0.7rem; color: #94a3b8;">${emp.designation || 'Staff'}</div>
+        </td>
+        <td><span class="badge-pill ${catBadge}">${emp.category}</span></td>
+        <td style="color: #64748b; font-weight: 600; font-size: 0.78rem;">${emp.department}</td>
+        
+        <!-- Editable Pay Days -->
+        <td style="text-align: center;">
+          <input type="number" step="0.5" min="0" max="31"
+                 class="cell-sal-input input-days" 
+                 value="${emp.total_pay_days}" 
+                 title="Override Payable Days directly"
+                 onchange="handleUnifiedInlineEdit('${emp.emp_code}', 'total_pay_days', this.value, this)">
+        </td>
+
+        <!-- Editable Base Package -->
+        <td style="text-align: right;">
+          <input type="number" step="500" min="0" 
+                 class="cell-sal-input input-money" 
+                 value="${emp.base_salary}" 
+                 title="Edit base salary package"
+                 onchange="handleUnifiedInlineEdit('${emp.emp_code}', 'base_salary', this.value, this)">
+        </td>
+
+        <!-- Earned Gross Salary -->
+        <td style="text-align: right; font-weight: 700; color: #334155;" id="gross-${emp.emp_code}">
+          ₹${Math.round(emp.gross_salary).toLocaleString('en-IN')}
+        </td>
+
+        <!-- Statutory PT (₹200) -->
+        <td style="text-align: center;">
+          <span class="statutory-pill statutory-pill-pt" title="Andhra Pradesh State Professional Tax (Gross > ₹20k = ₹200)">
+            ₹${emp.pt_deduction}
+          </span>
+        </td>
+
+        <!-- Statutory WF (₹75) -->
+        <td style="text-align: center;">
+          <span class="statutory-pill statutory-pill-wf" title="SVCET Staff Welfare Fund (Teaching = ₹75, Non-Teaching = ₹30)">
+            ₹${emp.wf_deduction}
+          </span>
+        </td>
+
+        <!-- Editable Other Deductions -->
+        <td style="text-align: right;">
+          <input type="number" step="10" min="0" 
+                 class="cell-sal-input input-ded" 
+                 value="${emp.other_deductions || 0}" 
+                 title="Other Deductions (Mess, Bus, Electricity) - Click to edit"
+                 onchange="handleUnifiedInlineEdit('${emp.emp_code}', 'other_deductions', this.value, this)">
+        </td>
+
+        <!-- Total Deductions -->
+        <td style="text-align: right; font-weight: 700; color: #b45309;" id="ded-${emp.emp_code}">
+          ₹${Math.round(emp.total_deductions).toLocaleString('en-IN')}
+        </td>
+
+        <!-- Net Salary -->
+        <td style="text-align: right; background: #ecfdf5;">
+          <strong id="net-${emp.emp_code}" style="color: #15803d; font-size: 0.88rem;">
+            ₹${Math.round(emp.net_salary).toLocaleString('en-IN')}
+          </strong>
+        </td>
+
+        <!-- Bank Account & IFSC -->
+        <td>
+          <div style="font-size: 0.76rem; font-weight: 700; color: #0f172a;">
+            ${(emp.account_no && emp.account_no !== 'Pending') ? emp.account_no : '<span style="color:#ef4444;">Pending</span>'}
+          </div>
+          <div style="font-size: 0.68rem; color: #64748b;">
+            ${emp.bank_name || 'PNB'} • ${emp.ifsc_code || 'PUNB0401700'}
+          </div>
+        </td>
+
+        <!-- Actions Column -->
+        <td style="text-align: center;">
+          <div class="row-action-cluster">
+            <button class="btn-row-action" style="color: #1e3a8a; font-weight: 800;" onclick="openFormalPaySlip('${emp.emp_code}')" title="Print Official Pay Slip">
+              🖨️ Slip
+            </button>
+            <button class="btn-row-action" onclick="openEditPackageModal('${emp.emp_code}')" title="Edit Package & Bank Details">
+              ⚙️ Edit
+            </button>
+          </div>
+        </td>
+      `;
     }
 
-    const hasAcc = emp.account_no && emp.account_no.trim() !== '' && emp.account_no !== 'Pending';
-    const bankDisplay = hasAcc ? 
-      `<div style="font-size: 0.75rem; font-weight: 700; color: #1e3a8a;">${emp.bank_name || 'PNB'} ${emp.account_no}</div>
-       <div style="font-size: 0.68rem; color: #64748b;">${emp.ifsc_code || 'PUNB0401700'}</div>` :
-      `<span class="bank-missing-badge">⚠️ Missing Account</span>
-       <div style="font-size: 0.68rem; color: #94a3b8;">Click ⚙️ Edit to add</div>`;
-
-    tr.innerHTML = `
-      <td style="text-align: center; color: #94a3b8; font-weight: 600;">${sNo++}</td>
-      <td style="text-align: center; font-weight: 700; color: #0f172a;">${emp.emp_code}</td>
-      <td>
-        <span class="emp-name-link" onclick="openPortfolio('${emp.emp_code}')" title="Click to view detailed Pay Slip & breakdown">
-          ${emp.name}
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/></svg>
-        </span>
-        <div style="font-size: 0.72rem; color: #94a3b8;">${emp.designation || 'Staff'}</div>
-      </td>
-      <td><span class="badge-pill ${catBadge}">${emp.category}</span></td>
-      <td style="color: #64748b; font-weight: 600; font-size: 0.78rem;">${emp.department}</td>
-      
-      <!-- Direct Editable Pay Days -->
-      <td style="text-align: right;">
-        <input type="number" step="0.5" min="0" max="31"
-               class="cell-sal-input salary-days-input" 
-               value="${emp.total_pay_days}" 
-               title="Directly override Pay Days for this month"
-               onchange="handleSalaryInlineEdit('${emp.emp_code}', 'total_pay_days', this.value, this)">
-      </td>
-      
-      <!-- Inline Editable Base Salary -->
-      <td style="text-align: right;">
-        <input type="number" step="500" min="0" 
-               class="cell-sal-input" 
-               value="${emp.base_salary}" 
-               title="Edit monthly base package"
-               onchange="handleSalaryInlineEdit('${emp.emp_code}', 'base_salary', this.value, this)">
-      </td>
-
-      <!-- Earned Gross Total -->
-      <td style="text-align: right; font-weight: 700; color: #475569;" id="sal-gross-${emp.emp_code}">
-        ₹${Math.round(emp.gross_salary).toLocaleString('en-IN')}
-      </td>
-
-      <!-- PT -->
-      <td style="text-align: right; color: #64748b; font-size: 0.8rem;" id="sal-pt-${emp.emp_code}">
-        ₹${emp.pt_deduction}
-      </td>
-
-      <!-- WF -->
-      <td style="text-align: right; color: #64748b; font-size: 0.8rem;" id="sal-wf-${emp.emp_code}">
-        ₹${emp.wf_deduction}
-      </td>
-
-      <!-- Inline Editable Other Deductions -->
-      <td style="text-align: right;">
-        <input type="number" step="50" min="0" 
-               class="cell-sal-input" 
-               style="width: 75px;"
-               value="${emp.other_deductions || 0}" 
-               title="Edit other deductions"
-               onchange="handleSalaryInlineEdit('${emp.emp_code}', 'other_deductions', this.value, this)">
-      </td>
-
-      <!-- Net Salary Highlight -->
-      <td style="text-align: right; font-weight: 800; font-size: 0.92rem; color: #15803d; background: #f0fdf4;" id="sal-net-${emp.emp_code}">
-        ₹${Math.round(emp.net_salary).toLocaleString('en-IN')}
-      </td>
-
-      <!-- Bank Details -->
-      <td>
-        ${bankDisplay}
-      </td>
-
-      <!-- Action -->
-      <td style="text-align: center;">
-        <div style="display:flex; gap: 4px; justify-content: center;">
-          <button class="btn-row-action" onclick="openEditPackageModal('${emp.emp_code}')" title="Edit Staff Salary Package & Bank Details">
-            ⚙️ Edit
-          </button>
-          <button class="action-timeline-btn" style="background: #f0fdf4; color: #15803d; border-color: #86efac; padding: 4px 7px;" onclick="openFormalPaySlip('${emp.emp_code}')" title="Print/View Official Pay Slip">
-            🖨️ Slip
-          </button>
-        </div>
-      </td>
-    `;
     tbody.appendChild(tr);
   });
 }
 
-// Inline Salary Edit Handler
-async function handleSalaryInlineEdit(empCode, field, value, inputEl) {
+// Inline Edit Handler for Attendance Fields (CL / OD)
+async function handleAttendanceInlineEdit(empCode, field, value, inputEl) {
   try {
     inputEl.classList.remove('saved');
+    const numVal = value === '' ? 0 : parseFloat(value);
+
+    // 1. Send update to backend attendance engine
+    const res = await fetch('/api/update-employee', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        emp_code: empCode,
+        field: field,
+        value: numVal,
+        month_year: currentMonth
+      })
+    });
+    const data = await res.json();
+
+    if (data.status === 'success') {
+      inputEl.classList.add('saved');
+      setTimeout(() => inputEl.classList.remove('saved'), 1500);
+
+      showToast(`✔ Updated ${field === 'availed_leaves' ? 'CL (Leaves)' : 'On-Duty (OD)'} for Emp ${empCode}`);
+      await loadData();
+    }
+  } catch (err) {
+    alert('Error saving attendance update');
+  }
+}
+
+// Inline Edit Handler for Salary & Unified Dashboard (Pay Days, Base Rate, Other Deductions)
+async function handleUnifiedInlineEdit(empCode, field, value, inputEl) {
+  try {
+    inputEl.classList.remove('saved');
+    const numVal = value === '' ? 0 : parseFloat(value);
+
+    // 1. Send update to backend
     const res = await fetch('/api/salary/update-monthly', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         emp_code: empCode,
         field: field,
-        value: value === '' ? 0 : parseFloat(value),
+        value: numVal,
         month_year: currentMonth
       })
     });
     const data = await res.json();
+
     if (data.status === 'success') {
       inputEl.classList.add('saved');
       setTimeout(() => inputEl.classList.remove('saved'), 1500);
 
+      // 2. Real-time update of local unified record
+      const emp = unifiedRecords.find(r => String(r.emp_code) === String(empCode));
+      if (emp) {
+        if (field === 'total_pay_days') {
+          emp.total_pay_days = numVal;
+          emp.lop_days = Math.max(0, Math.round((emp.month_days - numVal) * 10) / 10);
+          emp.gross_salary = Math.round((emp.base_salary / emp.month_days) * numVal);
+          // Recalculate statutory PT and WF
+          emp.pt_deduction = emp.gross_salary > 20000 ? 200 : (emp.gross_salary > 15000 ? 150 : 0);
+          emp.wf_deduction = (emp.category === 'Teaching') ? (emp.gross_salary > 0 ? 75 : 0) : (emp.gross_salary > 0 ? 30 : 0);
+        } else if (field === 'base_salary') {
+          emp.base_salary = numVal;
+          emp.gross_salary = Math.round((numVal / emp.month_days) * emp.total_pay_days);
+          emp.pt_deduction = emp.gross_salary > 20000 ? 200 : (emp.gross_salary > 15000 ? 150 : 0);
+          emp.wf_deduction = (emp.category === 'Teaching') ? (emp.gross_salary > 0 ? 75 : 0) : (emp.gross_salary > 0 ? 30 : 0);
+        } else if (field === 'other_deductions') {
+          emp.other_deductions = numVal;
+        }
+
+        emp.total_deductions = (emp.pt_deduction || 0) + (emp.wf_deduction || 0) + (emp.epf_deduction || 0) + (emp.it_deduction || 0) + (emp.other_deductions || 0);
+        emp.net_salary = Math.max(0, emp.gross_salary - emp.total_deductions);
+
+        // Update DOM row elements directly for instant feedback
+        const elGross = document.getElementById(`gross-${empCode}`);
+        if (elGross) elGross.textContent = `₹${Math.round(emp.gross_salary).toLocaleString('en-IN')}`;
+
+        const elDed = document.getElementById(`ded-${empCode}`);
+        if (elDed) elDed.textContent = `₹${Math.round(emp.total_deductions).toLocaleString('en-IN')}`;
+
+        const elNet = document.getElementById(`net-${empCode}`);
+        if (elNet) elNet.textContent = `₹${Math.round(emp.net_salary).toLocaleString('en-IN')}`;
+      }
+
+      showToast(`✔ Updated ${field.replace('_', ' ')} for Emp ${empCode}`);
       loadData();
-      showToast(`✔ Updated salary for Emp ${empCode}`);
     }
   } catch (err) {
-    alert('Error saving salary edit');
+    alert('Error saving inline update');
   }
 }
 

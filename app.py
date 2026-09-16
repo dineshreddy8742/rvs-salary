@@ -7,6 +7,7 @@ from attendance_engine import AttendanceEngine
 from export_excel import export_to_xls
 from export_salary_excel import export_salary_to_xlsx
 import disbursement_engine
+import payroll_engine
 
 
 app = Flask(__name__, static_folder='static', static_url_path='')

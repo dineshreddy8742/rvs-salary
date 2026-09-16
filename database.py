@@ -709,7 +709,9 @@ def recalculate_monthly_salary(emp_code: str, month_year: str, total_pay_days: O
         'arrears': rec['arrears'] or 0.0,
         'epf_deduction': rec['epf_deduction'] if rec['epf_deduction'] is not None else prof.get('epf_amount', 0.0),
         'it_deduction': rec['it_deduction'] or 0.0,
-        'other_deductions': rec['other_deductions'] or 0.0
+        'other_deductions': rec['other_deductions'] or 0.0,
+        'pt_deduction': rec['pt_deduction'],
+        'wf_deduction': rec['wf_deduction']
     }
 
     res = payroll_engine.calculate_salary_for_profile(prof, m_days, pay_days, overrides)
@@ -862,7 +864,9 @@ def update_monthly_salary_field(emp_code: str, month_year: str, field: str, valu
         'epf_deduction': 'epf_deduction',
         'it_deduction': 'it_deduction',
         'other_deductions': 'other_deductions',
-        'total_pay_days': 'total_pay_days'
+        'total_pay_days': 'total_pay_days',
+        'pt_deduction': 'pt_deduction',
+        'wf_deduction': 'wf_deduction'
     }
     col = allowed_fields.get(field)
     if not col:

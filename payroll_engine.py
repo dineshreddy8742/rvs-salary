@@ -65,7 +65,9 @@ def calculate_teaching_salary(
     eb: float = 0.0,
     mess: float = 0.0,
     bus: float = 0.0,
-    other_ded: float = 0.0
+    other_ded: float = 0.0,
+    pt: Optional[float] = None,
+    wf: Optional[float] = None
 ) -> Dict[str, Any]:
     """
     Calculates Teaching Staff Salary based on RVS / SVCET institutional formula:
@@ -106,11 +108,11 @@ def calculate_teaching_salary(
 
     gross = round(earned_basic + da + hra + arrears + fa + ta)
 
-    pt = calculate_pt(gross)
-    wf = calculate_wf('Teaching', gross)
+    final_pt = float(pt) if pt is not None else calculate_pt(gross)
+    final_wf = float(wf) if wf is not None else calculate_wf('Teaching', gross)
 
     other_total = eb + mess + bus + other_ded
-    total_ded = epf + it + pt + wf + other_total
+    total_ded = epf + it + final_pt + final_wf + other_total
     net_salary = max(0.0, gross - total_ded)
 
     return {
@@ -123,8 +125,8 @@ def calculate_teaching_salary(
         'hra': hra,
         'arrears': arrears,
         'gross_salary': gross,
-        'pt': pt,
-        'wf': wf,
+        'pt': final_pt,
+        'wf': final_wf,
         'epf': epf,
         'it': it,
         'other_deductions': other_total,
@@ -146,7 +148,9 @@ def calculate_non_teaching_salary(
     eb: float = 0.0,
     mess: float = 0.0,
     bus: float = 0.0,
-    other_ded: float = 0.0
+    other_ded: float = 0.0,
+    pt: Optional[float] = None,
+    wf: Optional[float] = None
 ) -> Dict[str, Any]:
     """
     Calculates Non-Teaching, Admin, Transport, Attenders, Garden, and Management Salary:
@@ -180,11 +184,11 @@ def calculate_non_teaching_salary(
     import math
     gross = float(math.ceil(raw_gross))
 
-    pt = calculate_pt(gross)
-    wf = calculate_wf(category, gross)
+    final_pt = float(pt) if pt is not None else calculate_pt(gross)
+    final_wf = float(wf) if wf is not None else calculate_wf(category, gross)
 
     other_total = cell + eb + mess + bus + other_ded
-    total_ded = epf + it + pt + wf + other_total
+    total_ded = epf + it + final_pt + final_wf + other_total
     net_salary = max(0.0, gross - total_ded)
 
     return {
@@ -197,8 +201,8 @@ def calculate_non_teaching_salary(
         'hra': 0.0,
         'arrears': arrears,
         'gross_salary': gross,
-        'pt': pt,
-        'wf': wf,
+        'pt': final_pt,
+        'wf': final_wf,
         'epf': epf,
         'it': it,
         'other_deductions': other_total,
@@ -220,6 +224,8 @@ def calculate_salary_for_profile(
     epf = float(ov.get('epf_deduction') or profile.get('epf_amount') or 0.0)
     it = float(ov.get('it_deduction') or 0.0)
     other_ded = float(ov.get('other_deductions') or 0.0)
+    pt_ov = ov.get('pt_deduction')
+    wf_ov = ov.get('wf_deduction')
 
     cat_lower = cat.lower()
     if 'teaching' in cat_lower and 'non' not in cat_lower:
@@ -230,7 +236,9 @@ def calculate_salary_for_profile(
             arrears=arrears,
             epf=epf,
             it=it,
-            other_ded=other_ded
+            other_ded=other_ded,
+            pt=pt_ov,
+            wf=wf_ov
         )
     else:
         return calculate_non_teaching_salary(
@@ -241,7 +249,9 @@ def calculate_salary_for_profile(
             arrears=arrears,
             epf=epf,
             it=it,
-            other_ded=other_ded
+            other_ded=other_ded,
+            pt=pt_ov,
+            wf=wf_ov
         )
 
 # =============================================================================
