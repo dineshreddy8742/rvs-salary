@@ -861,7 +861,8 @@ def update_monthly_salary_field(emp_code: str, month_year: str, field: str, valu
         'arrears': 'arrears',
         'epf_deduction': 'epf_deduction',
         'it_deduction': 'it_deduction',
-        'other_deductions': 'other_deductions'
+        'other_deductions': 'other_deductions',
+        'total_pay_days': 'total_pay_days'
     }
     col = allowed_fields.get(field)
     if not col:
@@ -879,3 +880,211 @@ def update_monthly_salary_field(emp_code: str, month_year: str, field: str, valu
 
     # Recalculate salary for this employee
     return recalculate_monthly_salary(emp_code, month_year)
+
+
+def update_employee_profile_full(emp_code: str, data: Dict[str, Any]) -> dict:
+    """Updates employee profile, banking details, and base salary; then recalculates current months."""
+    conn = get_db()
+    cursor = conn.cursor()
+
+    name = str(data.get('name', '')).strip()
+    desig = str(data.get('designation', '')).strip()
+    dept = str(data.get('department', '')).strip()
+    cat = str(data.get('category', 'Teaching')).strip()
+    base_sal = float(data.get('base_salary', 0.0) or 0.0)
+    bank_name = str(data.get('bank_name', 'PNB')).strip()
+    account_no = str(data.get('account_no', '')).strip()
+    ifsc_code = str(data.get('ifsc_code', '')).strip()
+    default_epf = float(data.get('epf_amount', 0.0) or 0.0)
+
+    # Update employees table
+    cursor.execute("""
+    UPDATE employees 
+    SET name = COALESCE(NULLIF(?, ''), name),
+        designation = COALESCE(NULLIF(?, ''), designation),
+        department = COALESCE(NULLIF(?, ''), department)
+    WHERE emp_code = ?
+    """, (name, desig, dept, emp_code))
+
+    # Update salary_profiles table
+    cursor.execute("""
+    INSERT INTO salary_profiles (emp_code, name, category, designation, department, base_salary, bank_name, account_no, ifsc_code, epf_amount)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(emp_code) DO UPDATE SET
+        name = excluded.name,
+        category = excluded.category,
+        designation = excluded.designation,
+        department = excluded.department,
+        base_salary = excluded.base_salary,
+        bank_name = excluded.bank_name,
+        account_no = excluded.account_no,
+        ifsc_code = excluded.ifsc_code,
+        epf_amount = excluded.epf_amount
+    """, (emp_code, name, cat, desig, dept, base_sal, bank_name, account_no, ifsc_code, default_epf))
+
+    # Also update base_salary in monthly_records for all records if base_sal > 0
+    if base_sal > 0:
+        cursor.execute("UPDATE monthly_records SET base_salary = ? WHERE emp_code = ?", (base_sal, emp_code))
+
+    conn.commit()
+
+    # Get distinct months this employee exists in
+    cursor.execute("SELECT DISTINCT month_year FROM monthly_records WHERE emp_code = ?", (emp_code,))
+    months = [r['month_year'] for r in cursor.fetchall()]
+    conn.close()
+
+    # Recalculate salary for each month
+    for m in months:
+        recalculate_monthly_salary(emp_code, m)
+
+    return {'status': 'success', 'emp_code': emp_code, 'months_recalculated': months}
+
+
+def bulk_salary_adjustment(month_year: str, category: Optional[str] = None, department: Optional[str] = None, 
+                           field: str = 'arrears', value: float = 0.0, operation: str = 'add') -> dict:
+    """
+    Applies bulk adjustments to all matching staff for a given month.
+    field can be: 'arrears', 'epf_deduction', 'it_deduction', 'other_deductions', or 'grant_full_days'
+    operation can be: 'add' (adds to existing) or 'set' (overwrites)
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+
+    query = """
+    SELECT m.emp_code, p.category, e.department, m.total_pay_days, m.arrears, m.epf_deduction, m.it_deduction, m.other_deductions
+    FROM monthly_records m
+    JOIN employees e ON m.emp_code = e.emp_code
+    LEFT JOIN salary_profiles p ON m.emp_code = p.emp_code
+    WHERE m.month_year = ?
+    """
+    params = [month_year]
+    if category and category.strip() and category.lower() != 'all':
+        query += " AND (p.category = ? OR (p.category IS NULL AND ? = 'Non-Teaching'))"
+        params.extend([category, category])
+    if department and department.strip() and department.lower() != 'all':
+        query += " AND e.department = ?"
+        params.append(department)
+
+    cursor.execute(query, tuple(params))
+    target_rows = cursor.fetchall()
+    month_days = payroll_engine.get_days_in_month_str(month_year)
+
+    updated_codes = []
+    for r in target_rows:
+        ec = r['emp_code']
+        updated_codes.append(ec)
+        if field == 'grant_full_days':
+            cursor.execute("UPDATE monthly_records SET total_pay_days = ? WHERE emp_code = ? AND month_year = ?", 
+                           (float(month_days), ec, month_year))
+        elif field in ('arrears', 'epf_deduction', 'it_deduction', 'other_deductions'):
+            curr_val = float(r[field] or 0.0)
+            new_val = (curr_val + float(value)) if operation == 'add' else float(value)
+            if new_val < 0:
+                new_val = 0.0
+            cursor.execute(f"UPDATE monthly_records SET {field} = ? WHERE emp_code = ? AND month_year = ?", 
+                           (new_val, ec, month_year))
+
+    conn.commit()
+    conn.close()
+
+    # Recalculate salary for each updated employee
+    for ec in updated_codes:
+        recalculate_monthly_salary(ec, month_year)
+
+    return {
+        'status': 'success',
+        'month_year': month_year,
+        'affected_count': len(updated_codes),
+        'field': field,
+        'operation': operation,
+        'value': value
+    }
+
+
+def get_salary_variance(curr_month: str, prev_month: str, active_only: bool = True, reference_codes: Optional[set] = None) -> dict:
+    """Computes month-over-month salary variance comparing curr_month against prev_month."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT DISTINCT month_year FROM monthly_records WHERE LOWER(REPLACE(month_year, ' ', '')) = LOWER(REPLACE(?, ' ', ''))", (curr_month,))
+    r_curr = cursor.fetchone()
+    if r_curr:
+        curr_month = r_curr['month_year']
+    cursor.execute("SELECT DISTINCT month_year FROM monthly_records WHERE LOWER(REPLACE(month_year, ' ', '')) = LOWER(REPLACE(?, ' ', ''))", (prev_month,))
+    r_prev = cursor.fetchone()
+    if r_prev:
+        prev_month = r_prev['month_year']
+    conn.close()
+
+    curr_data = get_month_salary_records(curr_month, active_only=active_only, reference_codes=reference_codes)
+    prev_data = get_month_salary_records(prev_month, active_only=active_only, reference_codes=reference_codes)
+
+    prev_map = {r['emp_code']: r for r in prev_data['records']}
+    
+    comparisons = []
+    tot_prev_net = 0.0
+    tot_curr_net = 0.0
+    inc_count = 0
+    dec_count = 0
+    lop_count = 0
+
+    for curr in curr_data['records']:
+        ec = curr['emp_code']
+        prev = prev_map.get(ec)
+
+        c_net = float(curr['net_salary'] or 0.0)
+        p_net = float(prev['net_salary'] or 0.0) if prev else 0.0
+        diff = round(c_net - p_net, 2)
+
+        tot_curr_net += c_net
+        tot_prev_net += p_net
+
+        c_days = float(curr['total_pay_days'] or 0.0)
+        p_days = float(prev['total_pay_days'] or 0.0) if prev else 0.0
+
+        if not prev:
+            flag = 'new'
+        elif diff > 5.0:
+            flag = 'increment'
+            inc_count += 1
+        elif diff < -5.0:
+            flag = 'decrement'
+            dec_count += 1
+            if c_days < p_days:
+                lop_count += 1
+        else:
+            flag = 'same'
+
+        comparisons.append({
+            'emp_code': ec,
+            'name': curr['name'],
+            'department': curr['department'],
+            'category': curr['category'],
+            'designation': curr['designation'],
+            'prev_days': p_days,
+            'curr_days': c_days,
+            'days_diff': round(c_days - p_days, 1),
+            'prev_gross': float(prev['gross_salary'] or 0.0) if prev else 0.0,
+            'curr_gross': float(curr['gross_salary'] or 0.0),
+            'prev_net': p_net,
+            'curr_net': c_net,
+            'net_diff': diff,
+            'status': flag
+        })
+
+    total_diff = round(tot_curr_net - tot_prev_net, 2)
+    return {
+        'status': 'success',
+        'curr_month': curr_month,
+        'prev_month': prev_month,
+        'summary': {
+            'total_staff': len(comparisons),
+            'tot_prev_net': round(tot_prev_net, 2),
+            'tot_curr_net': round(tot_curr_net, 2),
+            'total_net_diff': total_diff,
+            'increment_count': inc_count,
+            'decrement_count': dec_count,
+            'lop_impact_count': lop_count
+        },
+        'comparisons': sorted(comparisons, key=lambda x: abs(x['net_diff']), reverse=True)
+    }
+

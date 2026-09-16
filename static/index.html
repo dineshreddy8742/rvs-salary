@@ -97,6 +97,24 @@
             </svg>
             <span>Salary Bill (.xlsx)</span>
           </button>
+
+          <!-- Bulk Adjustments Button -->
+          <button class="header-btn btn-bulk-adj" id="btn-bulk-adjust-modal" title="Bulk apply festival advance, bonus, arrears, EPF, or attendance days">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+            </svg>
+            <span>⚡ Bulk Adjust</span>
+          </button>
+
+          <!-- Variance Report Button -->
+          <button class="header-btn btn-variance" id="btn-variance-modal" title="Compare month-over-month salary differences, increments, and LOP">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <line x1="18" y1="20" x2="18" y2="10"></line>
+              <line x1="12" y1="20" x2="12" y2="4"></line>
+              <line x1="6" y1="20" x2="6" y2="14"></line>
+            </svg>
+            <span>📊 Variance</span>
+          </button>
         </div>
       </div>
 
@@ -310,6 +328,7 @@
         <button class="tab-pill" data-filter="vip">👑 VIP / Exempt</button>
         <button class="tab-pill" data-filter="absent">🔴 Absent</button>
         <button class="tab-pill" data-filter="leaves">📄 CL / OD</button>
+        <button class="tab-pill tab-missing-bank" id="tab-missing-bank" data-filter="missing_bank">⚠️ Missing Bank Info</button>
       </div>
 
       <!-- Active Payroll Toggle -->
@@ -409,8 +428,13 @@
         <!-- Current Month Pay Slip Breakdown Card -->
         <div class="payslip-card-wrapper" id="pf-payslip-box">
           <div class="payslip-header">
-            <span class="payslip-badge">Current Month Pay Slip</span>
-            <span class="payslip-month" id="pf-payslip-month">August -2026</span>
+            <div style="display:flex; align-items:center; gap:0.6rem;">
+              <span class="payslip-badge">Current Month Pay Slip</span>
+              <span class="payslip-month" id="pf-payslip-month">August -2026</span>
+            </div>
+            <button class="btn-print-slip" id="btn-print-payslip" title="Generate formal printed pay slip for this staff member">
+              🖨️ Print Formal Pay Slip
+            </button>
           </div>
           <div class="payslip-grid">
             <div class="payslip-col">
@@ -590,6 +614,254 @@
       <div class="modal-footer-bar">
         <button class="btn-secondary-pill" id="btn-cancel-bulk">Cancel</button>
         <button class="btn-navy-pill" id="btn-apply-bulk">Apply All Slips</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: EDIT EMPLOYEE PROFILE & SALARY PACKAGE -->
+  <div class="modal-overlay" id="modal-employee-package">
+    <div class="modal-window">
+      <div class="modal-header-bar">
+        <div>
+          <div class="modal-header-pill">Payroll Master</div>
+          <h2 class="modal-emp-name" id="edit-pkg-title">Edit Salary Package & Banking</h2>
+          <p class="modal-emp-meta" id="edit-pkg-subtitle">Emp Code: -- | Current Staff</p>
+        </div>
+        <button class="modal-close-btn" id="btn-close-edit-pkg">&times;</button>
+      </div>
+
+      <div class="modal-content-area">
+        <form id="form-edit-package" class="add-staff-form">
+          <input type="hidden" id="edit-pkg-emp-code">
+          
+          <div class="form-row">
+            <div class="form-field">
+              <label>Full Name: *</label>
+              <input type="text" id="edit-pkg-name" required>
+            </div>
+            <div class="form-field">
+              <label>Category: *</label>
+              <select id="edit-pkg-category" class="form-select">
+                <option value="Teaching">Teaching Faculty</option>
+                <option value="Non-Teaching">Non-Teaching Staff</option>
+                <option value="Transport">Transport / Drivers</option>
+                <option value="Attender">Attender</option>
+                <option value="Garden Staff">Garden Staff</option>
+                <option value="Security">Security & Water</option>
+                <option value="Management">Management Staff</option>
+                <option value="Admission">Admission</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-field">
+              <label>Designation:</label>
+              <input type="text" id="edit-pkg-desig" placeholder="e.g. Professor, Lab Asst">
+            </div>
+            <div class="form-field">
+              <label>Department:</label>
+              <input type="text" id="edit-pkg-dept" placeholder="e.g. CSE, ECE, Transport">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-field">
+              <label>Base Monthly Package (₹): *</label>
+              <input type="number" id="edit-pkg-base-sal" step="100" required>
+            </div>
+            <div class="form-field">
+              <label>Default EPF Amount (₹):</label>
+              <input type="number" id="edit-pkg-epf" step="10" value="0">
+            </div>
+          </div>
+
+          <div style="font-size: 0.82rem; font-weight: 700; color: #1e3a8a; margin-top: 0.75rem; margin-bottom: 0.35rem; text-transform: uppercase; letter-spacing: 0.05em;">
+            Banking & Disbursement Credentials
+          </div>
+          <div class="form-row">
+            <div class="form-field">
+              <label>Bank Name:</label>
+              <input type="text" id="edit-pkg-bank-name" placeholder="e.g. PNB, Canara Bank, SBI">
+            </div>
+            <div class="form-field">
+              <label>Bank Account Number:</label>
+              <input type="text" id="edit-pkg-acc-no" placeholder="e.g. 4017000100088921">
+            </div>
+          </div>
+
+          <div class="form-field">
+            <label>IFSC Code:</label>
+            <input type="text" id="edit-pkg-ifsc" placeholder="e.g. PUNB0401700">
+          </div>
+        </form>
+      </div>
+
+      <div class="modal-footer-bar">
+        <button class="btn-secondary-pill" id="btn-cancel-edit-pkg">Cancel</button>
+        <button class="btn-navy-pill" id="btn-save-edit-pkg">Save Package & Recalculate</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: BULK / MASS SALARY ADJUSTMENTS -->
+  <div class="modal-overlay" id="modal-bulk-adjust">
+    <div class="modal-window">
+      <div class="modal-header-bar">
+        <div>
+          <div class="modal-header-pill">Batch Operations</div>
+          <h2 class="modal-emp-name">⚡ Bulk Salary & Allowance Adjustments</h2>
+          <p class="modal-emp-meta">Apply bonuses, arrears, EPF, or attendance days across staff groups</p>
+        </div>
+        <button class="modal-close-btn" id="btn-close-bulk-adjust">&times;</button>
+      </div>
+
+      <div class="modal-content-area">
+        <form id="form-bulk-adjust" class="add-staff-form">
+          <div class="form-row">
+            <div class="form-field">
+              <label>Target Category:</label>
+              <select id="bulk-adj-category" class="form-select">
+                <option value="all">All Categories</option>
+                <option value="Teaching">Teaching Faculty Only</option>
+                <option value="Non-Teaching">Non-Teaching Staff Only</option>
+                <option value="Transport">Transport / Drivers Only</option>
+                <option value="Attender">Attenders Only</option>
+                <option value="Garden Staff">Garden Staff Only</option>
+                <option value="Security">Security Only</option>
+                <option value="Management">Management Only</option>
+                <option value="Admission">Admission Only</option>
+              </select>
+            </div>
+
+            <div class="form-field">
+              <label>Target Department:</label>
+              <select id="bulk-adj-dept" class="form-select">
+                <option value="all">All Departments</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-field">
+              <label>Adjustment Type: *</label>
+              <select id="bulk-adj-field" class="form-select">
+                <option value="arrears">Arrears / Bonus / Festival Allowance (₹)</option>
+                <option value="epf_deduction">EPF Deduction (₹)</option>
+                <option value="it_deduction">Income Tax / TDS (₹)</option>
+                <option value="other_deductions">Other Deductions (₹)</option>
+                <option value="grant_full_days">👑 Grant Full Attendance (Pay Days = Month Days)</option>
+              </select>
+            </div>
+
+            <div class="form-field" id="bulk-adj-op-box">
+              <label>Operation:</label>
+              <select id="bulk-adj-op" class="form-select">
+                <option value="add">➕ Add to Existing Value</option>
+                <option value="set">✏️ Overwrite / Set to Value</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-field" id="bulk-adj-val-box">
+            <label>Amount (₹): *</label>
+            <input type="number" id="bulk-adj-amount" placeholder="e.g. 500" step="50" value="500">
+          </div>
+        </form>
+      </div>
+
+      <div class="modal-footer-bar">
+        <button class="btn-secondary-pill" id="btn-cancel-bulk-adjust">Cancel</button>
+        <button class="btn-navy-pill" id="btn-apply-bulk-adjust">Execute Bulk Update</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: MONTH-OVER-MONTH SALARY VARIANCE & AUDIT -->
+  <div class="modal-overlay" id="modal-salary-variance">
+    <div class="modal-window modal-wide">
+      <div class="modal-header-bar">
+        <div>
+          <div class="modal-header-pill">Payroll Audit</div>
+          <h2 class="modal-emp-name">📊 Month-over-Month Salary Variance Analysis</h2>
+          <p class="modal-emp-meta" id="variance-meta">Comparing Current Month vs Previous Month</p>
+        </div>
+        <button class="modal-close-btn" id="btn-close-variance">&times;</button>
+      </div>
+
+      <div class="modal-content-area">
+        <!-- Variance Summary KPI Strip -->
+        <div class="variance-summary-grid">
+          <div class="variance-kpi-card">
+            <span class="vkpi-label">Previous Month Net</span>
+            <span class="vkpi-value" id="var-prev-net">₹0</span>
+          </div>
+          <div class="variance-kpi-card">
+            <span class="vkpi-label">Current Month Net</span>
+            <span class="vkpi-value" id="var-curr-net">₹0</span>
+          </div>
+          <div class="variance-kpi-card" id="var-diff-card">
+            <span class="vkpi-label">Net Payroll Shift</span>
+            <span class="vkpi-value" id="var-net-diff">₹0</span>
+          </div>
+          <div class="variance-kpi-card">
+            <span class="vkpi-label">Increments</span>
+            <span class="vkpi-value" style="color:#16a34a;" id="var-inc-count">0</span>
+          </div>
+          <div class="variance-kpi-card">
+            <span class="vkpi-label">Loss of Pay Impact</span>
+            <span class="vkpi-value" style="color:#dc2626;" id="var-lop-count">0</span>
+          </div>
+        </div>
+
+        <!-- Variance Table -->
+        <div class="variance-table-wrap">
+          <table class="payroll-table">
+            <thead>
+              <tr>
+                <th>Emp Code</th>
+                <th>Employee Name</th>
+                <th>Department</th>
+                <th>Category</th>
+                <th style="text-align: right;">Prev Days</th>
+                <th style="text-align: right;">Curr Days</th>
+                <th style="text-align: right;">Prev Net (₹)</th>
+                <th style="text-align: right;">Curr Net (₹)</th>
+                <th style="text-align: right;">Difference (₹)</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="variance-table-body">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="modal-footer-bar">
+        <button class="btn-secondary-pill" id="btn-done-variance">Close Audit</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: FORMAL INSTITUTIONAL PRINTABLE PAY SLIP -->
+  <div class="modal-overlay" id="modal-pay-slip">
+    <div class="modal-window modal-slip">
+      <div class="modal-header-bar no-print">
+        <div>
+          <div class="modal-header-pill">Official Document</div>
+          <h2 class="modal-emp-name">Institutional Pay Slip Preview</h2>
+        </div>
+        <div style="display:flex; gap:0.5rem; align-items:center;">
+          <button class="btn-navy-pill" id="btn-execute-print" style="padding: 0.45rem 1rem;">
+            🖨️ Print / Save PDF
+          </button>
+          <button class="modal-close-btn" id="btn-close-pay-slip">&times;</button>
+        </div>
+      </div>
+
+      <div class="modal-content-area print-container" id="printable-pay-slip-content">
+        <!-- Formal Institutional Pay Slip Template rendered dynamically -->
       </div>
     </div>
   </div>

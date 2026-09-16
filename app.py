@@ -348,6 +348,83 @@ def update_salary_profile():
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+@app.route('/api/salary/update-profile-full', methods=['POST'])
+def update_salary_profile_full():
+    """Full update for employee profile: name, desig, dept, category, base_salary, bank details."""
+    data = request.json or {}
+    emp_code = data.get('emp_code')
+
+    if not emp_code:
+        return jsonify({'status': 'error', 'message': 'emp_code is required'}), 400
+
+    try:
+        res = database.update_employee_profile_full(emp_code, data)
+        return jsonify(res)
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/salary/bulk-adjust', methods=['POST'])
+def bulk_salary_adjust():
+    """Batch adjustment across category or department."""
+    data = request.json or {}
+    month_year = data.get('month_year', 'August -2026')
+    category = data.get('category')
+    department = data.get('department')
+    field = data.get('field', 'arrears')
+    value = float(data.get('value', 0.0) or 0.0)
+    operation = data.get('operation', 'add')
+
+    try:
+        res = database.bulk_salary_adjustment(month_year, category, department, field, value, operation)
+        return jsonify(res)
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/salary/variance', methods=['GET'])
+def get_salary_variance_report():
+    """Month-over-month variance analysis."""
+    curr_month = request.args.get('curr_month', 'August -2026')
+    prev_month = request.args.get('prev_month', 'July 2026')
+    active_only = request.args.get('active_only', 'true').lower() == 'true'
+
+    try:
+        res = database.get_salary_variance(curr_month, prev_month, active_only=active_only, reference_codes=REFERENCE_CODES)
+        return jsonify(res)
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/salary/slip-data', methods=['GET'])
+def get_slip_data():
+    """Return comprehensive data for printing/downloading formal institutional pay slip."""
+    emp_code = request.args.get('emp_code')
+    month_year = request.args.get('month', 'August -2026')
+
+    if not emp_code:
+        return jsonify({'status': 'error', 'message': 'emp_code required'}), 400
+
+    try:
+        salary_data = database.get_month_salary_records(month_year, active_only=False)
+        rec = next((r for r in salary_data.get('records', []) if r['emp_code'] == emp_code), None)
+        if not rec:
+            return jsonify({'status': 'error', 'message': f'Employee {emp_code} not found in {month_year}'}), 404
+
+        net_val = rec.get('net_salary', 0.0)
+        words = payroll_engine.number_to_words_inr(net_val)
+        month_days = payroll_engine.get_days_in_month_str(month_year)
+
+        # Get attendance details for this employee
+        pf = database.get_employee_portfolio(emp_code)
+
+        return jsonify({
+            'status': 'success',
+            'record': rec,
+            'net_in_words': words,
+            'month_days': month_days,
+            'portfolio': pf
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 @app.route('/api/salary/export', methods=['GET'])
 def export_salary_file():
     """Generate and stream the audit-grade Institutional Salary Bill (.xlsx)."""
@@ -365,3 +442,4 @@ def export_salary_file():
 if __name__ == '__main__':
     print("Starting RVS Multi-Month Salary Platform on http://localhost:5000...")
     app.run(host='0.0.0.0', port=5000, debug=False)
+

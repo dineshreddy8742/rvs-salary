@@ -265,6 +265,55 @@ function setupEventListeners() {
   document.getElementById('card-needs-review').addEventListener('click', () => {
     setFilterPill('review');
   });
+
+  // Bulk Adjust Modal
+  const bulkAdjustModal = document.getElementById('modal-bulk-adjust');
+  const btnBulkOpen = document.getElementById('btn-bulk-adjust-modal');
+  if (btnBulkOpen) btnBulkOpen.addEventListener('click', openBulkAdjustModal);
+  const btnBulkClose = document.getElementById('btn-close-bulk-adjust');
+  if (btnBulkClose) btnBulkClose.addEventListener('click', () => bulkAdjustModal.classList.remove('active'));
+  const btnBulkCancel = document.getElementById('btn-cancel-bulk-adjust');
+  if (btnBulkCancel) btnBulkCancel.addEventListener('click', () => bulkAdjustModal.classList.remove('active'));
+  const btnBulkApply = document.getElementById('btn-apply-bulk-adjust');
+  if (btnBulkApply) btnBulkApply.addEventListener('click', executeBulkAdjust);
+
+  const bulkFieldSelect = document.getElementById('bulk-adj-field');
+  if (bulkFieldSelect) {
+    bulkFieldSelect.addEventListener('change', (e) => {
+      const isGrant = e.target.value === 'grant_full_days';
+      const opBox = document.getElementById('bulk-adj-op-box');
+      const valBox = document.getElementById('bulk-adj-val-box');
+      if (opBox) opBox.style.display = isGrant ? 'none' : 'block';
+      if (valBox) valBox.style.display = isGrant ? 'none' : 'block';
+    });
+  }
+
+  // Variance Modal
+  const varModal = document.getElementById('modal-salary-variance');
+  const btnVarOpen = document.getElementById('btn-variance-modal');
+  if (btnVarOpen) btnVarOpen.addEventListener('click', openSalaryVarianceModal);
+  const btnVarClose = document.getElementById('btn-close-variance');
+  if (btnVarClose) btnVarClose.addEventListener('click', () => varModal.classList.remove('active'));
+  const btnVarDone = document.getElementById('btn-done-variance');
+  if (btnVarDone) btnVarDone.addEventListener('click', () => varModal.classList.remove('active'));
+
+  // Edit Employee Package Modal
+  const pkgModal = document.getElementById('modal-employee-package');
+  const btnPkgClose = document.getElementById('btn-close-edit-pkg');
+  if (btnPkgClose) btnPkgClose.addEventListener('click', () => pkgModal.classList.remove('active'));
+  const btnPkgCancel = document.getElementById('btn-cancel-edit-pkg');
+  if (btnPkgCancel) btnPkgCancel.addEventListener('click', () => pkgModal.classList.remove('active'));
+  const btnPkgSave = document.getElementById('btn-save-edit-pkg');
+  if (btnPkgSave) btnPkgSave.addEventListener('click', saveEmployeePackage);
+
+  // Formal Pay Slip Modal
+  const slipModal = document.getElementById('modal-pay-slip');
+  const btnSlipClose = document.getElementById('btn-close-pay-slip');
+  if (btnSlipClose) btnSlipClose.addEventListener('click', () => slipModal.classList.remove('active'));
+  const btnPrintPayslip = document.getElementById('btn-print-payslip');
+  if (btnPrintPayslip) btnPrintPayslip.addEventListener('click', () => openFormalPaySlip(activePortfolioEmpCode));
+  const btnExecPrint = document.getElementById('btn-execute-print');
+  if (btnExecPrint) btnExecPrint.addEventListener('click', () => window.print());
 }
 
 // Switch between Attendance and Salary View
@@ -569,15 +618,15 @@ function renderSalaryTable(thead, tbody) {
       <th style="width: 220px;">Staff Name (Click for Payslip)</th>
       <th style="width: 100px;">Category</th>
       <th style="width: 70px;">Dept</th>
-      <th style="width: 75px; text-align: right;">Pay Days</th>
-      <th style="width: 110px; text-align: right;">Base Package ✎</th>
+      <th style="width: 85px; text-align: right;" title="Directly Editable Attendance Pay Days">Pay Days ✎</th>
+      <th style="width: 110px; text-align: right;" title="Monthly Base Package">Base Package ✎</th>
       <th style="width: 105px; text-align: right;">Earned Gross</th>
       <th style="width: 65px; text-align: right;">PT</th>
       <th style="width: 65px; text-align: right;">WF</th>
-      <th style="width: 85px; text-align: right;">Other Ded ✎</th>
+      <th style="width: 90px; text-align: right;" title="Editable Other Deductions">Other Ded ✎</th>
       <th style="width: 125px; text-align: right; background: #f0fdf4; color: #15803d;">Net Salary (₹)</th>
-      <th style="min-width: 160px;">Bank Account & IFSC</th>
-      <th style="width: 100px; text-align: center;">Action</th>
+      <th style="min-width: 175px;">Bank Account & IFSC</th>
+      <th style="width: 130px; text-align: center;">Actions</th>
     </tr>
   `;
 
@@ -586,6 +635,11 @@ function renderSalaryTable(thead, tbody) {
   const filtered = allSalaryRecords.filter(emp => {
     if (currentDept !== 'all' && emp.department !== currentDept) return false;
     if (currentCategory !== 'all' && emp.category !== currentCategory) return false;
+
+    if (currentFilter === 'missing_bank') {
+      const hasBank = emp.account_no && emp.account_no.trim() !== '' && emp.account_no !== 'Pending';
+      if (hasBank) return false;
+    }
 
     if (query) {
       const matchName = emp.name.toLowerCase().includes(query);
@@ -625,6 +679,13 @@ function renderSalaryTable(thead, tbody) {
       catBadge = 'badge-cat-support';
     }
 
+    const hasAcc = emp.account_no && emp.account_no.trim() !== '' && emp.account_no !== 'Pending';
+    const bankDisplay = hasAcc ? 
+      `<div style="font-size: 0.75rem; font-weight: 700; color: #1e3a8a;">${emp.bank_name || 'PNB'} ${emp.account_no}</div>
+       <div style="font-size: 0.68rem; color: #64748b;">${emp.ifsc_code || 'PUNB0401700'}</div>` :
+      `<span class="bank-missing-badge">⚠️ Missing Account</span>
+       <div style="font-size: 0.68rem; color: #94a3b8;">Click ⚙️ Edit to add</div>`;
+
     tr.innerHTML = `
       <td style="text-align: center; color: #94a3b8; font-weight: 600;">${sNo++}</td>
       <td style="text-align: center; font-weight: 700; color: #0f172a;">${emp.emp_code}</td>
@@ -637,7 +698,15 @@ function renderSalaryTable(thead, tbody) {
       </td>
       <td><span class="badge-pill ${catBadge}">${emp.category}</span></td>
       <td style="color: #64748b; font-weight: 600; font-size: 0.78rem;">${emp.department}</td>
-      <td style="text-align: right; font-weight: 700; color: #0f172a;">${emp.total_pay_days}</td>
+      
+      <!-- Direct Editable Pay Days -->
+      <td style="text-align: right;">
+        <input type="number" step="0.5" min="0" max="31"
+               class="cell-sal-input salary-days-input" 
+               value="${emp.total_pay_days}" 
+               title="Directly override Pay Days for this month"
+               onchange="handleSalaryInlineEdit('${emp.emp_code}', 'total_pay_days', this.value, this)">
+      </td>
       
       <!-- Inline Editable Base Salary -->
       <td style="text-align: right;">
@@ -680,15 +749,19 @@ function renderSalaryTable(thead, tbody) {
 
       <!-- Bank Details -->
       <td>
-        <div style="font-size: 0.75rem; font-weight: 700; color: #1e3a8a;">${emp.bank_name || 'PNB'} ${emp.account_no || 'Pending'}</div>
-        <div style="font-size: 0.68rem; color: #64748b;">${emp.ifsc_code || 'PUNB0401700'}</div>
+        ${bankDisplay}
       </td>
 
       <!-- Action -->
       <td style="text-align: center;">
-        <button class="action-timeline-btn" style="background: #f0fdf4; color: #15803d; border-color: #86efac;" onclick="openPortfolio('${emp.emp_code}')" title="View Month Pay Slip">
-          💰 Pay Slip
-        </button>
+        <div style="display:flex; gap: 4px; justify-content: center;">
+          <button class="btn-row-action" onclick="openEditPackageModal('${emp.emp_code}')" title="Edit Staff Salary Package & Bank Details">
+            ⚙️ Edit
+          </button>
+          <button class="action-timeline-btn" style="background: #f0fdf4; color: #15803d; border-color: #86efac; padding: 4px 7px;" onclick="openFormalPaySlip('${emp.emp_code}')" title="Print/View Official Pay Slip">
+            🖨️ Slip
+          </button>
+        </div>
       </td>
     `;
     tbody.appendChild(tr);
@@ -1015,4 +1088,302 @@ function showToast(msg) {
   toast.textContent = msg;
   toast.classList.add('show');
   setTimeout(() => toast.classList.remove('show'), 2500);
+}
+
+// -----------------------------------------------------------------------------
+// 1. EDIT EMPLOYEE PACKAGE & BANKING MASTER
+// -----------------------------------------------------------------------------
+function openEditPackageModal(empCode) {
+  const emp = allSalaryRecords.find(e => e.emp_code === empCode);
+  if (!emp) return;
+
+  document.getElementById('edit-pkg-emp-code').value = emp.emp_code;
+  document.getElementById('edit-pkg-title').textContent = `Edit Package: ${emp.name}`;
+  document.getElementById('edit-pkg-subtitle').textContent = `Emp Code: ${emp.emp_code} | Department: ${emp.department}`;
+  document.getElementById('edit-pkg-name').value = emp.name;
+  document.getElementById('edit-pkg-category').value = emp.category || 'Teaching';
+  document.getElementById('edit-pkg-desig').value = emp.designation || '';
+  document.getElementById('edit-pkg-dept').value = emp.department || '';
+  document.getElementById('edit-pkg-base-sal').value = emp.base_salary || 0;
+  document.getElementById('edit-pkg-epf').value = emp.epf_deduction || 0;
+  document.getElementById('edit-pkg-bank-name').value = emp.bank_name || 'PNB';
+  document.getElementById('edit-pkg-acc-no').value = (emp.account_no && emp.account_no !== 'Pending') ? emp.account_no : '';
+  document.getElementById('edit-pkg-ifsc').value = emp.ifsc_code || 'PUNB0401700';
+
+  document.getElementById('modal-employee-package').classList.add('active');
+}
+
+async function saveEmployeePackage(e) {
+  if (e) e.preventDefault();
+  const empCode = document.getElementById('edit-pkg-emp-code').value;
+  const payload = {
+    emp_code: empCode,
+    name: document.getElementById('edit-pkg-name').value.trim(),
+    category: document.getElementById('edit-pkg-category').value,
+    designation: document.getElementById('edit-pkg-desig').value.trim(),
+    department: document.getElementById('edit-pkg-dept').value.trim(),
+    base_salary: parseFloat(document.getElementById('edit-pkg-base-sal').value || 0),
+    epf_amount: parseFloat(document.getElementById('edit-pkg-epf').value || 0),
+    bank_name: document.getElementById('edit-pkg-bank-name').value.trim(),
+    account_no: document.getElementById('edit-pkg-acc-no').value.trim(),
+    ifsc_code: document.getElementById('edit-pkg-ifsc').value.trim()
+  };
+
+  try {
+    const res = await fetch('/api/salary/update-profile-full', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.status === 'success') {
+      document.getElementById('modal-employee-package').classList.remove('active');
+      showToast(`✔ Updated Master Package for ${payload.name}`);
+      await loadData();
+    } else {
+      alert('Error updating profile: ' + (data.message || 'Unknown error'));
+    }
+  } catch (err) {
+    alert('Network error saving employee package');
+  }
+}
+
+// -----------------------------------------------------------------------------
+// 2. BULK / MASS SALARY ADJUSTMENTS
+// -----------------------------------------------------------------------------
+function openBulkAdjustModal() {
+  const deptSelect = document.getElementById('bulk-adj-dept');
+  if (deptSelect) {
+    const depts = Array.from(new Set(allSalaryRecords.map(e => e.department))).sort();
+    deptSelect.innerHTML = '<option value="all">All Departments</option>';
+    depts.forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d;
+      opt.textContent = d;
+      deptSelect.appendChild(opt);
+    });
+  }
+  document.getElementById('modal-bulk-adjust').classList.add('active');
+}
+
+async function executeBulkAdjust(e) {
+  if (e) e.preventDefault();
+  const category = document.getElementById('bulk-adj-category').value;
+  const department = document.getElementById('bulk-adj-dept').value;
+  const field = document.getElementById('bulk-adj-field').value;
+  const operation = document.getElementById('bulk-adj-op').value;
+  const amount = parseFloat(document.getElementById('bulk-adj-amount').value || 0);
+
+  const confirmMsg = `Execute bulk adjustment for [Category: ${category}, Dept: ${department}]?\nField: ${field}\nOperation: ${operation} ${amount}`;
+  if (!confirm(confirmMsg)) return;
+
+  try {
+    const res = await fetch('/api/salary/bulk-adjust', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        month_year: currentMonth,
+        category: category,
+        department: department,
+        field: field,
+        operation: operation,
+        value: amount
+      })
+    });
+    const data = await res.json();
+    if (data.status === 'success') {
+      document.getElementById('modal-bulk-adjust').classList.remove('active');
+      showToast(`⚡ Bulk adjustment applied to ${data.affected_count} staff!`);
+      await loadData();
+    } else {
+      alert('Error in bulk adjustment: ' + data.message);
+    }
+  } catch (err) {
+    alert('Network error executing bulk adjustments');
+  }
+}
+
+// -----------------------------------------------------------------------------
+// 3. MONTH-OVER-MONTH VARIANCE AUDIT
+// -----------------------------------------------------------------------------
+async function openSalaryVarianceModal() {
+  const monthSelect = document.getElementById('month-select');
+  const allMonths = Array.from(monthSelect.options).map(o => o.value);
+  const currIdx = allMonths.indexOf(currentMonth);
+  let prevMonth = currIdx < allMonths.length - 1 ? allMonths[currIdx + 1] : (allMonths[1] || 'july -2026');
+
+  document.getElementById('variance-meta').textContent = `Comparing ${currentMonth} against ${prevMonth}`;
+  document.getElementById('modal-salary-variance').classList.add('active');
+
+  const f = (n) => '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+
+  try {
+    const res = await fetch(`/api/salary/variance?curr_month=${encodeURIComponent(currentMonth)}&prev_month=${encodeURIComponent(prevMonth)}&active_only=${activeOnly}`);
+    const data = await res.json();
+    if (data.status === 'success') {
+      const s = data.summary;
+      document.getElementById('var-prev-net').textContent = f(s.tot_prev_net);
+      document.getElementById('var-curr-net').textContent = f(s.tot_curr_net);
+      
+      const diffEl = document.getElementById('var-net-diff');
+      diffEl.textContent = (s.total_net_diff >= 0 ? '+' : '') + f(s.total_net_diff);
+      diffEl.style.color = s.total_net_diff >= 0 ? '#15803d' : '#dc2626';
+
+      document.getElementById('var-inc-count').textContent = s.increment_count;
+      document.getElementById('var-lop-count').textContent = s.decrement_count;
+
+      const tbody = document.getElementById('variance-table-body');
+      tbody.innerHTML = '';
+
+      data.comparisons.forEach(item => {
+        const tr = document.createElement('tr');
+        let statusBadge = `<span class="badge-same">Same</span>`;
+        if (item.status === 'increment') statusBadge = `<span class="badge-inc">+₹${Math.round(item.net_diff).toLocaleString('en-IN')}</span>`;
+        else if (item.status === 'decrement') statusBadge = `<span class="badge-dec">-₹${Math.round(Math.abs(item.net_diff)).toLocaleString('en-IN')}</span>`;
+        else if (item.status === 'new') statusBadge = `<span class="badge-new">New Staff</span>`;
+
+        tr.innerHTML = `
+          <td style="font-weight:700; color:#0f172a;">${item.emp_code}</td>
+          <td><strong>${item.name}</strong><div style="font-size:0.7rem; color:#94a3b8;">${item.designation || 'Staff'}</div></td>
+          <td style="font-size:0.78rem; color:#475569;">${item.department}</td>
+          <td style="font-size:0.78rem;">${item.category}</td>
+          <td style="text-align:right; color:#64748b;">${item.prev_days}</td>
+          <td style="text-align:right; font-weight:700; color:#0f172a;">${item.curr_days}</td>
+          <td style="text-align:right; color:#64748b;">${f(item.prev_net)}</td>
+          <td style="text-align:right; font-weight:700; color:#15803d;">${f(item.curr_net)}</td>
+          <td style="text-align:right; font-weight:800; color:${item.net_diff >= 0 ? '#15803d' : '#dc2626'};">
+            ${item.net_diff >= 0 ? '+' : ''}${f(item.net_diff)}
+          </td>
+          <td>${statusBadge}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+  } catch (err) {
+    alert('Error loading salary variance report');
+  }
+}
+
+// -----------------------------------------------------------------------------
+// 4. FORMAL INSTITUTIONAL PRINTABLE PAY SLIP
+// -----------------------------------------------------------------------------
+async function openFormalPaySlip(empCode) {
+  if (!empCode) return;
+  try {
+    const res = await fetch(`/api/salary/slip-data?month=${encodeURIComponent(currentMonth)}&emp_code=${encodeURIComponent(empCode)}`);
+    const data = await res.json();
+    if (data.status !== 'success') {
+      alert(data.message || 'Error generating pay slip');
+      return;
+    }
+
+    const r = data.record;
+    const f = (n) => '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+    const isTeaching = (r.category || '').toLowerCase().includes('teaching') && !(r.category || '').toLowerCase().includes('non');
+
+    let earningsRows = '';
+    if (isTeaching) {
+      earningsRows = `
+        <tr><td>Basic Pay (Earned)</td><td style="text-align:right; font-weight:600;">${f(r.earned_basic)}</td></tr>
+        <tr><td>Dearness Allowance (DA 37.31%)</td><td style="text-align:right; font-weight:600;">${f(r.earned_da)}</td></tr>
+        <tr><td>House Rent Allowance (HRA 16%)</td><td style="text-align:right; font-weight:600;">${f(r.earned_hra)}</td></tr>
+        <tr><td>Arrears / Allowance</td><td style="text-align:right; font-weight:600;">${f(r.arrears)}</td></tr>
+      `;
+    } else {
+      earningsRows = `
+        <tr><td>Consolidated Monthly Pay</td><td style="text-align:right; font-weight:600;">${f(r.base_salary)}</td></tr>
+        <tr><td>Earned Gross Pay</td><td style="text-align:right; font-weight:600;">${f(r.gross_salary - (r.arrears || 0))}</td></tr>
+        <tr><td>Arrears / Bonus</td><td style="text-align:right; font-weight:600;">${f(r.arrears)}</td></tr>
+      `;
+    }
+
+    const html = `
+      <div class="official-payslip-doc">
+        <!-- University & College Crest Header -->
+        <div class="slip-header-block">
+          <div class="slip-univ-name">SRI VENKATESWARA COLLEGE OF ENGINEERING & TECHNOLOGY</div>
+          <div class="slip-univ-sub">(AUTONOMOUS) • RVS GROUP OF INSTITUTIONS • CHITTOOR, ANDHRA PRADESH</div>
+          <div class="slip-doc-title">PAYSLIP FOR THE MONTH OF ${currentMonth.toUpperCase()}</div>
+        </div>
+
+        <!-- Employee Credentials Grid -->
+        <div class="slip-meta-grid">
+          <div>
+            <div class="slip-meta-row"><span class="slip-meta-label">Employee Code:</span><span class="slip-meta-val">${r.emp_code}</span></div>
+            <div class="slip-meta-row"><span class="slip-meta-label">Employee Name:</span><span class="slip-meta-val">${r.name}</span></div>
+            <div class="slip-meta-row"><span class="slip-meta-label">Designation:</span><span class="slip-meta-val">${r.designation || 'Faculty / Staff'}</span></div>
+            <div class="slip-meta-row"><span class="slip-meta-label">Department:</span><span class="slip-meta-val">${r.department}</span></div>
+            <div class="slip-meta-row"><span class="slip-meta-label">Staff Category:</span><span class="slip-meta-val">${r.category}</span></div>
+          </div>
+          <div>
+            <div class="slip-meta-row"><span class="slip-meta-label">Bank Name:</span><span class="slip-meta-val">${r.bank_name || 'PNB'}</span></div>
+            <div class="slip-meta-row"><span class="slip-meta-label">Account No:</span><span class="slip-meta-val">${r.account_no || 'Pending Submission'}</span></div>
+            <div class="slip-meta-row"><span class="slip-meta-label">IFSC Code:</span><span class="slip-meta-val">${r.ifsc_code || 'PUNB0401700'}</span></div>
+            <div class="slip-meta-row"><span class="slip-meta-label">Month Total Days:</span><span class="slip-meta-val">${data.month_days} Days</span></div>
+            <div class="slip-meta-row"><span class="slip-meta-label">Eligible Pay Days:</span><span class="slip-meta-val" style="color:#15803d; font-weight:800;">${r.total_pay_days} Days</span></div>
+          </div>
+        </div>
+
+        <!-- Side-by-Side Earnings & Deductions Tables -->
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+          <div>
+            <table class="slip-salary-table">
+              <thead>
+                <tr><th>Earnings Head</th><th style="text-align:right;">Amount (₹)</th></tr>
+              </thead>
+              <tbody>
+                ${earningsRows}
+                <tr class="slip-total-line">
+                  <td><strong>GROSS EARNINGS (A)</strong></td>
+                  <td style="text-align:right; font-weight:800; color:#7e22ce;">${f(r.gross_salary)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div>
+            <table class="slip-salary-table">
+              <thead>
+                <tr><th>Deductions Head</th><th style="text-align:right;">Amount (₹)</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Professional Tax (PT - AP)</td><td style="text-align:right; font-weight:600;">${f(r.pt_deduction)}</td></tr>
+                <tr><td>Staff Welfare Fund (WF)</td><td style="text-align:right; font-weight:600;">${f(r.wf_deduction)}</td></tr>
+                <tr><td>Provident Fund (EPF)</td><td style="text-align:right; font-weight:600;">${f(r.epf_deduction)}</td></tr>
+                <tr><td>Income Tax / TDS</td><td style="text-align:right; font-weight:600;">${f(r.it_deduction)}</td></tr>
+                <tr><td>Other Deductions / Advance</td><td style="text-align:right; font-weight:600;">${f(r.other_deductions)}</td></tr>
+                <tr class="slip-total-line">
+                  <td><strong>TOTAL DEDUCTIONS (B)</strong></td>
+                  <td style="text-align:right; font-weight:800; color:#b45309;">${f(r.total_deductions)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Net Payable Amount & In Words Banner -->
+        <div class="slip-net-banner">
+          <div class="slip-words-block">
+            <span style="font-size:0.75rem; font-weight:800; color:#047857; text-transform:uppercase; letter-spacing:0.04em;">Net Disbursed in Words:</span>
+            <div class="slip-words-val">${data.net_in_words}</div>
+          </div>
+          <div class="slip-net-num-box">
+            <span style="font-size:0.75rem; font-weight:800; color:#047857;">NET PAYABLE AMOUNT:</span>
+            <div class="slip-net-amount">${f(r.net_salary)}</div>
+          </div>
+        </div>
+
+        <!-- Signatures Footer -->
+        <div class="slip-signatures-grid">
+          <div class="signature-box">Employee Signature</div>
+          <div class="signature-box">Checked by Accounts Section</div>
+          <div class="signature-box">Principal / Director Approval</div>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('printable-pay-slip-content').innerHTML = html;
+    document.getElementById('modal-pay-slip').classList.add('active');
+  } catch (err) {
+    alert('Network error generating pay slip');
+  }
 }

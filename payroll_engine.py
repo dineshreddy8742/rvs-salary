@@ -353,3 +353,56 @@ def extract_historical_salary_profiles(database_dir: str = 'database') -> Dict[s
             print(f"Warning reading {fname}: {e}")
 
     return extracted_by_name
+
+
+def number_to_words_inr(amount: float) -> str:
+    """Converts a monetary amount into Indian Rupee words (e.g. 45200 -> 'Rupees Forty-Five Thousand Two Hundred Only')."""
+    if amount is None or amount < 0:
+        return "Rupees Zero Only"
+    
+    amount = int(round(amount))
+    if amount == 0:
+        return "Rupees Zero Only"
+    
+    ones = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
+            "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen",
+            "Seventeen", "Eighteen", "Nineteen"]
+    tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"]
+
+    def two_digits(n: int) -> str:
+        if n < 20:
+            return ones[n]
+        return tens[n // 10] + (" " + ones[n % 10] if n % 10 != 0 else "")
+
+    def three_digits(n: int) -> str:
+        h = n // 100
+        rem = n % 100
+        res = ""
+        if h > 0:
+            res += ones[h] + " Hundred"
+        if rem > 0:
+            if res:
+                res += " "
+            res += two_digits(rem)
+        return res
+
+    crores = amount // 10000000
+    rem = amount % 10000000
+    lakhs = rem // 100000
+    rem = rem % 100000
+    thousands = rem // 1000
+    rem = rem % 1000
+
+    parts = []
+    if crores > 0:
+        parts.append(two_digits(crores) + " Crore")
+    if lakhs > 0:
+        parts.append(two_digits(lakhs) + " Lakh")
+    if thousands > 0:
+        parts.append(two_digits(thousands) + " Thousand")
+    if rem > 0:
+        parts.append(three_digits(rem))
+
+    words = " ".join(parts).strip()
+    return f"Rupees {words} Only"
+
