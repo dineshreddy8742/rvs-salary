@@ -1,12 +1,15 @@
 // RVS Salary & Biometric Attendance Web Platform JavaScript
-// Multi-Month & Yearly Ledger with 360° Employee Portfolio & VIP Policies
+// Multi-Month & Yearly Ledger with 360° Employee Portfolio & Full Payroll Generation
 
 let allEmployees = [];
+let allSalaryRecords = [];
 let currentFilter = 'all';
 let currentDept = 'all';
+let currentCategory = 'all';
 let activeOnly = true;
 let currentMonth = 'August -2026';
 let activePortfolioEmpCode = null;
+let currentViewMode = 'attendance'; // 'attendance' or 'salary'
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -31,6 +34,15 @@ function setupEventListeners() {
     renderTable();
   });
 
+  // Category filter (Salary mode)
+  const catSelect = document.getElementById('category-select');
+  if (catSelect) {
+    catSelect.addEventListener('change', (e) => {
+      currentCategory = e.target.value;
+      renderTable();
+    });
+  }
+
   // Filter tabs
   document.querySelectorAll('.filter-tabs .tab-pill').forEach(btn => {
     btn.addEventListener('click', (e) => {
@@ -51,17 +63,37 @@ function setupEventListeners() {
   const navLeaves = document.getElementById('nav-filter-leaves');
   if (navLeaves) navLeaves.addEventListener('click', () => setFilterPill('leaves'));
 
+  // View Switcher (Attendance Grid vs Salary & Payroll Ledger)
+  const pillAtt = document.getElementById('pill-view-attendance');
+  const pillSal = document.getElementById('pill-view-salary');
+
+  if (pillAtt) {
+    pillAtt.addEventListener('click', () => switchViewMode('attendance'));
+  }
+  if (pillSal) {
+    pillSal.addEventListener('click', () => switchViewMode('salary'));
+  }
+
   // Active Only toggle
   document.getElementById('toggle-active-only').addEventListener('change', (e) => {
     activeOnly = e.target.checked;
     loadData();
   });
 
-  // Export button
+  // Export Attendance button (.xls)
   document.getElementById('btn-export').addEventListener('click', () => {
-    showToast(`⚡ Exporting ${currentMonth} to output.xls...`);
+    showToast(`⚡ Exporting ${currentMonth} Attendance to output.xls...`);
     window.location.href = `/api/export?month=${encodeURIComponent(currentMonth)}&active_only=${activeOnly}`;
   });
+
+  // Export Salary Bill button (.xlsx)
+  const btnExportSal = document.getElementById('btn-export-salary');
+  if (btnExportSal) {
+    btnExportSal.addEventListener('click', () => {
+      showToast(`⚡ Exporting ${currentMonth} Institutional Salary Bill (.xlsx)...`);
+      window.location.href = `/api/salary/export?month=${encodeURIComponent(currentMonth)}&active_only=${activeOnly}`;
+    });
+  }
 
   // Upload file trigger
   const fileInput = document.getElementById('file-input');
@@ -73,7 +105,6 @@ function setupEventListeners() {
     const file = e.target.files[0];
     if (!file) return;
 
-    // Ask user for month name or default to current
     const monthPrompt = prompt('Enter the Month & Year for this biometric file:', currentMonth);
     if (!monthPrompt) return;
 
@@ -153,7 +184,7 @@ function setupEventListeners() {
     }
   });
 
-  // Bulk Slips Modal (Option 3)
+  // Bulk Slips Modal
   const bulkModal = document.getElementById('modal-bulk-slips');
   document.getElementById('btn-bulk-slips-modal').addEventListener('click', () => {
     bulkModal.classList.add('active');
@@ -221,7 +252,7 @@ function setupEventListeners() {
     }
   });
 
-  // Timeline Modal (Option 2)
+  // Timeline Modal
   const timelineModal = document.getElementById('modal-timeline');
   document.getElementById('btn-close-timeline').addEventListener('click', () => {
     timelineModal.classList.remove('active');
@@ -234,6 +265,32 @@ function setupEventListeners() {
   document.getElementById('card-needs-review').addEventListener('click', () => {
     setFilterPill('review');
   });
+}
+
+// Switch between Attendance and Salary View
+function switchViewMode(mode) {
+  currentViewMode = mode;
+  const pillAtt = document.getElementById('pill-view-attendance');
+  const pillSal = document.getElementById('pill-view-salary');
+  const attGrid = document.getElementById('attendance-stats-grid');
+  const salGrid = document.getElementById('salary-stats-grid');
+  const catBox = document.getElementById('category-filter-box');
+
+  if (mode === 'salary') {
+    pillAtt.classList.remove('active');
+    pillSal.classList.add('active');
+    if (attGrid) attGrid.style.display = 'none';
+    if (salGrid) salGrid.style.display = 'grid';
+    if (catBox) catBox.style.display = 'flex';
+  } else {
+    pillSal.classList.remove('active');
+    pillAtt.classList.add('active');
+    if (salGrid) salGrid.style.display = 'none';
+    if (attGrid) attGrid.style.display = 'grid';
+    if (catBox) catBox.style.display = 'none';
+  }
+
+  renderTable();
 }
 
 function setFilterPill(filterName) {
@@ -272,25 +329,37 @@ async function loadMonths() {
   }
 }
 
-// Load data from backend for active month
+// Load both attendance and salary data
 async function loadData() {
   try {
-    const res = await fetch(`/api/data?month=${encodeURIComponent(currentMonth)}&active_only=${activeOnly}`);
-    const data = await res.json();
+    // 1. Fetch Attendance Records
+    const resAtt = await fetch(`/api/data?month=${encodeURIComponent(currentMonth)}&active_only=${activeOnly}`);
+    const dataAtt = await resAtt.json();
 
-    if (data.status === 'success') {
-      allEmployees = data.employees;
-      renderKPIs(data.stats);
-      populateDepartmentSelect(data.departments);
-      renderTable();
+    if (dataAtt.status === 'success') {
+      allEmployees = dataAtt.employees;
+      renderAttendanceKPIs(dataAtt.stats);
+      populateDepartmentSelect(dataAtt.departments);
     }
+
+    // 2. Fetch Salary Records
+    const resSal = await fetch(`/api/salary/data?month=${encodeURIComponent(currentMonth)}&active_only=${activeOnly}`);
+    const dataSal = await resSal.json();
+
+    if (dataSal.status === 'success') {
+      allSalaryRecords = dataSal.records;
+      renderSalaryKPIs(dataSal.stats);
+      populateCategorySelect(dataSal.categories);
+    }
+
+    renderTable();
   } catch (err) {
     console.error('Error fetching data:', err);
-    showToast('Error loading attendance data');
+    showToast('Error loading platform data');
   }
 }
 
-function renderKPIs(stats) {
+function renderAttendanceKPIs(stats) {
   document.getElementById('stat-total-staff').textContent = stats.total_staff;
   document.getElementById('stat-needs-review').textContent = stats.needs_review_count;
   document.getElementById('stat-total-leaves').textContent = stats.total_leaves;
@@ -302,6 +371,24 @@ function renderKPIs(stats) {
 
   const navVip = document.getElementById('nav-vip-count');
   if (navVip) navVip.textContent = stats.vip_count || 0;
+}
+
+function renderSalaryKPIs(stats) {
+  const f = (n) => '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+  const elStaff = document.getElementById('stat-salary-staff');
+  if (elStaff) elStaff.textContent = stats.total_staff;
+
+  const elBud = document.getElementById('stat-salary-budget');
+  if (elBud) elBud.textContent = f(stats.total_payroll_budget);
+
+  const elGross = document.getElementById('stat-salary-gross');
+  if (elGross) elGross.textContent = f(stats.total_gross_disbursed);
+
+  const elDed = document.getElementById('stat-salary-deductions');
+  if (elDed) elDed.textContent = f(stats.total_all_deductions);
+
+  const elNet = document.getElementById('stat-salary-net');
+  if (elNet) elNet.textContent = f(stats.total_net_disbursed);
 }
 
 function populateDepartmentSelect(depts) {
@@ -317,32 +404,69 @@ function populateDepartmentSelect(depts) {
   });
 }
 
-// Render the master spreadsheet table
+function populateCategorySelect(cats) {
+  const select = document.getElementById('category-select');
+  if (!select) return;
+  const currentVal = select.value;
+  select.innerHTML = '<option value="all">All Categories</option>';
+  cats.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c;
+    opt.textContent = c;
+    if (c === currentVal) opt.selected = true;
+    select.appendChild(opt);
+  });
+}
+
+// Render Table Header & Body dynamically based on currentViewMode
 function renderTable() {
+  const thead = document.getElementById('table-head');
   const tbody = document.getElementById('table-body');
   tbody.innerHTML = '';
 
+  if (currentViewMode === 'salary') {
+    renderSalaryTable(thead, tbody);
+  } else {
+    renderAttendanceTable(thead, tbody);
+  }
+}
+
+// -----------------------------------------------------------------------------
+// RENDER ATTENDANCE TABLE
+// -----------------------------------------------------------------------------
+function renderAttendanceTable(thead, tbody) {
+  thead.innerHTML = `
+    <tr>
+      <th style="width: 48px;">S.No</th>
+      <th style="width: 85px;">Emp Code</th>
+      <th style="width: 220px;">Employee Name (Click for Portfolio)</th>
+      <th style="width: 120px;">Designation</th>
+      <th style="width: 80px;">Dept</th>
+      <th style="width: 100px;">Biometric Days</th>
+      <th style="width: 70px;">Holiday</th>
+      <th style="width: 115px;" class="col-leave" title="Option 1: Inline Editable Casual Leaves">Availed Leaves ✎</th>
+      <th style="width: 100px;" class="col-od" title="Option 1: Inline Editable On Duty">SV/OD ✎</th>
+      <th style="width: 110px;" class="col-total-pay" title="Total Pay Days for Salary">Total Pay Days</th>
+      <th style="min-width: 200px;">Remarks / Policy</th>
+      <th style="width: 180px; text-align: center;">Actions</th>
+    </tr>
+  `;
+
   const query = document.getElementById('search-input').value.toLowerCase().trim();
 
-  // Filter records
   const filtered = allEmployees.filter(emp => {
-    // Dept filter
     if (currentDept !== 'all' && emp.department !== currentDept) return false;
-
-    // Status pill filter
     if (currentFilter === 'review' && !emp.needs_review) return false;
     if (currentFilter === 'vip' && emp.attendance_policy === 'standard') return false;
     if (currentFilter === 'absent' && (!emp.absent_days || emp.absent_days.length === 0)) return false;
     if (currentFilter === 'leaves' && (!emp.availed_leaves && !emp.sv_od)) return false;
 
-    // Search query
     if (query) {
       const matchName = emp.name.toLowerCase().includes(query);
       const matchCode = emp.emp_code.toLowerCase().includes(query);
       const matchDesig = (emp.designation || '').toLowerCase().includes(query);
       if (!matchName && !matchCode && !matchDesig) return false;
     }
-
     return true;
   });
 
@@ -351,7 +475,6 @@ function renderTable() {
     return;
   }
 
-  // Group by department
   let lastDept = null;
   let sNo = 1;
 
@@ -367,7 +490,6 @@ function renderTable() {
     const tr = document.createElement('tr');
     tr.id = `row-${emp.emp_code}`;
 
-    // Policy & Needs review badges
     let statusBadge = '';
     if (emp.attendance_policy === 'exempt_full') {
       statusBadge += `<span class="badge-pill badge-policy-exempt">👑 Full Pay (VIP)</span> `;
@@ -388,7 +510,7 @@ function renderTable() {
       <td style="text-align: center; color: #94a3b8; font-weight: 600;">${sNo++}</td>
       <td style="text-align: center; font-weight: 700; color: #0f172a;">${emp.emp_code}</td>
       <td>
-        <span class="emp-name-link" onclick="openPortfolio('${emp.emp_code}')" title="Click to view 360° Annual Dossier & Leave Passbook">
+        <span class="emp-name-link" onclick="openPortfolio('${emp.emp_code}')" title="Click to view 360° Annual Dossier & Pay Slip">
           ${emp.name}
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/></svg>
         </span>
@@ -398,7 +520,6 @@ function renderTable() {
       <td style="text-align: right; font-weight: 600;" id="bio-${emp.emp_code}">${emp.biometric_days}</td>
       <td style="text-align: right; color: #64748b;">${emp.holiday}</td>
       
-      <!-- Option 1: Inline Editable Availed Leaves (CL) -->
       <td style="text-align: right;" class="col-leave">
         <input type="number" step="0.5" min="0" max="31" 
                class="cell-input" 
@@ -407,7 +528,6 @@ function renderTable() {
                onchange="handleInlineEdit('${emp.emp_code}', 'availed_leaves', this.value, this)">
       </td>
 
-      <!-- Option 1: Inline Editable SV/OD -->
       <td style="text-align: right;" class="col-od">
         <input type="number" step="0.5" min="0" max="31" 
                class="cell-input" 
@@ -434,9 +554,172 @@ function renderTable() {
         </div>
       </td>
     `;
-
     tbody.appendChild(tr);
   });
+}
+
+// -----------------------------------------------------------------------------
+// RENDER SALARY & PAYROLL TABLE
+// -----------------------------------------------------------------------------
+function renderSalaryTable(thead, tbody) {
+  thead.innerHTML = `
+    <tr>
+      <th style="width: 45px;">S.No</th>
+      <th style="width: 80px;">Emp Code</th>
+      <th style="width: 220px;">Staff Name (Click for Payslip)</th>
+      <th style="width: 100px;">Category</th>
+      <th style="width: 70px;">Dept</th>
+      <th style="width: 75px; text-align: right;">Pay Days</th>
+      <th style="width: 110px; text-align: right;">Base Package ✎</th>
+      <th style="width: 105px; text-align: right;">Earned Gross</th>
+      <th style="width: 65px; text-align: right;">PT</th>
+      <th style="width: 65px; text-align: right;">WF</th>
+      <th style="width: 85px; text-align: right;">Other Ded ✎</th>
+      <th style="width: 125px; text-align: right; background: #f0fdf4; color: #15803d;">Net Salary (₹)</th>
+      <th style="min-width: 160px;">Bank Account & IFSC</th>
+      <th style="width: 100px; text-align: center;">Action</th>
+    </tr>
+  `;
+
+  const query = document.getElementById('search-input').value.toLowerCase().trim();
+
+  const filtered = allSalaryRecords.filter(emp => {
+    if (currentDept !== 'all' && emp.department !== currentDept) return false;
+    if (currentCategory !== 'all' && emp.category !== currentCategory) return false;
+
+    if (query) {
+      const matchName = emp.name.toLowerCase().includes(query);
+      const matchCode = emp.emp_code.toLowerCase().includes(query);
+      const matchDesig = (emp.designation || '').toLowerCase().includes(query);
+      if (!matchName && !matchCode && !matchDesig) return false;
+    }
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="14" style="text-align: center; padding: 3rem; color: #94a3b8; font-weight: 500;">No salary records found matching the filter.</td></tr>`;
+    return;
+  }
+
+  let lastDept = null;
+  let sNo = 1;
+
+  filtered.forEach(emp => {
+    if (emp.department !== lastDept && currentDept === 'all') {
+      lastDept = emp.department;
+      const deptRow = document.createElement('tr');
+      deptRow.className = 'dept-section-row';
+      deptRow.innerHTML = `<td colspan="14">Department: ${lastDept}</td>`;
+      tbody.appendChild(deptRow);
+    }
+
+    const tr = document.createElement('tr');
+    tr.id = `sal-row-${emp.emp_code}`;
+
+    let catBadge = 'badge-cat-nt';
+    if (emp.category === 'Teaching') {
+      catBadge = 'badge-cat-teaching';
+    } else if (emp.category === 'Management') {
+      catBadge = 'badge-cat-mgt';
+    } else if (['Transport', 'Attender', 'Garden Staff', 'Security'].includes(emp.category)) {
+      catBadge = 'badge-cat-support';
+    }
+
+    tr.innerHTML = `
+      <td style="text-align: center; color: #94a3b8; font-weight: 600;">${sNo++}</td>
+      <td style="text-align: center; font-weight: 700; color: #0f172a;">${emp.emp_code}</td>
+      <td>
+        <span class="emp-name-link" onclick="openPortfolio('${emp.emp_code}')" title="Click to view detailed Pay Slip & breakdown">
+          ${emp.name}
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/></svg>
+        </span>
+        <div style="font-size: 0.72rem; color: #94a3b8;">${emp.designation || 'Staff'}</div>
+      </td>
+      <td><span class="badge-pill ${catBadge}">${emp.category}</span></td>
+      <td style="color: #64748b; font-weight: 600; font-size: 0.78rem;">${emp.department}</td>
+      <td style="text-align: right; font-weight: 700; color: #0f172a;">${emp.total_pay_days}</td>
+      
+      <!-- Inline Editable Base Salary -->
+      <td style="text-align: right;">
+        <input type="number" step="500" min="0" 
+               class="cell-sal-input" 
+               value="${emp.base_salary}" 
+               title="Edit monthly base package"
+               onchange="handleSalaryInlineEdit('${emp.emp_code}', 'base_salary', this.value, this)">
+      </td>
+
+      <!-- Earned Gross Total -->
+      <td style="text-align: right; font-weight: 700; color: #475569;" id="sal-gross-${emp.emp_code}">
+        ₹${Math.round(emp.gross_salary).toLocaleString('en-IN')}
+      </td>
+
+      <!-- PT -->
+      <td style="text-align: right; color: #64748b; font-size: 0.8rem;" id="sal-pt-${emp.emp_code}">
+        ₹${emp.pt_deduction}
+      </td>
+
+      <!-- WF -->
+      <td style="text-align: right; color: #64748b; font-size: 0.8rem;" id="sal-wf-${emp.emp_code}">
+        ₹${emp.wf_deduction}
+      </td>
+
+      <!-- Inline Editable Other Deductions -->
+      <td style="text-align: right;">
+        <input type="number" step="50" min="0" 
+               class="cell-sal-input" 
+               style="width: 75px;"
+               value="${emp.other_deductions || 0}" 
+               title="Edit other deductions"
+               onchange="handleSalaryInlineEdit('${emp.emp_code}', 'other_deductions', this.value, this)">
+      </td>
+
+      <!-- Net Salary Highlight -->
+      <td style="text-align: right; font-weight: 800; font-size: 0.92rem; color: #15803d; background: #f0fdf4;" id="sal-net-${emp.emp_code}">
+        ₹${Math.round(emp.net_salary).toLocaleString('en-IN')}
+      </td>
+
+      <!-- Bank Details -->
+      <td>
+        <div style="font-size: 0.75rem; font-weight: 700; color: #1e3a8a;">${emp.bank_name || 'PNB'} ${emp.account_no || 'Pending'}</div>
+        <div style="font-size: 0.68rem; color: #64748b;">${emp.ifsc_code || 'PUNB0401700'}</div>
+      </td>
+
+      <!-- Action -->
+      <td style="text-align: center;">
+        <button class="action-timeline-btn" style="background: #f0fdf4; color: #15803d; border-color: #86efac;" onclick="openPortfolio('${emp.emp_code}')" title="View Month Pay Slip">
+          💰 Pay Slip
+        </button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// Inline Salary Edit Handler
+async function handleSalaryInlineEdit(empCode, field, value, inputEl) {
+  try {
+    inputEl.classList.remove('saved');
+    const res = await fetch('/api/salary/update-monthly', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        emp_code: empCode,
+        field: field,
+        value: value === '' ? 0 : parseFloat(value),
+        month_year: currentMonth
+      })
+    });
+    const data = await res.json();
+    if (data.status === 'success') {
+      inputEl.classList.add('saved');
+      setTimeout(() => inputEl.classList.remove('saved'), 1500);
+
+      loadData();
+      showToast(`✔ Updated salary for Emp ${empCode}`);
+    }
+  } catch (err) {
+    alert('Error saving salary edit');
+  }
 }
 
 // 1-Click Grant Full Attendance
@@ -457,9 +740,9 @@ async function grantFullAttendance(empCode) {
   }
 }
 
-// =========================================================================
+// =============================================================================
 // EMPLOYEE 360° PORTFOLIO & LEAVE PASSBOOK MODAL
-// =========================================================================
+// =============================================================================
 async function openPortfolio(empCode) {
   try {
     activePortfolioEmpCode = empCode;
@@ -498,6 +781,54 @@ function renderPortfolioModal(pf) {
     statusEl.innerHTML = `<span style="color:#16a34a;">Quota Healthy</span>`;
   }
 
+  // Current Month Pay Slip Breakdown
+  const curSal = allSalaryRecords.find(s => s.emp_code === pf.emp_code) || {};
+  const f = (n) => '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+
+  const psMonth = document.getElementById('pf-payslip-month');
+  if (psMonth) psMonth.textContent = currentMonth;
+
+  const psBase = document.getElementById('pf-pay-base');
+  if (psBase) psBase.textContent = f(curSal.base_salary);
+
+  const psBasic = document.getElementById('pf-pay-basic');
+  if (psBasic) psBasic.textContent = f(curSal.earned_basic);
+
+  const psDa = document.getElementById('pf-pay-da');
+  if (psDa) psDa.textContent = f(curSal.earned_da);
+
+  const psHra = document.getElementById('pf-pay-hra');
+  if (psHra) psHra.textContent = f(curSal.earned_hra);
+
+  const psArr = document.getElementById('pf-pay-arrears');
+  if (psArr) psArr.textContent = f(curSal.arrears);
+
+  const psGross = document.getElementById('pf-pay-gross');
+  if (psGross) psGross.textContent = f(curSal.gross_salary);
+
+  const psPt = document.getElementById('pf-pay-pt');
+  if (psPt) psPt.textContent = f(curSal.pt_deduction);
+
+  const psWf = document.getElementById('pf-pay-wf');
+  if (psWf) psWf.textContent = f(curSal.wf_deduction);
+
+  const psEpf = document.getElementById('pf-pay-epf');
+  if (psEpf) psEpf.textContent = f(curSal.epf_deduction);
+
+  const psIt = document.getElementById('pf-pay-it');
+  if (psIt) psIt.textContent = f(curSal.other_deductions);
+
+  const psDed = document.getElementById('pf-pay-ded');
+  if (psDed) psDed.textContent = f(curSal.total_deductions);
+
+  const psNet = document.getElementById('pf-pay-net');
+  if (psNet) psNet.textContent = f(curSal.net_salary);
+
+  const psBank = document.getElementById('pf-pay-bank-meta');
+  if (psBank) {
+    psBank.textContent = `Bank: ${curSal.bank_name || 'PNB'} | Account: ${curSal.account_no || 'Pending'} | IFSC: ${curSal.ifsc_code || 'PUNB0401700'}`;
+  }
+
   // Monthly History Table
   const tbody = document.getElementById('pf-history-body');
   tbody.innerHTML = '';
@@ -516,9 +847,7 @@ function renderPortfolioModal(pf) {
   });
 }
 
-// =========================================================================
-// OPTION 1: INLINE SPREADSHEET QUICK-EDIT HANDLER
-// =========================================================================
+// Inline Attendance Quick-Edit
 async function handleInlineEdit(empCode, field, value, inputEl) {
   try {
     inputEl.classList.remove('saved');
@@ -538,16 +867,14 @@ async function handleInlineEdit(empCode, field, value, inputEl) {
       setTimeout(() => inputEl.classList.remove('saved'), 1500);
 
       loadData();
-      showToast(`✔ Updated pay days for ${data.portfolio.name}`);
+      showToast(`✔ Updated pay days & recalculated salary for ${data.portfolio.name}`);
     }
   } catch (err) {
     alert('Error saving inline edit');
   }
 }
 
-// =========================================================================
-// OPTION 2: 31-DAY PUNCH TIMELINE & REGULARIZATION MODAL
-// =========================================================================
+// 31-Day Punch Timeline Modal
 async function openTimelineModal(empCode) {
   try {
     const res = await fetch(`/api/employee/${empCode}/daily?month=${encodeURIComponent(currentMonth)}`);
@@ -561,7 +888,6 @@ async function openTimelineModal(empCode) {
     document.getElementById('timeline-emp-meta').textContent = 
       `Emp Code: ${emp.emp_code} | Department: ${emp.department} | Month: ${currentMonth}`;
 
-    // Summary bar
     const bar = document.getElementById('timeline-summary-bar');
     const activeMonthData = emp.months.find(m => m.month_year === currentMonth) || {};
     bar.innerHTML = `

@@ -5,11 +5,17 @@ from flask import Flask, request, jsonify, send_file, send_from_directory
 import database
 from attendance_engine import AttendanceEngine
 from export_excel import export_to_xls
+from export_salary_excel import export_salary_to_xlsx
 
 app = Flask(__name__, static_folder='static', static_url_path='')
 
-# Initialize database
+# Initialize database & salary profiles
 database.init_db()
+if os.path.exists('database'):
+    try:
+        database.seed_salary_profiles_from_reference('database')
+    except Exception as e:
+        print("Notice on seeding salary profiles:", e)
 
 RAW_FILE = 'raw input from biometric.xls'
 REF_FILE = 'output.xls'
@@ -287,6 +293,74 @@ def export_file():
     export_to_xls(records, temp_out, month_year_str=month_year)
 
     return send_file(temp_out, as_attachment=True, download_name=f'RVS_Monthly_Salary_{month_year}.xls')
+
+# =============================================================================
+# SALARY & PAYROLL GENERATION REST APIS
+# =============================================================================
+
+@app.route('/api/salary/data', methods=['GET'])
+def get_salary_data():
+    """Return comprehensive salary ledger and financial KPI stats for active month."""
+    month_year = request.args.get('month', 'August -2026')
+    active_only = request.args.get('active_only', 'true').lower() == 'true'
+
+    salary_data = database.get_month_salary_records(month_year, active_only=active_only, reference_codes=REFERENCE_CODES)
+    return jsonify(salary_data)
+
+@app.route('/api/salary/update-monthly', methods=['POST'])
+def update_salary_monthly():
+    """Inline update for base_salary, arrears, epf, it, or other deductions."""
+    data = request.json or {}
+    emp_code = data.get('emp_code')
+    field = data.get('field')
+    value = data.get('value')
+    month_year = data.get('month_year', 'August -2026')
+
+    if not emp_code or not field:
+        return jsonify({'status': 'error', 'message': 'emp_code and field required'}), 400
+
+    try:
+        updated_rec = database.update_monthly_salary_field(emp_code, month_year, field, value)
+        return jsonify({
+            'status': 'success',
+            'record': updated_rec
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/salary/update-profile', methods=['POST'])
+def update_salary_profile():
+    """Update employee master salary package, category, or bank credentials."""
+    data = request.json or {}
+    emp_code = data.get('emp_code')
+    month_year = data.get('month_year', 'August -2026')
+
+    if not emp_code:
+        return jsonify({'status': 'error', 'message': 'emp_code is required'}), 400
+
+    try:
+        database.update_employee_salary_profile(emp_code, data)
+        updated_rec = database.recalculate_monthly_salary(emp_code, month_year)
+        return jsonify({
+            'status': 'success',
+            'record': updated_rec
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/salary/export', methods=['GET'])
+def export_salary_file():
+    """Generate and stream the audit-grade Institutional Salary Bill (.xlsx)."""
+    month_year = request.args.get('month', 'August -2026')
+    active_only = request.args.get('active_only', 'true').lower() == 'true'
+
+    data = database.get_month_salary_records(month_year, active_only=active_only, reference_codes=REFERENCE_CODES)
+    records = data.get('records', [])
+
+    temp_out = os.path.join(tempfile.gettempdir(), f'SVCET_Salary_Bill_{month_year}.xlsx')
+    export_salary_to_xlsx(records, temp_out, month_year_str=month_year)
+
+    return send_file(temp_out, as_attachment=True, download_name=f'SVCET_Salary_Bill_{month_year}.xlsx')
 
 if __name__ == '__main__':
     print("Starting RVS Multi-Month Salary Platform on http://localhost:5000...")

@@ -79,26 +79,40 @@
             <span>BULK SLIPS</span>
           </button>
 
-          <!-- High-Contrast Navy Export Button -->
-          <button class="header-btn btn-export-excel" id="btn-export" title="Export finalized output.xls">
+          <!-- High-Contrast Navy Export Attendance Button -->
+          <button class="header-btn btn-export-excel" id="btn-export" title="Export finalized output.xls (Attendance Days)">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
             </svg>
             <span>Export output.xls</span>
           </button>
+
+          <!-- Emerald Institutional Salary Bill (.xlsx) Export Button -->
+          <button class="header-btn btn-export-salary" id="btn-export-salary" title="Export institutional Salary Bill (.xlsx) with Teaching, Non-Teaching & Bank sheets">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="12" y1="18" x2="12" y2="12"></line>
+              <line x1="9" y1="15" x2="15" y2="15"></line>
+            </svg>
+            <span>Salary Bill (.xlsx)</span>
+          </button>
         </div>
       </div>
 
-      <!-- Sub Tier: Navigation Tabs & Status Counts Strip -->
+      <!-- Sub Tier: View Switcher, Navigation Tabs & Status Counts Strip -->
       <div class="header-sub-row">
-        <div class="sub-nav-tabs">
-          <a href="#table-section" class="sub-tab-link active-tab">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>
-            </svg>
-            <span>Payroll Grid</span>
-          </a>
+        <!-- View Switcher -->
+        <div class="view-switch-cluster">
+          <button class="view-pill active" id="pill-view-attendance">
+            📋 Attendance Grid
+          </button>
+          <button class="view-pill" id="pill-view-salary">
+            💰 Salary & Payroll Ledger
+          </button>
+        </div>
 
+        <div class="sub-nav-tabs">
           <a href="javascript:void(0)" id="nav-filter-review" class="sub-tab-link tab-review">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
@@ -123,7 +137,7 @@
         <div class="sub-nav-status">
           <span class="sync-indicator">
             <span class="sync-dot"></span>
-            <span>Biometric Database Connected • 3-Way Auto Sync Active</span>
+            <span id="sync-status-text">Biometric & Payroll Database Connected • Live Sync</span>
           </span>
         </div>
       </div>
@@ -146,9 +160,10 @@
       </p>
     </section>
 
-    <!-- KPI Stats Cards -->
+    <!-- KPI Stats Section -->
     <section class="stats-section" id="stats-section">
-      <div class="stats-grid">
+      <!-- Attendance KPI Cards (Visible in Attendance View) -->
+      <div class="stats-grid" id="attendance-stats-grid">
         <div class="stat-card">
           <div class="stat-icon-wrap icon-orange">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
@@ -199,6 +214,59 @@
           </div>
         </div>
       </div>
+
+      <!-- Financial Salary KPI Cards (Visible in Salary & Payroll View) -->
+      <div class="stats-grid" id="salary-stats-grid" style="display: none;">
+        <div class="stat-card">
+          <div class="stat-icon-wrap icon-orange">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </div>
+          <div class="stat-details">
+            <span class="stat-label">Staff in Payroll</span>
+            <span class="stat-number" id="stat-salary-staff">--</span>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon-wrap icon-blue">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+          </div>
+          <div class="stat-details">
+            <span class="stat-label">Total Monthly Budget</span>
+            <span class="stat-number" id="stat-salary-budget" style="color: #1d4ed8;">--</span>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon-wrap icon-purple">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          </div>
+          <div class="stat-details">
+            <span class="stat-label">Earned Gross Total</span>
+            <span class="stat-number" id="stat-salary-gross" style="color: #7e22ce;">--</span>
+          </div>
+        </div>
+
+        <div class="stat-card stat-alert-card">
+          <div class="stat-icon-wrap icon-amber">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          </div>
+          <div class="stat-details">
+            <span class="stat-label">Deductions (PT+WF+EPF)</span>
+            <span class="stat-number" id="stat-salary-deductions" style="color: #b45309;">--</span>
+          </div>
+        </div>
+
+        <div class="stat-card stat-total-card">
+          <div class="stat-icon-wrap icon-green">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          </div>
+          <div class="stat-details">
+            <span class="stat-label">Net Payable Disbursement</span>
+            <span class="stat-number" id="stat-salary-net" style="color: #15803d; font-weight: 800;">--</span>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- Interactive Controls Bar -->
@@ -216,6 +284,22 @@
         <label for="dept-select">Dept:</label>
         <select id="dept-select">
           <option value="all">All Departments</option>
+        </select>
+      </div>
+
+      <!-- Category Selector (Visible in Salary Mode) -->
+      <div class="select-field" id="category-filter-box" style="display: none;">
+        <label for="category-select">Category:</label>
+        <select id="category-select">
+          <option value="all">All Categories</option>
+          <option value="Teaching">Teaching Faculty</option>
+          <option value="Non-Teaching">Non-Teaching Staff</option>
+          <option value="Transport">Transport / Drivers</option>
+          <option value="Attender">Attenders</option>
+          <option value="Garden Staff">Garden Staff</option>
+          <option value="Security">Security & Water</option>
+          <option value="Management">Management Staff</option>
+          <option value="Admission">Admission</option>
         </select>
       </div>
 
@@ -241,12 +325,12 @@
     <!-- Guidance Bar -->
     <div class="guidance-bar">
       <div class="guide-tag">Pro Tip</div>
-      <div class="guide-content">
-        <span>Click on any <strong>Teacher's Name</strong> to open their <strong>360° Annual Portfolio & Leave Passbook</strong>.</span>
+      <div class="guide-content" id="guidance-content">
+        <span>Click on any <strong>Teacher's Name</strong> to open their <strong>360° Annual Portfolio & Monthly Pay Slip</strong>.</span>
         <span>•</span>
-        <span>Use the <strong>"✔ Full Pay"</strong> action button to grant 100% full attendance instantly.</span>
+        <span>Toggle to <strong>"💰 Salary & Payroll Ledger"</strong> above to view gross & net payable amounts calculated directly from attendance days.</span>
         <span>•</span>
-        <span>Click <strong>"+ Add Staff"</strong> above to add visiting professors or exempt officials manually.</span>
+        <span>Click <strong>"Salary Bill (.xlsx)"</strong> to export the institutional payroll sheets with bank accounts.</span>
       </div>
     </div>
 
@@ -254,21 +338,8 @@
     <section class="table-section-card" id="table-section">
       <div class="table-wrapper">
         <table class="payroll-table" id="main-table">
-          <thead>
-            <tr>
-              <th style="width: 48px;">S.No</th>
-              <th style="width: 85px;">Emp Code</th>
-              <th style="width: 230px;">Employee Name (Click for Portfolio)</th>
-              <th style="width: 130px;">Designation</th>
-              <th style="width: 80px;">Dept</th>
-              <th style="width: 105px;">Biometric Days</th>
-              <th style="width: 75px;">Holiday</th>
-              <th style="width: 120px;" class="col-leave" title="Option 1: Inline Editable Casual Leaves">Availed Leaves ✎</th>
-              <th style="width: 105px;" class="col-od" title="Option 1: Inline Editable On Duty">SV/OD ✎</th>
-              <th style="width: 115px;" class="col-total-pay" title="Total Pay Days for Salary">Total Pay Days</th>
-              <th style="min-width: 210px;">Remarks / Policy</th>
-              <th style="width: 190px; text-align: center;">Actions</th>
-            </tr>
+          <thead id="table-head">
+            <!-- Dynamically populated headers for Attendance vs Salary mode -->
           </thead>
           <tbody id="table-body">
             <!-- Dynamically populated rows -->
@@ -335,8 +406,42 @@
           </div>
         </div>
 
+        <!-- Current Month Pay Slip Breakdown Card -->
+        <div class="payslip-card-wrapper" id="pf-payslip-box">
+          <div class="payslip-header">
+            <span class="payslip-badge">Current Month Pay Slip</span>
+            <span class="payslip-month" id="pf-payslip-month">August -2026</span>
+          </div>
+          <div class="payslip-grid">
+            <div class="payslip-col">
+              <h4 class="payslip-col-title">Earnings & Credits</h4>
+              <div class="payslip-row"><span>Base Package:</span><strong id="pf-pay-base">₹0</strong></div>
+              <div class="payslip-row"><span>Earned Basic:</span><span id="pf-pay-basic">₹0</span></div>
+              <div class="payslip-row"><span>DA (37.31%):</span><span id="pf-pay-da">₹0</span></div>
+              <div class="payslip-row"><span>HRA (16%):</span><span id="pf-pay-hra">₹0</span></div>
+              <div class="payslip-row"><span>Arrears:</span><span id="pf-pay-arrears">₹0</span></div>
+              <div class="payslip-row payslip-total-row"><span>Gross Total:</span><strong id="pf-pay-gross" style="color:#7e22ce;">₹0</strong></div>
+            </div>
+            <div class="payslip-col">
+              <h4 class="payslip-col-title">Deductions</h4>
+              <div class="payslip-row"><span>Professional Tax (PT):</span><span id="pf-pay-pt">₹0</span></div>
+              <div class="payslip-row"><span>Welfare Fund (WF):</span><span id="pf-pay-wf">₹0</span></div>
+              <div class="payslip-row"><span>EPF:</span><span id="pf-pay-epf">₹0</span></div>
+              <div class="payslip-row"><span>IT / Other:</span><span id="pf-pay-it">₹0</span></div>
+              <div class="payslip-row payslip-total-row"><span>Total Deductions:</span><strong id="pf-pay-ded" style="color:#b45309;">₹0</strong></div>
+            </div>
+          </div>
+          <div class="payslip-footer-net">
+            <div>
+              <span class="net-label">NET PAYABLE AMOUNT:</span>
+              <span class="net-bank-info" id="pf-pay-bank-meta">Bank: PNB | Acc: -- | IFSC: --</span>
+            </div>
+            <div class="net-val-highlight" id="pf-pay-net">₹0</div>
+          </div>
+        </div>
+
         <!-- Month-by-Month History Table -->
-        <h3 class="history-table-title">Month-by-Month Salary History</h3>
+        <h3 class="history-table-title">Month-by-Month Attendance & Salary History</h3>
         <div class="history-table-wrap">
           <table class="history-table">
             <thead>

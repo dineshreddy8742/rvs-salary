@@ -1115,9 +1115,186 @@ input:checked + .slider-circle:before { transform: translateX(16px); }
 }
 .toast-popup.show { display: block; animation: popIn 0.2s ease; }
 
+/* Salary & Payroll Module Styles */
+.btn-export-salary {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%) !important;
+  color: white !important;
+  border-color: #059669 !important;
+  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.25) !important;
+}
+.btn-export-salary:hover {
+  background: linear-gradient(135deg, #047857 0%, #065f46 100%) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(5, 150, 105, 0.35) !important;
+}
+
+/* View Switcher Cluster */
+.view-switch-cluster {
+  display: inline-flex;
+  background: #f1f5f9;
+  padding: 3px;
+  border-radius: 12px;
+  gap: 3px;
+  border: 1px solid #e2e8f0;
+}
+.view-pill {
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.45rem 0.95rem;
+  border-radius: 9px;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.view-pill:hover {
+  color: var(--primary-navy);
+}
+.view-pill.active {
+  background: white;
+  color: var(--primary-navy);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+/* Financial KPI Icons */
+.icon-blue {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+/* Cell Salary Inline Input */
+.cell-sal-input {
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-align: right;
+  width: 95px;
+  padding: 4px 6px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: white;
+  color: #0f172a;
+  transition: all 0.2s ease;
+}
+.cell-sal-input:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+}
+.cell-sal-input.saved {
+  background-color: #ecfdf5;
+  border-color: #10b981;
+}
+
+/* Category Badges */
+.badge-cat-teaching { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+.badge-cat-nt { background: #f8fafc; color: #475569; border: 1px solid #e2e8f0; }
+.badge-cat-support { background: #fdf4ff; color: #86198f; border: 1px solid #f5d0fe; }
+.badge-cat-mgt { background: #fefce8; color: #854d0e; border: 1px solid #fef08a; }
+
+/* Payslip Modal Card */
+.payslip-card-wrapper {
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border: 1px solid #cbd5e1;
+  border-radius: 14px;
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+.payslip-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 0.6rem;
+}
+.payslip-badge {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: #1e3a8a;
+  color: white;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+.payslip-month {
+  font-weight: 700;
+  color: #334155;
+  font-size: 0.85rem;
+}
+.payslip-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+.payslip-col {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 0.9rem 1rem;
+}
+.payslip-col-title {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #475569;
+  text-transform: uppercase;
+  margin-bottom: 0.6rem;
+  border-bottom: 1px solid #f1f5f9;
+  padding-bottom: 0.35rem;
+}
+.payslip-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: #334155;
+  padding: 3px 0;
+}
+.payslip-total-row {
+  border-top: 1px dashed #cbd5e1;
+  margin-top: 6px;
+  padding-top: 6px;
+  font-weight: 800;
+}
+.payslip-footer-net {
+  margin-top: 1rem;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: 10px;
+  padding: 0.85rem 1.25rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.net-label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #065f46;
+  letter-spacing: 0.04em;
+}
+.net-bank-info {
+  display: block;
+  font-size: 0.75rem;
+  color: #047857;
+  margin-top: 2px;
+}
+.net-val-highlight {
+  font-size: 1.45rem;
+  font-weight: 900;
+  color: #047857;
+}
+
 @media (max-width: 900px) {
   .nav-links { display: none; }
   .hero-title { font-size: 2rem; }
   .controls-panel { flex-direction: column; align-items: stretch; }
   .form-row { grid-template-columns: 1fr; }
+  .payslip-grid { grid-template-columns: 1fr; }
 }
+
