@@ -95,7 +95,10 @@ def calculate_teaching_salary(
             'wf': 0.0,
             'epf': epf,
             'it': it,
-            'other_deductions': eb + mess + bus + other_ded,
+            'bus_deduction': bus,
+            'mess_deduction': mess,
+            'hostel_eb_deduction': eb,
+            'other_deductions': other_ded,
             'total_deductions': 0.0,
             'net_salary': 0.0
         }
@@ -129,7 +132,10 @@ def calculate_teaching_salary(
         'wf': final_wf,
         'epf': epf,
         'it': it,
-        'other_deductions': other_total,
+        'bus_deduction': bus,
+        'mess_deduction': mess,
+        'hostel_eb_deduction': eb,
+        'other_deductions': other_ded,
         'total_deductions': total_ded,
         'net_salary': net_salary
     }
@@ -173,7 +179,10 @@ def calculate_non_teaching_salary(
             'wf': 0.0,
             'epf': epf,
             'it': it,
-            'other_deductions': cell + eb + mess + bus + other_ded,
+            'bus_deduction': bus,
+            'mess_deduction': mess,
+            'hostel_eb_deduction': eb,
+            'other_deductions': cell + other_ded,
             'total_deductions': 0.0,
             'net_salary': 0.0
         }
@@ -205,7 +214,10 @@ def calculate_non_teaching_salary(
         'wf': final_wf,
         'epf': epf,
         'it': it,
-        'other_deductions': other_total,
+        'bus_deduction': bus,
+        'mess_deduction': mess,
+        'hostel_eb_deduction': eb,
+        'other_deductions': cell + other_ded,
         'total_deductions': total_ded,
         'net_salary': net_salary
     }
@@ -223,6 +235,9 @@ def calculate_salary_for_profile(
     arrears = float(ov.get('arrears') or profile.get('default_arrears') or 0.0)
     epf = float(ov.get('epf_deduction') or profile.get('epf_amount') or 0.0)
     it = float(ov.get('it_deduction') or 0.0)
+    bus = float(ov.get('bus_deduction') or profile.get('default_bus') or 0.0)
+    mess = float(ov.get('mess_deduction') or profile.get('default_mess') or 0.0)
+    eb = float(ov.get('hostel_eb_deduction') or profile.get('default_hostel_eb') or 0.0)
     other_ded = float(ov.get('other_deductions') or 0.0)
     pt_ov = ov.get('pt_deduction')
     wf_ov = ov.get('wf_deduction')
@@ -236,6 +251,9 @@ def calculate_salary_for_profile(
             arrears=arrears,
             epf=epf,
             it=it,
+            eb=eb,
+            mess=mess,
+            bus=bus,
             other_ded=other_ded,
             pt=pt_ov,
             wf=wf_ov
@@ -249,6 +267,9 @@ def calculate_salary_for_profile(
             arrears=arrears,
             epf=epf,
             it=it,
+            eb=eb,
+            mess=mess,
+            bus=bus,
             other_ded=other_ded,
             pt=pt_ov,
             wf=wf_ov
@@ -311,6 +332,9 @@ def extract_historical_salary_profiles(database_dir: str = 'database') -> Dict[s
                 bank_i = next((i for i, h in enumerate(headers) if 'account' in h.lower()), -1)
                 ifsc_i = next((i for i, h in enumerate(headers) if 'ifsc' in h.lower()), -1)
                 epf_i = next((i for i, h in enumerate(headers) if 'epf' in h.lower()), -1)
+                bus_i = next((i for i, h in enumerate(headers) if 'bus' in h.lower()), -1)
+                mess_i = next((i for i, h in enumerate(headers) if 'mess' in h.lower()), -1)
+                eb_i = next((i for i, h in enumerate(headers) if h.lower() == 'eb' or 'eb' in h.lower().split()), -1)
 
                 # Determine category
                 sheet_lower = sname.lower()
@@ -346,17 +370,31 @@ def extract_historical_salary_profiles(database_dir: str = 'database') -> Dict[s
                     ifsc = str(r[ifsc_i]).strip() if ifsc_i >= 0 and r[ifsc_i] else ''
                     epf_val = float(r[epf_i]) if epf_i >= 0 and r[epf_i] and str(r[epf_i]).replace('.', '', 1).isdigit() else 0.0
 
+                    def _parse_flt(val):
+                        if val is None: return 0.0
+                        s = str(val).replace(',', '').strip()
+                        try: return float(s)
+                        except: return 0.0
+
+                    bus_val = _parse_flt(r[bus_i]) if bus_i >= 0 and bus_i < len(r) else 0.0
+                    mess_val = _parse_flt(r[mess_i]) if mess_i >= 0 and mess_i < len(r) else 0.0
+                    eb_val = _parse_flt(r[eb_i]) if eb_i >= 0 and eb_i < len(r) else 0.0
+
                     norm_key = re.sub(r'[^a-zA-Z0-9]', '', name_str.lower())
-                    if norm_key and (norm_key not in extracted_by_name or sal_val > extracted_by_name[norm_key]['base_salary']):
+                    if norm_key and (norm_key not in extracted_by_name or sal_val > extracted_by_name[norm_key]['base_salary'] or bus_val > 0 or mess_val > 0 or eb_val > 0):
+                        existing = extracted_by_name.get(norm_key, {})
                         extracted_by_name[norm_key] = {
                             'name': name_str,
                             'category': cat,
                             'designation': desig_val,
-                            'base_salary': sal_val,
-                            'bank_name': 'PNB' if bank_acc.startswith('4017') else 'Canara/SBI/Other',
-                            'account_no': bank_acc,
-                            'ifsc_code': ifsc or ('PUNB0401700' if bank_acc.startswith('4017') else ''),
-                            'epf_amount': epf_val,
+                            'base_salary': max(sal_val, existing.get('base_salary', 0.0)),
+                            'bank_name': 'PNB' if bank_acc.startswith('4017') else (existing.get('bank_name') or 'Canara/SBI/Other'),
+                            'account_no': bank_acc or existing.get('account_no', ''),
+                            'ifsc_code': ifsc or existing.get('ifsc_code') or ('PUNB0401700' if bank_acc.startswith('4017') else ''),
+                            'epf_amount': epf_val if epf_val > 0 else existing.get('epf_amount', 0.0),
+                            'default_bus': bus_val if bus_val > 0 else existing.get('default_bus', 0.0),
+                            'default_mess': mess_val if mess_val > 0 else existing.get('default_mess', 0.0),
+                            'default_hostel_eb': eb_val if eb_val > 0 else existing.get('default_hostel_eb', 0.0),
                             'default_arrears': 0.0
                         }
         except Exception as e:

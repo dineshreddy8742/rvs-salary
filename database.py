@@ -83,10 +83,25 @@ def init_db():
         account_no TEXT,
         ifsc_code TEXT,
         epf_amount REAL DEFAULT 0.0,
+        default_bus REAL DEFAULT 0.0,
+        default_mess REAL DEFAULT 0.0,
+        default_hostel_eb REAL DEFAULT 0.0,
         default_arrears REAL DEFAULT 0.0,
         FOREIGN KEY(emp_code) REFERENCES employees(emp_code)
     )
     """)
+
+    # Ensure profile columns exist in salary_profiles
+    cursor.execute("PRAGMA table_info(salary_profiles)")
+    existing_prof_cols = [r['name'] for r in cursor.fetchall()]
+    prof_cols = {
+        'default_bus': 'REAL DEFAULT 0.0',
+        'default_mess': 'REAL DEFAULT 0.0',
+        'default_hostel_eb': 'REAL DEFAULT 0.0'
+    }
+    for col_name, col_type in prof_cols.items():
+        if col_name not in existing_prof_cols:
+            cursor.execute(f"ALTER TABLE salary_profiles ADD COLUMN {col_name} {col_type}")
 
     # Ensure salary columns exist in monthly_records
     cursor.execute("PRAGMA table_info(monthly_records)")
@@ -102,6 +117,9 @@ def init_db():
         'wf_deduction': 'REAL',
         'epf_deduction': 'REAL',
         'it_deduction': 'REAL',
+        'bus_deduction': 'REAL DEFAULT 0.0',
+        'mess_deduction': 'REAL DEFAULT 0.0',
+        'hostel_eb_deduction': 'REAL DEFAULT 0.0',
         'other_deductions': 'REAL DEFAULT 0.0',
         'total_deductions': 'REAL',
         'net_salary': 'REAL'
@@ -753,6 +771,9 @@ def seed_salary_profiles_from_reference(database_dir: str = 'database'):
             bank_acc = prof['account_no']
             ifsc = prof['ifsc_code']
             epf = float(prof.get('epf_amount', 0.0))
+            bus = float(prof.get('default_bus', 0.0))
+            mess = float(prof.get('default_mess', 0.0))
+            eb = float(prof.get('default_hostel_eb', 0.0))
             matched_count += 1
         else:
             # Fallback based on department / designation
@@ -764,7 +785,7 @@ def seed_salary_profiles_from_reference(database_dir: str = 'database'):
                 base_sal = 15000.0
             elif any(k in dept_lower for k in ['attender']):
                 category = 'Attender'
-                base_sal = 10000.0
+                base_sal = 11000.0
             elif any(k in dept_lower for k in ['transport', 'driver']):
                 category = 'Transport'
                 base_sal = 16000.0
@@ -781,12 +802,15 @@ def seed_salary_profiles_from_reference(database_dir: str = 'database'):
             bank_acc = ''
             ifsc = 'PUNB0401700'
             epf = 0.0
+            bus = 0.0
+            mess = 0.0
+            eb = 0.0
 
         cursor.execute("""
         INSERT OR REPLACE INTO salary_profiles 
-        (emp_code, name, category, designation, department, base_salary, bank_name, account_no, ifsc_code, epf_amount, default_arrears)
-        VALUES (?, ?, ?, ?, ?, ?, 'PNB', ?, ?, ?, 0.0)
-        """, (ec, raw_name, category, desig, dept, base_sal, bank_acc, ifsc, epf))
+        (emp_code, name, category, designation, department, base_salary, bank_name, account_no, ifsc_code, epf_amount, default_bus, default_mess, default_hostel_eb, default_arrears)
+        VALUES (?, ?, ?, ?, ?, ?, 'PNB', ?, ?, ?, ?, ?, ?, 0.0)
+        """, (ec, raw_name, category, desig, dept, base_sal, bank_acc, ifsc, epf, bus, mess, eb))
 
     conn.commit()
     conn.close()
@@ -866,6 +890,9 @@ def recalculate_monthly_salary(emp_code: str, month_year: str, total_pay_days: O
         'arrears': rec['arrears'] or 0.0,
         'epf_deduction': rec['epf_deduction'] if rec['epf_deduction'] is not None else prof.get('epf_amount', 0.0),
         'it_deduction': rec['it_deduction'] or 0.0,
+        'bus_deduction': rec['bus_deduction'] if rec['bus_deduction'] is not None else prof.get('default_bus', 0.0),
+        'mess_deduction': rec['mess_deduction'] if rec['mess_deduction'] is not None else prof.get('default_mess', 0.0),
+        'hostel_eb_deduction': rec['hostel_eb_deduction'] if rec['hostel_eb_deduction'] is not None else prof.get('default_hostel_eb', 0.0),
         'other_deductions': rec['other_deductions'] or 0.0,
         'pt_deduction': rec['pt_deduction'],
         'wf_deduction': rec['wf_deduction']
@@ -877,12 +904,14 @@ def recalculate_monthly_salary(emp_code: str, month_year: str, total_pay_days: O
     UPDATE monthly_records
     SET base_salary = ?, earned_basic = ?, earned_da = ?, earned_hra = ?, arrears = ?,
         gross_salary = ?, pt_deduction = ?, wf_deduction = ?, epf_deduction = ?,
-        it_deduction = ?, other_deductions = ?, total_deductions = ?, net_salary = ?
+        it_deduction = ?, bus_deduction = ?, mess_deduction = ?, hostel_eb_deduction = ?,
+        other_deductions = ?, total_deductions = ?, net_salary = ?
     WHERE emp_code = ? AND month_year = ?
     """, (
         res['base_salary'], res['earned_basic'], res['da'], res['hra'], res['arrears'],
         res['gross_salary'], res['pt'], res['wf'], res['epf'],
-        res['it'], res['other_deductions'], res['total_deductions'], res['net_salary'],
+        res['it'], res['bus_deduction'], res['mess_deduction'], res['hostel_eb_deduction'],
+        res['other_deductions'], res['total_deductions'], res['net_salary'],
         emp_code, month_year
     ))
 
@@ -915,6 +944,7 @@ def get_month_salary_records(month_year: str, active_only: bool = True, referenc
            m.biometric_days, m.holiday, m.availed_leaves, m.sv_od, m.total_pay_days, m.remarks,
            m.base_salary, m.earned_basic, m.earned_da, m.earned_hra, m.arrears,
            m.gross_salary, m.pt_deduction, m.wf_deduction, m.epf_deduction, m.it_deduction,
+           m.bus_deduction, m.mess_deduction, m.hostel_eb_deduction,
            m.other_deductions, m.total_deductions, m.net_salary,
            p.category, p.bank_name, p.account_no, p.ifsc_code
     FROM monthly_records m
@@ -933,6 +963,10 @@ def get_month_salary_records(month_year: str, active_only: bool = True, referenc
     tot_wf = 0.0
     tot_epf = 0.0
     tot_it = 0.0
+    tot_bus = 0.0
+    tot_mess = 0.0
+    tot_hostel = 0.0
+    tot_other = 0.0
     tot_ded = 0.0
     tot_net = 0.0
 
@@ -947,6 +981,10 @@ def get_month_salary_records(month_year: str, active_only: bool = True, referenc
         wf = float(r['wf_deduction'] or 0.0)
         epf = float(r['epf_deduction'] or 0.0)
         it = float(r['it_deduction'] or 0.0)
+        bus_d = float(r['bus_deduction'] or 0.0)
+        mess_d = float(r['mess_deduction'] or 0.0)
+        hostel_d = float(r['hostel_eb_deduction'] or 0.0)
+        other_d = float(r['other_deductions'] or 0.0)
         ded = float(r['total_deductions'] or 0.0)
         net = float(r['net_salary'] or 0.0)
 
@@ -956,6 +994,10 @@ def get_month_salary_records(month_year: str, active_only: bool = True, referenc
         tot_wf += wf
         tot_epf += epf
         tot_it += it
+        tot_bus += bus_d
+        tot_mess += mess_d
+        tot_hostel += hostel_d
+        tot_other += other_d
         tot_ded += ded
         tot_net += net
 
@@ -977,7 +1019,10 @@ def get_month_salary_records(month_year: str, active_only: bool = True, referenc
             'wf_deduction': wf,
             'epf_deduction': epf,
             'it_deduction': it,
-            'other_deductions': r['other_deductions'] or 0.0,
+            'bus_deduction': bus_d,
+            'mess_deduction': mess_d,
+            'hostel_eb_deduction': hostel_d,
+            'other_deductions': other_d,
             'total_deductions': ded,
             'net_salary': net,
             'bank_name': r['bank_name'] or 'PNB',
@@ -1000,6 +1045,10 @@ def get_month_salary_records(month_year: str, active_only: bool = True, referenc
             'total_wf_deductions': round(tot_wf, 2),
             'total_epf_deductions': round(tot_epf, 2),
             'total_it_deductions': round(tot_it, 2),
+            'total_bus_deductions': round(tot_bus, 2),
+            'total_mess_deductions': round(tot_mess, 2),
+            'total_hostel_eb_deductions': round(tot_hostel, 2),
+            'total_other_deductions': round(tot_other, 2),
             'total_all_deductions': round(tot_ded, 2),
             'total_net_disbursed': round(tot_net, 2)
         },
@@ -1020,6 +1069,9 @@ def update_monthly_salary_field(emp_code: str, month_year: str, field: str, valu
         'arrears': 'arrears',
         'epf_deduction': 'epf_deduction',
         'it_deduction': 'it_deduction',
+        'bus_deduction': 'bus_deduction',
+        'mess_deduction': 'mess_deduction',
+        'hostel_eb_deduction': 'hostel_eb_deduction',
         'other_deductions': 'other_deductions',
         'total_pay_days': 'total_pay_days',
         'pt_deduction': 'pt_deduction',
@@ -1101,18 +1153,128 @@ def update_employee_profile_full(emp_code: str, data: Dict[str, Any]) -> dict:
     return {'status': 'success', 'emp_code': emp_code, 'months_recalculated': months}
 
 
+def update_employee_unified_all(emp_code: str, month_year: str, data: Dict[str, Any]) -> dict:
+    """
+    Unified 360-degree update: updates profile, attendance days, salary overrides,
+    deductions, and banking details in a single SQLite transaction and recomputes salary.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+
+    name = str(data.get('name', '')).strip()
+    desig = str(data.get('designation', '')).strip()
+    dept = str(data.get('department', '')).strip()
+    cat = str(data.get('category', 'Teaching')).strip()
+    policy = str(data.get('attendance_policy', 'standard')).strip()
+
+    # 1. Update employees table
+    cursor.execute("""
+    UPDATE employees 
+    SET name = COALESCE(NULLIF(?, ''), name),
+        designation = COALESCE(NULLIF(?, ''), designation),
+        department = COALESCE(NULLIF(?, ''), department),
+        attendance_policy = COALESCE(NULLIF(?, ''), attendance_policy)
+    WHERE emp_code = ?
+    """, (name, desig, dept, policy, emp_code))
+
+    # 2. Update salary_profiles table
+    base_sal = float(data.get('base_salary', 0.0) or 0.0)
+    bank_name = str(data.get('bank_name', 'PNB')).strip()
+    account_no = str(data.get('account_no', '')).strip()
+    ifsc_code = str(data.get('ifsc_code', '')).strip()
+    default_epf = float(data.get('epf_deduction', 0.0) or data.get('epf_amount', 0.0) or 0.0)
+
+    cursor.execute("""
+    INSERT INTO salary_profiles (emp_code, name, category, designation, department, base_salary, bank_name, account_no, ifsc_code, epf_amount)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(emp_code) DO UPDATE SET
+        name = excluded.name,
+        category = excluded.category,
+        designation = excluded.designation,
+        department = excluded.department,
+        base_salary = excluded.base_salary,
+        bank_name = excluded.bank_name,
+        account_no = excluded.account_no,
+        ifsc_code = excluded.ifsc_code,
+        epf_amount = excluded.epf_amount
+    """, (emp_code, name, cat, desig, dept, base_sal, bank_name, account_no, ifsc_code, default_epf))
+
+    # 3. Extract Attendance numbers
+    bio = float(data['biometric_days']) if data.get('biometric_days') is not None and str(data.get('biometric_days')).strip() != '' else 0.0
+    hol = float(data['holiday']) if data.get('holiday') is not None and str(data.get('holiday')).strip() != '' else 4.0
+    leaves = float(data['availed_leaves']) if data.get('availed_leaves') is not None and str(data.get('availed_leaves')).strip() != '' else 0.0
+    od = float(data['sv_od']) if data.get('sv_od') is not None and str(data.get('sv_od')).strip() != '' else 0.0
+    
+    if data.get('total_pay_days') is not None and str(data.get('total_pay_days')).strip() != '':
+        pay_days = float(data['total_pay_days'])
+    else:
+        pay_days = min(31.0, bio + hol + leaves + od)
+
+    # 4. Salary and Deductions
+    arrears = float(data.get('arrears', 0.0) or 0.0)
+    it_ded = float(data.get('it_deduction', 0.0) or 0.0)
+    bus_ded = float(data.get('bus_deduction', 0.0) or 0.0)
+    mess_ded = float(data.get('mess_deduction', 0.0) or 0.0)
+    hostel_eb_ded = float(data.get('hostel_eb_deduction', 0.0) or 0.0)
+    other_ded = float(data.get('other_deductions', 0.0) or 0.0)
+
+    pt_val = float(data['pt_deduction']) if (data.get('pt_deduction') is not None and str(data.get('pt_deduction')).strip() != '') else None
+    wf_val = float(data['wf_deduction']) if (data.get('wf_deduction') is not None and str(data.get('wf_deduction')).strip() != '') else None
+
+    # Update monthly_records
+    cursor.execute("""
+    UPDATE monthly_records
+    SET biometric_days = ?,
+        holiday = ?,
+        availed_leaves = ?,
+        sv_od = ?,
+        total_pay_days = ?,
+        base_salary = ?,
+        arrears = ?,
+        epf_deduction = ?,
+        it_deduction = ?,
+        bus_deduction = ?,
+        mess_deduction = ?,
+        hostel_eb_deduction = ?,
+        other_deductions = ?,
+        pt_deduction = ?,
+        wf_deduction = ?
+    WHERE emp_code = ? AND month_year = ?
+    """, (
+        bio, hol, leaves, od, pay_days,
+        base_sal, arrears, default_epf, it_ded,
+        bus_ded, mess_ded, hostel_eb_ded, other_ded,
+        pt_val, wf_val,
+        emp_code, month_year
+    ))
+
+    conn.commit()
+    conn.close()
+
+    # Recalculate salary for this employee in the month
+    recalc_res = recalculate_monthly_salary(emp_code, month_year, pay_days)
+
+    return {
+        'status': 'success',
+        'emp_code': emp_code,
+        'month_year': month_year,
+        'record': recalc_res
+    }
+
+
 def bulk_salary_adjustment(month_year: str, category: Optional[str] = None, department: Optional[str] = None, 
                            field: str = 'arrears', value: float = 0.0, operation: str = 'add') -> dict:
     """
     Applies bulk adjustments to all matching staff for a given month.
-    field can be: 'arrears', 'epf_deduction', 'it_deduction', 'other_deductions', or 'grant_full_days'
+    field can be: 'arrears', 'epf_deduction', 'it_deduction', 'bus_deduction', 'mess_deduction', 'hostel_eb_deduction', 'other_deductions', or 'grant_full_days'
     operation can be: 'add' (adds to existing) or 'set' (overwrites)
     """
     conn = get_db()
     cursor = conn.cursor()
 
     query = """
-    SELECT m.emp_code, p.category, e.department, m.total_pay_days, m.arrears, m.epf_deduction, m.it_deduction, m.other_deductions
+    SELECT m.emp_code, p.category, e.department, m.total_pay_days, m.arrears, m.epf_deduction, m.it_deduction,
+           m.bus_deduction, m.mess_deduction, m.hostel_eb_deduction, m.other_deductions
     FROM monthly_records m
     JOIN employees e ON m.emp_code = e.emp_code
     LEFT JOIN salary_profiles p ON m.emp_code = p.emp_code
@@ -1137,7 +1299,7 @@ def bulk_salary_adjustment(month_year: str, category: Optional[str] = None, depa
         if field == 'grant_full_days':
             cursor.execute("UPDATE monthly_records SET total_pay_days = ? WHERE emp_code = ? AND month_year = ?", 
                            (float(month_days), ec, month_year))
-        elif field in ('arrears', 'epf_deduction', 'it_deduction', 'other_deductions'):
+        elif field in ('arrears', 'epf_deduction', 'it_deduction', 'bus_deduction', 'mess_deduction', 'hostel_eb_deduction', 'other_deductions'):
             curr_val = float(r[field] or 0.0)
             new_val = (curr_val + float(value)) if operation == 'add' else float(value)
             if new_val < 0:

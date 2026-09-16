@@ -6,6 +6,7 @@ let allSalaryRecords = [];
 let currentFilter = 'all';
 let currentDept = 'all';
 let currentCategory = 'all';
+let currentSort = 'code_asc';
 let activeOnly = true;
 let currentMonth = 'August -2026';
 let activePortfolioEmpCode = null;
@@ -45,12 +46,22 @@ function setupEventListeners() {
     });
   }
 
+  // Sort selector
+  const sortSelect = document.getElementById('sort-select');
+  if (sortSelect) {
+    sortSelect.addEventListener('change', (e) => {
+      currentSort = e.target.value;
+      renderTable();
+    });
+  }
+
   // Filter tabs
   document.querySelectorAll('.filter-tabs .tab-pill').forEach(btn => {
     btn.addEventListener('click', (e) => {
+      const pill = e.currentTarget;
       document.querySelectorAll('.filter-tabs .tab-pill').forEach(b => b.classList.remove('active'));
-      e.target.classList.add('active');
-      currentFilter = e.target.dataset.filter;
+      pill.classList.add('active');
+      currentFilter = pill.dataset.filter;
       renderTable();
     });
   });
@@ -334,6 +345,30 @@ function setupEventListeners() {
   const btnPkgSave = document.getElementById('btn-save-edit-pkg');
   if (btnPkgSave) btnPkgSave.addEventListener('click', saveEmployeePackage);
 
+  // Live calculation listeners for Complete Unified 360 Master Editor Modal
+  const editorLiveInputs = [
+    'edit-pkg-pay-days', 'edit-pkg-base-sal', 'edit-pkg-arrears',
+    'edit-pkg-pt', 'edit-pkg-wf', 'edit-pkg-epf', 'edit-pkg-it', 'edit-pkg-other-ded',
+    'edit-pkg-category'
+  ];
+  editorLiveInputs.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('input', updateModalLivePreview);
+      el.addEventListener('change', updateModalLivePreview);
+    }
+  });
+
+  const attLiveInputs = ['edit-pkg-bio-days', 'edit-pkg-holidays', 'edit-pkg-cl', 'edit-pkg-od'];
+  attLiveInputs.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('input', handleAttendanceDaysChange);
+      el.addEventListener('change', handleAttendanceDaysChange);
+    }
+  });
+
+
   // Formal Pay Slip Modal
   const slipModal = document.getElementById('modal-pay-slip');
   const btnSlipClose = document.getElementById('btn-close-pay-slip');
@@ -472,6 +507,31 @@ function setFilterPill(filterName) {
   if (tableSec) tableSec.scrollIntoView({ behavior: 'smooth' });
 }
 
+function handleHeaderSort(type) {
+  const sortSelect = document.getElementById('sort-select');
+  if (type === 'bus') {
+    currentSort = (currentSort === 'bus_desc') ? 'bus_asc' : 'bus_desc';
+  } else if (type === 'mess') {
+    currentSort = (currentSort === 'mess_desc') ? 'mess_asc' : 'mess_desc';
+  } else if (type === 'hostel') {
+    currentSort = (currentSort === 'hostel_desc') ? 'hostel_asc' : 'hostel_desc';
+  } else if (type === 'ded') {
+    currentSort = (currentSort === 'ded_desc') ? 'ded_asc' : 'ded_desc';
+  } else if (type === 'net') {
+    currentSort = (currentSort === 'net_desc') ? 'net_asc' : 'net_desc';
+  } else if (type === 'gross') {
+    currentSort = (currentSort === 'gross_desc') ? 'code_asc' : 'gross_desc';
+  } else if (type === 'days') {
+    currentSort = (currentSort === 'days_desc') ? 'code_asc' : 'days_desc';
+  } else if (type === 'name') {
+    currentSort = (currentSort === 'name_asc') ? 'code_asc' : 'name_asc';
+  } else if (type === 'code') {
+    currentSort = 'code_asc';
+  }
+  if (sortSelect) sortSelect.value = currentSort;
+  renderTable();
+}
+
 // Load available months from DB
 async function loadMonths() {
   try {
@@ -509,18 +569,14 @@ async function loadData() {
     const dataAtt = await resAtt.json();
     const dataSal = await resSal.json();
 
-    if (dataAtt.status === 'success') {
+    if (dataAtt.status === 'success' && dataSal.status === 'success') {
       allEmployees = dataAtt.employees || [];
-      populateDepartmentSelect(dataAtt.departments || []);
-    }
-
-    if (dataSal.status === 'success') {
       allSalaryRecords = dataSal.records || [];
-      populateCategorySelect(dataSal.categories || []);
+      buildUnifiedRecords(dataAtt.stats, dataSal.stats);
+      populateDepartmentSelect(dataAtt.departments);
+      if (dataSal.categories) populateCategorySelect(dataSal.categories);
+      renderTable();
     }
-
-    buildUnifiedRecords(dataAtt.stats || {}, dataSal.stats || {});
-    renderTable();
   } catch (err) {
     console.error('Error fetching unified data:', err);
     showToast('Error loading platform data');
@@ -550,10 +606,13 @@ function buildUnifiedRecords(attStats, salStats) {
     const wf = Number(sal.wf_deduction || 0);
     const epf = Number(sal.epf_deduction || 0);
     const it = Number(sal.it_deduction || 0);
+    const bus = Number(sal.bus_deduction || 0);
+    const hostel = Number(sal.hostel_eb_deduction || 0);
+    const mess = Number(sal.mess_deduction || 0);
     const other = Number(sal.other_deductions || 0);
     const totalDed = (sal.total_deductions !== undefined && sal.total_deductions !== null) 
                      ? Number(sal.total_deductions) 
-                     : (pt + wf + epf + it + other);
+                     : (pt + wf + epf + it + bus + hostel + mess + other);
     
     const netSalary = (sal.net_salary !== undefined && sal.net_salary !== null)
                       ? Number(sal.net_salary)
@@ -584,6 +643,9 @@ function buildUnifiedRecords(attStats, salStats) {
       wf_deduction: wf,
       epf_deduction: epf,
       it_deduction: it,
+      bus_deduction: bus,
+      hostel_eb_deduction: hostel,
+      mess_deduction: mess,
       other_deductions: other,
       total_deductions: totalDed,
       net_salary: netSalary,
@@ -629,6 +691,24 @@ function renderUnifiedKPIs(attStats, salStats) {
 
   const navVip = document.getElementById('nav-vip-count');
   if (navVip) navVip.textContent = attStats.vip_count || 0;
+
+  // Filter Pill Counter Badges
+  const busCount = unifiedRecords.filter(r => (Number(r.bus_deduction) || 0) > 0).length;
+  const messCount = unifiedRecords.filter(r => (Number(r.mess_deduction) || 0) > 0).length;
+  const hostelCount = unifiedRecords.filter(r => (Number(r.hostel_eb_deduction) || 0) > 0).length;
+  const dedCount = unifiedRecords.filter(r => (Number(r.total_deductions) || 0) > 0).length;
+
+  const elBus = document.getElementById('count-bus');
+  if (elBus) elBus.textContent = busCount;
+
+  const elMess = document.getElementById('count-mess');
+  if (elMess) elMess.textContent = messCount;
+
+  const elHostel = document.getElementById('count-hostel');
+  if (elHostel) elHostel.textContent = hostelCount;
+
+  const elDedPill = document.getElementById('count-ded');
+  if (elDedPill) elDedPill.textContent = dedCount;
 }
 
 function populateDepartmentSelect(depts) {
@@ -674,8 +754,8 @@ function renderTable() {
     thead.innerHTML = `
       <tr>
         <th style="width: 38px; text-align: center;" class="sticky-col-code">#</th>
-        <th style="width: 78px; text-align: center;" class="sticky-col-code">Emp Code</th>
-        <th style="min-width: 190px;">Staff Member</th>
+        <th style="width: 78px; text-align: center; cursor: pointer;" class="sticky-col-code" onclick="handleHeaderSort('code')" title="Sort by Emp Code">Emp Code ↕</th>
+        <th style="min-width: 190px; cursor: pointer;" onclick="handleHeaderSort('name')" title="Sort by Name (A → Z)">Staff Member ↕</th>
         <th style="width: 65px;">Dept</th>
         
         <!-- Biometric Attendance Columns -->
@@ -684,15 +764,18 @@ function renderTable() {
         <th style="width: 58px; text-align: center;" class="th-section-att" title="Casual Leave (CL) Slips - Click to edit directly">CL ✎</th>
         <th style="width: 58px; text-align: center;" class="th-section-att" title="On Duty (OD) Slips - Click to edit directly">OD ✎</th>
         <th style="width: 65px; text-align: center;" class="th-section-att" title="Loss of Pay (Unpaid Absent Days)">LOP</th>
-        <th style="width: 68px; text-align: center;" class="th-section-att" title="Final Payable Days used for Salary calculation - Click to edit directly">Pay Days ✎</th>
+        <th style="width: 68px; text-align: center; cursor: pointer;" class="th-section-att" onclick="handleHeaderSort('days')" title="Sort by Eligible Pay Days - Click to edit directly">Pay Days ✎ ↕</th>
         
         <!-- Financial Salary Columns -->
-        <th style="width: 90px; text-align: right;" class="th-section-sal" title="Monthly Base Salary Package - Click to edit directly">Base Rate ✎</th>
-        <th style="width: 90px; text-align: right;" class="th-section-sal" title="Earned Gross salary computed from Pay Days">Earned Gross</th>
-        <th style="width: 72px; text-align: center;" class="th-section-sal" title="AP Statutory Professional Tax Slab (> ₹20,000 = ₹200)">PT (₹200)</th>
-        <th style="width: 72px; text-align: center;" class="th-section-sal" title="SVCET Staff Welfare Fund (Teaching = ₹75, Non-Teaching = ₹30)">WF (₹75)</th>
-        <th style="width: 75px; text-align: right;" class="th-section-sal" title="Other Deductions (Mess, Bus, Advance) - Click to edit directly">Other Ded ✎</th>
-        <th style="width: 110px; text-align: right; background: #ecfdf5; color: #047857; font-weight: 800;">Net Pay (₹)</th>
+        <th style="width: 85px; text-align: right;" class="th-section-sal" title="Monthly Base Salary Package - Click to edit directly">Base Rate ✎</th>
+        <th style="width: 85px; text-align: right; cursor: pointer;" class="th-section-sal" onclick="handleHeaderSort('gross')" title="Sort by Earned Gross salary computed from Pay Days">Earned Gross ↕</th>
+        <th style="width: 65px; text-align: center;" class="th-section-sal" title="AP Statutory Professional Tax Slab (> ₹20,000 = ₹200)">PT (₹200)</th>
+        <th style="width: 65px; text-align: center;" class="th-section-sal" title="SVCET Staff Welfare Fund (Teaching = ₹75, Non-Teaching = ₹30)">WF (₹75)</th>
+        <th style="width: 68px; text-align: right; cursor: pointer;" class="th-section-sal" onclick="handleHeaderSort('bus')" title="Sort by Bus Transport Fee (Click to toggle High ↔ Low)">Bus ✎ ↕</th>
+        <th style="width: 68px; text-align: right; cursor: pointer;" class="th-section-sal" onclick="handleHeaderSort('hostel')" title="Sort by Hostel & Electricity Fee (Click to toggle High ↔ Low)">Hostel ✎ ↕</th>
+        <th style="width: 68px; text-align: right; cursor: pointer;" class="th-section-sal" onclick="handleHeaderSort('mess')" title="Sort by Mess & Food Charges (Click to toggle High ↔ Low)">Mess ✎ ↕</th>
+        <th style="width: 65px; text-align: right;" class="th-section-sal" title="Other Deductions (Advance, Misc) - Click to edit directly">Other ✎</th>
+        <th style="width: 105px; text-align: right; background: #ecfdf5; color: #047857; font-weight: 800; cursor: pointer;" onclick="handleHeaderSort('net')" title="Sort by Net Salary (Click to toggle High ↔ Low)">Net Pay (₹) ↕</th>
         
         <th style="width: 185px; text-align: center;">Actions</th>
       </tr>
@@ -701,8 +784,8 @@ function renderTable() {
     thead.innerHTML = `
       <tr>
         <th style="width: 40px; text-align: center;">#</th>
-        <th style="width: 80px; text-align: center;">Emp Code</th>
-        <th style="min-width: 210px;">Employee Name</th>
+        <th style="width: 80px; text-align: center; cursor: pointer;" onclick="handleHeaderSort('code')" title="Sort by Emp Code">Emp Code ↕</th>
+        <th style="min-width: 210px; cursor: pointer;" onclick="handleHeaderSort('name')" title="Sort by Name (A → Z)">Employee Name ↕</th>
         <th style="width: 95px;">Designation</th>
         <th style="width: 75px;">Dept</th>
         <th style="width: 60px; text-align: center;" title="Total Days in Month">Month</th>
@@ -710,7 +793,7 @@ function renderTable() {
         <th style="width: 65px; text-align: center;" title="Sundays & Institutional Holidays">Holiday</th>
         <th style="width: 68px; text-align: center;" title="Casual Leave (CL) Slips - Click to edit directly">CL ✎</th>
         <th style="width: 68px; text-align: center;" title="On Duty (OD) Slips - Click to edit directly">OD ✎</th>
-        <th style="width: 78px; text-align: center;" title="Total Payable Days - Click to edit directly">Pay Days ✎</th>
+        <th style="width: 78px; text-align: center; cursor: pointer;" onclick="handleHeaderSort('days')" title="Total Payable Days - Click to edit directly">Pay Days ✎ ↕</th>
         <th style="min-width: 150px;">Remarks / Policy</th>
         <th style="width: 195px; text-align: center;">Actions</th>
       </tr>
@@ -719,19 +802,22 @@ function renderTable() {
     thead.innerHTML = `
       <tr>
         <th style="width: 40px; text-align: center;">#</th>
-        <th style="width: 80px; text-align: center;">Emp Code</th>
-        <th style="min-width: 190px;">Staff Member</th>
-        <th style="width: 100px;">Category</th>
-        <th style="width: 75px;">Dept</th>
-        <th style="width: 75px; text-align: center;" title="Eligible Pay Days - Click to edit directly">Pay Days ✎</th>
-        <th style="width: 95px; text-align: right;" title="Base Monthly Package - Click to edit directly">Base Package ✎</th>
-        <th style="width: 95px; text-align: right;" title="Earned Gross Salary">Earned Gross</th>
-        <th style="width: 75px; text-align: center;" title="AP State Professional Tax">PT (₹200)</th>
-        <th style="width: 75px; text-align: center;" title="SVCET Staff Welfare Fund">WF (₹75)</th>
-        <th style="width: 80px; text-align: right;" title="Other Deductions - Click to edit directly">Other Ded ✎</th>
-        <th style="width: 85px; text-align: right;" title="Total Statutory & Other Deductions">Total Ded</th>
-        <th style="width: 115px; text-align: right; background: #ecfdf5; color: #047857; font-weight: 800;">Net Salary (₹)</th>
-        <th style="min-width: 160px;">Bank Account & IFSC</th>
+        <th style="width: 80px; text-align: center; cursor: pointer;" onclick="handleHeaderSort('code')" title="Sort by Emp Code">Emp Code ↕</th>
+        <th style="min-width: 190px; cursor: pointer;" onclick="handleHeaderSort('name')" title="Sort by Name (A → Z)">Staff Member ↕</th>
+        <th style="width: 95px;">Category</th>
+        <th style="width: 70px;">Dept</th>
+        <th style="width: 70px; text-align: center; cursor: pointer;" onclick="handleHeaderSort('days')" title="Eligible Pay Days - Click to edit directly">Pay Days ✎ ↕</th>
+        <th style="width: 90px; text-align: right;" title="Base Monthly Package - Click to edit directly">Base Rate ✎</th>
+        <th style="width: 90px; text-align: right; cursor: pointer;" onclick="handleHeaderSort('gross')" title="Earned Gross Salary">Earned Gross ↕</th>
+        <th style="width: 68px; text-align: center;" title="AP State Professional Tax">PT (₹200)</th>
+        <th style="width: 68px; text-align: center;" title="SVCET Staff Welfare Fund">WF (₹75)</th>
+        <th style="width: 70px; text-align: right; cursor: pointer;" onclick="handleHeaderSort('bus')" title="Sort by Bus / Transport Fee (Click to toggle High ↔ Low)">Bus ✎ ↕</th>
+        <th style="width: 70px; text-align: right; cursor: pointer;" onclick="handleHeaderSort('hostel')" title="Sort by Hostel / EB Charges (Click to toggle High ↔ Low)">Hostel ✎ ↕</th>
+        <th style="width: 70px; text-align: right; cursor: pointer;" onclick="handleHeaderSort('mess')" title="Sort by Mess / Food Charges (Click to toggle High ↔ Low)">Mess ✎ ↕</th>
+        <th style="width: 70px; text-align: right;" title="Other / Advance Deductions - Click to edit directly">Other ✎</th>
+        <th style="width: 80px; text-align: right; cursor: pointer;" onclick="handleHeaderSort('ded')" title="Sort by Total Statutory & Institutional Deductions">Total Ded ↕</th>
+        <th style="width: 110px; text-align: right; background: #ecfdf5; color: #047857; font-weight: 800; cursor: pointer;" onclick="handleHeaderSort('net')" title="Sort by Net Salary (Click to toggle High ↔ Low)">Net Salary (₹) ↕</th>
+        <th style="min-width: 150px;">Bank Account & IFSC</th>
         <th style="width: 145px; text-align: center;">Actions</th>
       </tr>
     `;
@@ -746,6 +832,10 @@ function renderTable() {
     if (currentFilter === 'teaching' && emp.category !== 'Teaching') return false;
     if (currentFilter === 'non-teaching' && emp.category !== 'Non-Teaching') return false;
     if (currentFilter === 'support' && !['Transport', 'Attender', 'Garden Staff', 'Security'].includes(emp.category)) return false;
+    if (currentFilter === 'bus' && (!emp.bus_deduction || Number(emp.bus_deduction) <= 0)) return false;
+    if (currentFilter === 'mess' && (!emp.mess_deduction || Number(emp.mess_deduction) <= 0)) return false;
+    if (currentFilter === 'hostel' && (!emp.hostel_eb_deduction || Number(emp.hostel_eb_deduction) <= 0)) return false;
+    if (currentFilter === 'deductions' && (!emp.total_deductions || Number(emp.total_deductions) <= 0)) return false;
     if (currentFilter === 'review' && !emp.needs_review && emp.lop_days <= 0) return false;
     if (currentFilter === 'vip' && !emp.is_vip && emp.attendance_policy === 'standard') return false;
     if (currentFilter === 'missing_bank') {
@@ -762,6 +852,44 @@ function renderTable() {
     return true;
   });
 
+  // Apply Sorting
+  filtered.sort((a, b) => {
+    switch (currentSort) {
+      case 'mess_desc':
+        return (Number(b.mess_deduction) || 0) - (Number(a.mess_deduction) || 0);
+      case 'mess_asc':
+        return (Number(a.mess_deduction) || 0) - (Number(b.mess_deduction) || 0);
+      case 'bus_desc':
+        return (Number(b.bus_deduction) || 0) - (Number(a.bus_deduction) || 0);
+      case 'bus_asc':
+        return (Number(a.bus_deduction) || 0) - (Number(b.bus_deduction) || 0);
+      case 'hostel_desc':
+        return (Number(b.hostel_eb_deduction) || 0) - (Number(a.hostel_eb_deduction) || 0);
+      case 'hostel_asc':
+        return (Number(a.hostel_eb_deduction) || 0) - (Number(b.hostel_eb_deduction) || 0);
+      case 'ded_desc':
+        return (Number(b.total_deductions) || 0) - (Number(a.total_deductions) || 0);
+      case 'ded_asc':
+        return (Number(a.total_deductions) || 0) - (Number(b.total_deductions) || 0);
+      case 'net_desc':
+        return (Number(b.net_salary) || 0) - (Number(a.net_salary) || 0);
+      case 'net_asc':
+        return (Number(a.net_salary) || 0) - (Number(b.net_salary) || 0);
+      case 'gross_desc':
+        return (Number(b.gross_salary) || 0) - (Number(a.gross_salary) || 0);
+      case 'days_desc':
+        return (Number(b.total_pay_days) || 0) - (Number(a.total_pay_days) || 0);
+      case 'name_asc':
+        return (a.name || '').localeCompare(b.name || '');
+      case 'code_asc':
+      default: {
+        const numA = parseInt(String(a.emp_code).replace(/\D/g, '')) || 0;
+        const numB = parseInt(String(b.emp_code).replace(/\D/g, '')) || 0;
+        return numA !== numB ? numA - numB : String(a.emp_code).localeCompare(String(b.emp_code));
+      }
+    }
+  });
+
   const totalCols = (mode === 'unified') ? 17 : ((mode === 'attendance') ? 13 : 15);
 
   if (filtered.length === 0) {
@@ -771,9 +899,10 @@ function renderTable() {
 
   let lastDept = null;
   let sNo = 1;
+  const showDeptHeader = (currentSort === 'code_asc' && currentDept === 'all');
 
   filtered.forEach(emp => {
-    if (emp.department !== lastDept && currentDept === 'all') {
+    if (showDeptHeader && emp.department !== lastDept) {
       lastDept = emp.department;
       const deptRow = document.createElement('tr');
       deptRow.className = 'dept-section-row';
@@ -872,12 +1001,39 @@ function renderTable() {
           </span>
         </td>
 
+        <!-- Bus Transport Deduction -->
+        <td style="text-align: right;">
+          <input type="number" step="10" min="0" 
+                 class="cell-sal-input input-ded" 
+                 value="${emp.bus_deduction || 0}" 
+                 title="Bus Transport Fee - Click to edit"
+                 onchange="handleUnifiedInlineEdit('${emp.emp_code}', 'bus_deduction', this.value, this)">
+        </td>
+
+        <!-- Hostel & EB Deduction -->
+        <td style="text-align: right;">
+          <input type="number" step="10" min="0" 
+                 class="cell-sal-input input-ded" 
+                 value="${emp.hostel_eb_deduction || 0}" 
+                 title="Hostel & Electricity Fee - Click to edit"
+                 onchange="handleUnifiedInlineEdit('${emp.emp_code}', 'hostel_eb_deduction', this.value, this)">
+        </td>
+
+        <!-- Mess & Food Deduction -->
+        <td style="text-align: right;">
+          <input type="number" step="10" min="0" 
+                 class="cell-sal-input input-ded" 
+                 value="${emp.mess_deduction || 0}" 
+                 title="Mess & Food Charges - Click to edit"
+                 onchange="handleUnifiedInlineEdit('${emp.emp_code}', 'mess_deduction', this.value, this)">
+        </td>
+
         <!-- Editable Other Deductions -->
         <td style="text-align: right;">
           <input type="number" step="10" min="0" 
                  class="cell-sal-input input-ded" 
                  value="${emp.other_deductions || 0}" 
-                 title="Other Deductions (Mess, Bus, Electricity, Advance) - Click to edit directly"
+                 title="Other Deductions (Advance, Misc) - Click to edit directly"
                  onchange="handleUnifiedInlineEdit('${emp.emp_code}', 'other_deductions', this.value, this)">
         </td>
 
@@ -1034,12 +1190,39 @@ function renderTable() {
           </span>
         </td>
 
+        <!-- Bus Deduction -->
+        <td style="text-align: right;">
+          <input type="number" step="10" min="0" 
+                 class="cell-sal-input input-ded" 
+                 value="${emp.bus_deduction || 0}" 
+                 title="Bus Transport Fee - Click to edit"
+                 onchange="handleUnifiedInlineEdit('${emp.emp_code}', 'bus_deduction', this.value, this)">
+        </td>
+
+        <!-- Hostel & EB Deduction -->
+        <td style="text-align: right;">
+          <input type="number" step="10" min="0" 
+                 class="cell-sal-input input-ded" 
+                 value="${emp.hostel_eb_deduction || 0}" 
+                 title="Hostel & Electricity Fee - Click to edit"
+                 onchange="handleUnifiedInlineEdit('${emp.emp_code}', 'hostel_eb_deduction', this.value, this)">
+        </td>
+
+        <!-- Mess Deduction -->
+        <td style="text-align: right;">
+          <input type="number" step="10" min="0" 
+                 class="cell-sal-input input-ded" 
+                 value="${emp.mess_deduction || 0}" 
+                 title="Mess & Food Charges - Click to edit"
+                 onchange="handleUnifiedInlineEdit('${emp.emp_code}', 'mess_deduction', this.value, this)">
+        </td>
+
         <!-- Editable Other Deductions -->
         <td style="text-align: right;">
           <input type="number" step="10" min="0" 
                  class="cell-sal-input input-ded" 
                  value="${emp.other_deductions || 0}" 
-                 title="Other Deductions (Mess, Bus, Electricity) - Click to edit"
+                 title="Other Deductions (Advance, Misc) - Click to edit"
                  onchange="handleUnifiedInlineEdit('${emp.emp_code}', 'other_deductions', this.value, this)">
         </td>
 
@@ -1155,11 +1338,17 @@ async function handleUnifiedInlineEdit(empCode, field, value, inputEl) {
           emp.gross_salary = Math.round((numVal / emp.month_days) * emp.total_pay_days);
           emp.pt_deduction = emp.gross_salary > 20000 ? 200 : (emp.gross_salary > 15000 ? 150 : 0);
           emp.wf_deduction = (emp.category === 'Teaching') ? (emp.gross_salary > 0 ? 75 : 0) : (emp.gross_salary > 0 ? 30 : 0);
+        } else if (field === 'bus_deduction') {
+          emp.bus_deduction = numVal;
+        } else if (field === 'hostel_eb_deduction') {
+          emp.hostel_eb_deduction = numVal;
+        } else if (field === 'mess_deduction') {
+          emp.mess_deduction = numVal;
         } else if (field === 'other_deductions') {
           emp.other_deductions = numVal;
         }
 
-        emp.total_deductions = (emp.pt_deduction || 0) + (emp.wf_deduction || 0) + (emp.epf_deduction || 0) + (emp.it_deduction || 0) + (emp.other_deductions || 0);
+        emp.total_deductions = (emp.pt_deduction || 0) + (emp.wf_deduction || 0) + (emp.epf_deduction || 0) + (emp.it_deduction || 0) + (emp.bus_deduction || 0) + (emp.hostel_eb_deduction || 0) + (emp.mess_deduction || 0) + (emp.other_deductions || 0);
         emp.net_salary = Math.max(0, emp.gross_salary - emp.total_deductions);
 
         // Update DOM row elements directly for instant feedback
@@ -1355,7 +1544,29 @@ function renderPortfolioModal(pf) {
   if (psEpf) psEpf.textContent = f(curSal.epf_deduction);
 
   const psIt = document.getElementById('pf-pay-it');
-  if (psIt) psIt.textContent = f(curSal.other_deductions);
+  if (psIt) psIt.textContent = f(curSal.it_deduction || 0);
+
+  const psBus = document.getElementById('pf-pay-bus');
+  if (psBus) psBus.textContent = f(curSal.bus_deduction || 0);
+
+  const psHostel = document.getElementById('pf-pay-hostel');
+  if (psHostel) psHostel.textContent = f(curSal.hostel_eb_deduction || 0);
+
+  const psMess = document.getElementById('pf-pay-mess');
+  if (psMess) psMess.textContent = f(curSal.mess_deduction || 0);
+
+  const psOther = document.getElementById('pf-pay-other');
+  if (psOther) psOther.textContent = f(curSal.other_deductions || 0);
+
+  // Hide zero institutional deductions rows in slip
+  const rowBus = document.getElementById('pf-pay-bus-row');
+  if (rowBus) rowBus.style.display = (curSal.bus_deduction > 0) ? 'flex' : 'none';
+  const rowHostel = document.getElementById('pf-pay-hostel-row');
+  if (rowHostel) rowHostel.style.display = (curSal.hostel_eb_deduction > 0) ? 'flex' : 'none';
+  const rowMess = document.getElementById('pf-pay-mess-row');
+  if (rowMess) rowMess.style.display = (curSal.mess_deduction > 0) ? 'flex' : 'none';
+  const rowOther = document.getElementById('pf-pay-other-row');
+  if (rowOther) rowOther.style.display = (curSal.other_deductions > 0) ? 'flex' : 'none';
 
   const psDed = document.getElementById('pf-pay-ded');
   if (psDed) psDed.textContent = f(curSal.total_deductions);
@@ -1557,26 +1768,148 @@ function showToast(msg) {
 }
 
 // -----------------------------------------------------------------------------
-// 1. EDIT EMPLOYEE PACKAGE & BANKING MASTER
+// 1. UNIFIED 360° MASTER PROFILE, ATTENDANCE & SALARY EDITOR
 // -----------------------------------------------------------------------------
 function openEditPackageModal(empCode) {
-  const emp = allSalaryRecords.find(e => e.emp_code === empCode);
+  const emp = unifiedRecords.find(e => String(e.emp_code) === String(empCode)) || 
+              allSalaryRecords.find(e => String(e.emp_code) === String(empCode));
   if (!emp) return;
 
+  const monthDays = emp.month_days || 31;
   document.getElementById('edit-pkg-emp-code').value = emp.emp_code;
-  document.getElementById('edit-pkg-title').textContent = `Edit Package: ${emp.name}`;
-  document.getElementById('edit-pkg-subtitle').textContent = `Emp Code: ${emp.emp_code} | Department: ${emp.department}`;
-  document.getElementById('edit-pkg-name').value = emp.name;
+  document.getElementById('edit-pkg-month-days-val').value = monthDays;
+  document.getElementById('edit-pkg-title').textContent = `Edit Staff Profile: ${emp.name}`;
+  document.getElementById('edit-pkg-subtitle').textContent = `Emp Code: ${emp.emp_code} | Department: ${emp.department || 'General'} | Category: ${emp.category || 'Staff'}`;
+  
+  const chip = document.getElementById('edit-pkg-month-chip');
+  if (chip) chip.textContent = currentMonth;
+  const infoBadge = document.getElementById('edit-pkg-month-info');
+  if (infoBadge) infoBadge.textContent = `${currentMonth} (${monthDays} Days)`;
+
+  // Section 1: Staff Profile & Policy
+  document.getElementById('edit-pkg-name').value = emp.name || '';
   document.getElementById('edit-pkg-category').value = emp.category || 'Teaching';
   document.getElementById('edit-pkg-desig').value = emp.designation || '';
   document.getElementById('edit-pkg-dept').value = emp.department || '';
+  document.getElementById('edit-pkg-policy').value = emp.attendance_policy || (emp.is_vip ? 'exempt_full' : 'standard');
+
+  // Section 2: Attendance Days
+  document.getElementById('edit-pkg-bio-days').value = emp.present_days !== undefined ? emp.present_days : (emp.biometric_days || 0);
+  document.getElementById('edit-pkg-holidays').value = emp.holiday !== undefined ? emp.holiday : 4;
+  document.getElementById('edit-pkg-cl').value = emp.cl_days !== undefined ? emp.cl_days : (emp.availed_leaves || 0);
+  document.getElementById('edit-pkg-od').value = emp.od_days !== undefined ? emp.od_days : (emp.sv_od || 0);
+  document.getElementById('edit-pkg-pay-days').value = emp.total_pay_days !== undefined ? emp.total_pay_days : monthDays;
+
+  // Section 3: Salary & Earnings
   document.getElementById('edit-pkg-base-sal').value = emp.base_salary || 0;
+  document.getElementById('edit-pkg-arrears').value = emp.arrears || 0;
+
+  // Section 4: Deductions Breakdown
+  document.getElementById('edit-pkg-pt').value = emp.pt_deduction !== undefined ? emp.pt_deduction : 200;
+  document.getElementById('edit-pkg-wf').value = emp.wf_deduction !== undefined ? emp.wf_deduction : (emp.category === 'Teaching' ? 75 : 30);
   document.getElementById('edit-pkg-epf').value = emp.epf_deduction || 0;
+  document.getElementById('edit-pkg-it').value = emp.it_deduction || 0;
+  document.getElementById('edit-pkg-bus').value = emp.bus_deduction || 0;
+  document.getElementById('edit-pkg-hostel-eb').value = emp.hostel_eb_deduction || 0;
+  document.getElementById('edit-pkg-mess').value = emp.mess_deduction || 0;
+  document.getElementById('edit-pkg-other-ded').value = emp.other_deductions || 0;
+
+  // Section 6: Banking & Credentials
   document.getElementById('edit-pkg-bank-name').value = emp.bank_name || 'PNB';
   document.getElementById('edit-pkg-acc-no').value = (emp.account_no && emp.account_no !== 'Pending') ? emp.account_no : '';
   document.getElementById('edit-pkg-ifsc').value = emp.ifsc_code || 'PUNB0401700';
 
+  // Wire Revert button in modal
+  const btnRevertModal = document.getElementById('btn-revert-from-modal');
+  if (btnRevertModal) {
+    btnRevertModal.onclick = () => {
+      document.getElementById('modal-employee-package').classList.remove('active');
+      revertToOriginal(emp.emp_code);
+    };
+  }
+
+  // Recalculate preview immediately
+  updateModalLivePreview();
+
+  // Show Modal
   document.getElementById('modal-employee-package').classList.add('active');
+}
+
+// Live calculation preview inside modal as user changes days, base, arrears, or deductions
+function updateModalLivePreview() {
+  const monthDays = parseFloat(document.getElementById('edit-pkg-month-days-val')?.value || 31);
+  const payDays = parseFloat(document.getElementById('edit-pkg-pay-days')?.value || 0);
+  const baseSalary = parseFloat(document.getElementById('edit-pkg-base-sal')?.value || 0);
+  const arrears = parseFloat(document.getElementById('edit-pkg-arrears')?.value || 0);
+  const category = document.getElementById('edit-pkg-category')?.value || 'Teaching';
+
+  // 1. Compute LOP Days
+  const lopDays = Math.max(0, Math.round((monthDays - payDays) * 10) / 10);
+  const lopEl = document.getElementById('edit-pkg-lop-display');
+  if (lopEl) {
+    lopEl.textContent = `${lopDays}d LOP`;
+    lopEl.style.color = lopDays > 0 ? '#e11d48' : '#10b981';
+  }
+
+  // 2. Compute Gross
+  let gross = 0;
+  if (baseSalary > 0 && payDays > 0 && monthDays > 0) {
+    if (category.toLowerCase().includes('teaching') && !category.toLowerCase().includes('non')) {
+      const basic = Math.round(baseSalary / 1.5331);
+      const earnedBasic = (basic / monthDays) * payDays;
+      const da = Math.round(earnedBasic * 0.3731);
+      const hra = Math.round(earnedBasic * 0.16);
+      gross = Math.round(earnedBasic + da + hra + arrears);
+    } else {
+      gross = Math.ceil((baseSalary / monthDays) * payDays + arrears);
+    }
+  } else if (arrears > 0) {
+    gross = arrears;
+  }
+  const grossEl = document.getElementById('edit-pkg-gross-preview');
+  if (grossEl) grossEl.textContent = '₹' + gross.toLocaleString('en-IN');
+
+  // 3. Deductions
+  let pt = parseFloat(document.getElementById('edit-pkg-pt')?.value);
+  if (isNaN(pt)) {
+    pt = gross > 20000 ? 200 : (gross > 15000 ? 150 : 0);
+  }
+  let wf = parseFloat(document.getElementById('edit-pkg-wf')?.value);
+  if (isNaN(wf)) {
+    wf = (category.toLowerCase().includes('teaching') && !category.toLowerCase().includes('non')) ? (gross > 0 ? 75 : 0) : (gross > 0 ? 30 : 0);
+  }
+  const epf = parseFloat(document.getElementById('edit-pkg-epf')?.value || 0);
+  const it = parseFloat(document.getElementById('edit-pkg-it')?.value || 0);
+  const bus = parseFloat(document.getElementById('edit-pkg-bus')?.value || 0);
+  const hostel = parseFloat(document.getElementById('edit-pkg-hostel-eb')?.value || 0);
+  const mess = parseFloat(document.getElementById('edit-pkg-mess')?.value || 0);
+  const other = parseFloat(document.getElementById('edit-pkg-other-ded')?.value || 0);
+
+  const totalDed = pt + wf + epf + it + bus + hostel + mess + other;
+  const dedEl = document.getElementById('edit-pkg-total-ded-preview');
+  if (dedEl) dedEl.textContent = '₹' + Math.round(totalDed).toLocaleString('en-IN');
+
+  // 4. Net Payout
+  const net = Math.max(0, gross - totalDed);
+  const netEl = document.getElementById('edit-pkg-net-preview');
+  if (netEl) netEl.textContent = '₹' + Math.round(net).toLocaleString('en-IN');
+
+  const bdText = document.getElementById('edit-pkg-breakdown-text');
+  if (bdText) bdText.textContent = `Gross ₹${Math.round(gross).toLocaleString('en-IN')} - Deductions ₹${Math.round(totalDed).toLocaleString('en-IN')}`;
+}
+
+// Auto-sum payable days when editing biometric, holiday, CL, or OD
+function handleAttendanceDaysChange() {
+  const bio = parseFloat(document.getElementById('edit-pkg-bio-days')?.value || 0);
+  const hol = parseFloat(document.getElementById('edit-pkg-holidays')?.value || 0);
+  const cl = parseFloat(document.getElementById('edit-pkg-cl')?.value || 0);
+  const od = parseFloat(document.getElementById('edit-pkg-od')?.value || 0);
+  const monthDays = parseFloat(document.getElementById('edit-pkg-month-days-val')?.value || 31);
+
+  const sum = Math.min(monthDays, Math.round((bio + hol + cl + od) * 10) / 10);
+  const payDaysInput = document.getElementById('edit-pkg-pay-days');
+  if (payDaysInput) payDaysInput.value = sum;
+  updateModalLivePreview();
 }
 
 async function saveEmployeePackage(e) {
@@ -1584,19 +1917,38 @@ async function saveEmployeePackage(e) {
   const empCode = document.getElementById('edit-pkg-emp-code').value;
   const payload = {
     emp_code: empCode,
+    month_year: currentMonth,
     name: document.getElementById('edit-pkg-name').value.trim(),
     category: document.getElementById('edit-pkg-category').value,
     designation: document.getElementById('edit-pkg-desig').value.trim(),
     department: document.getElementById('edit-pkg-dept').value.trim(),
+    attendance_policy: document.getElementById('edit-pkg-policy').value,
+
+    biometric_days: parseFloat(document.getElementById('edit-pkg-bio-days').value || 0),
+    holiday: parseFloat(document.getElementById('edit-pkg-holidays').value || 0),
+    availed_leaves: parseFloat(document.getElementById('edit-pkg-cl').value || 0),
+    sv_od: parseFloat(document.getElementById('edit-pkg-od').value || 0),
+    total_pay_days: parseFloat(document.getElementById('edit-pkg-pay-days').value || 0),
+
     base_salary: parseFloat(document.getElementById('edit-pkg-base-sal').value || 0),
-    epf_amount: parseFloat(document.getElementById('edit-pkg-epf').value || 0),
+    arrears: parseFloat(document.getElementById('edit-pkg-arrears').value || 0),
+
+    pt_deduction: parseFloat(document.getElementById('edit-pkg-pt').value || 0),
+    wf_deduction: parseFloat(document.getElementById('edit-pkg-wf').value || 0),
+    epf_deduction: parseFloat(document.getElementById('edit-pkg-epf').value || 0),
+    it_deduction: parseFloat(document.getElementById('edit-pkg-it').value || 0),
+    bus_deduction: parseFloat(document.getElementById('edit-pkg-bus').value || 0),
+    hostel_eb_deduction: parseFloat(document.getElementById('edit-pkg-hostel-eb').value || 0),
+    mess_deduction: parseFloat(document.getElementById('edit-pkg-mess').value || 0),
+    other_deductions: parseFloat(document.getElementById('edit-pkg-other-ded').value || 0),
+
     bank_name: document.getElementById('edit-pkg-bank-name').value.trim(),
     account_no: document.getElementById('edit-pkg-acc-no').value.trim(),
     ifsc_code: document.getElementById('edit-pkg-ifsc').value.trim()
   };
 
   try {
-    const res = await fetch('/api/salary/update-profile-full', {
+    const res = await fetch('/api/employee/update-all-unified', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -1604,7 +1956,7 @@ async function saveEmployeePackage(e) {
     const data = await res.json();
     if (data.status === 'success') {
       document.getElementById('modal-employee-package').classList.remove('active');
-      showToast(`✔ Updated Master Package for ${payload.name}`);
+      showToast(`✔ Saved 360° Profile, Attendance & Salary for ${payload.name}`);
       await loadData();
     } else {
       alert('Error updating profile: ' + (data.message || 'Unknown error'));
@@ -1613,6 +1965,7 @@ async function saveEmployeePackage(e) {
     alert('Network error saving employee package');
   }
 }
+
 
 // -----------------------------------------------------------------------------
 // 2. BULK / MASS SALARY ADJUSTMENTS

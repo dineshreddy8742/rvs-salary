@@ -401,6 +401,23 @@ def update_salary_profile_full():
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+@app.route('/api/employee/update-all-unified', methods=['POST'])
+def update_employee_unified_all():
+    """Unified 360-degree update: profile, attendance, salary overrides, deductions, and bank info."""
+    data = request.json or {}
+    emp_code = data.get('emp_code')
+    month_year = data.get('month_year', 'August -2026')
+
+    if not emp_code:
+        return jsonify({'status': 'error', 'message': 'emp_code is required'}), 400
+
+    try:
+        res = database.update_employee_unified_all(emp_code, month_year, data)
+        return jsonify(res)
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
 @app.route('/api/salary/bulk-adjust', methods=['POST'])
 def bulk_salary_adjust():
     """Batch adjustment across category or department."""

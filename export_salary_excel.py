@@ -65,7 +65,7 @@ def export_salary_to_xlsx(records: List[Dict[str, Any]], output_filepath: str, m
     teach_cols = [
         "S.No", "Emp Code", "Name of the Staff", "Designation", "Dept",
         "Total Salary", "Basic", "No of Days", "Earned Basic", "DA (37.31%)", "HRA (16%)",
-        "Arrears", "Gross Total", "EPF", "IT", "PT", "WF", "Tot Ded", "Net Salary",
+        "Arrears", "Gross Total", "EPF", "IT", "PT", "WF", "Bus Fee", "Hostel/EB", "Mess Fee", "Other Ded", "Tot Ded", "Net Salary",
         "Bank Name", "Account Number", "IFSC Code"
     ]
     ws_teach.append(teach_cols)
@@ -97,6 +97,10 @@ def export_salary_to_xlsx(records: List[Dict[str, Any]], output_filepath: str, m
             r.get('it_deduction', 0.0),
             r.get('pt_deduction', 0.0),
             r.get('wf_deduction', 0.0),
+            r.get('bus_deduction', 0.0),
+            r.get('hostel_eb_deduction', 0.0),
+            r.get('mess_deduction', 0.0),
+            r.get('other_deductions', 0.0),
             r.get('total_deductions', 0.0),
             r.get('net_salary', 0.0),
             r.get('bank_name', 'PNB'),
@@ -113,12 +117,12 @@ def export_salary_to_xlsx(records: List[Dict[str, Any]], output_filepath: str, m
                 c.fill = fill_zebra
             if c_idx in [1, 2, 8]:
                 c.alignment = align_center
-            elif c_idx in [3, 4, 5, 20, 21, 22]:
+            elif c_idx in [3, 4, 5, 24, 25, 26]:
                 c.alignment = align_left
             else:
                 c.alignment = align_right
                 c.number_format = '#,##0.00'
-            if c_idx == 19: # Net Salary
+            if c_idx == 23: # Net Salary
                 c.font = font_currency
         s_no += 1
 
@@ -130,8 +134,8 @@ def export_salary_to_xlsx(records: List[Dict[str, Any]], output_filepath: str, m
     ws_nt.append([f"Non-Teaching - Salary Bill for the Month of {month_year_str}"])
     ws_nt.append([])
 
-    ws_nt.merge_cells('A1:R1')
-    ws_nt.merge_cells('A2:R2')
+    ws_nt.merge_cells('A1:U1')
+    ws_nt.merge_cells('A2:U2')
     ws_nt['A1'].font = font_title
     ws_nt['A1'].alignment = align_center
     ws_nt['A2'].font = font_sub
@@ -140,7 +144,7 @@ def export_salary_to_xlsx(records: List[Dict[str, Any]], output_filepath: str, m
     nt_cols = [
         "Sl. No.", "Emp Code", "Name of the Staff", "Designation", "Dept",
         "Consolidated Salary", "No of Days", "Arrears", "Gross Total",
-        "EPF", "IT", "PT", "WF", "Other Ded", "Tot Ded", "Net Salary",
+        "EPF", "IT", "PT", "WF", "Bus Fee", "Hostel/EB", "Mess Fee", "Other Ded", "Tot Ded", "Net Salary",
         "Bank Name", "Account Number", "IFSC Code"
     ]
     ws_nt.append(nt_cols)
@@ -168,6 +172,9 @@ def export_salary_to_xlsx(records: List[Dict[str, Any]], output_filepath: str, m
             r.get('it_deduction', 0.0),
             r.get('pt_deduction', 0.0),
             r.get('wf_deduction', 0.0),
+            r.get('bus_deduction', 0.0),
+            r.get('hostel_eb_deduction', 0.0),
+            r.get('mess_deduction', 0.0),
             r.get('other_deductions', 0.0),
             r.get('total_deductions', 0.0),
             r.get('net_salary', 0.0),
@@ -185,12 +192,12 @@ def export_salary_to_xlsx(records: List[Dict[str, Any]], output_filepath: str, m
                 c.fill = fill_zebra
             if c_idx in [1, 2, 7]:
                 c.alignment = align_center
-            elif c_idx in [3, 4, 5, 17, 18, 19]:
+            elif c_idx in [3, 4, 5, 20, 21, 22]:
                 c.alignment = align_left
             else:
                 c.alignment = align_right
                 c.number_format = '#,##0.00'
-            if c_idx == 16: # Net Salary
+            if c_idx == 19: # Net Salary
                 c.font = font_currency
         s_no += 1
 
@@ -202,8 +209,8 @@ def export_salary_to_xlsx(records: List[Dict[str, Any]], output_filepath: str, m
     ws_sup.append([f"Transport, Attenders, Security & Garden Staff - Salary Bill for {month_year_str}"])
     ws_sup.append([])
 
-    ws_sup.merge_cells('A1:R1')
-    ws_sup.merge_cells('A2:R2')
+    ws_sup.merge_cells('A1:U1')
+    ws_sup.merge_cells('A2:U2')
     ws_sup['A1'].font = font_title
     ws_sup['A1'].alignment = align_center
     ws_sup['A2'].font = font_sub
@@ -234,6 +241,9 @@ def export_salary_to_xlsx(records: List[Dict[str, Any]], output_filepath: str, m
             r.get('it_deduction', 0.0),
             r.get('pt_deduction', 0.0),
             r.get('wf_deduction', 0.0),
+            r.get('bus_deduction', 0.0),
+            r.get('hostel_eb_deduction', 0.0),
+            r.get('mess_deduction', 0.0),
             r.get('other_deductions', 0.0),
             r.get('total_deductions', 0.0),
             r.get('net_salary', 0.0),

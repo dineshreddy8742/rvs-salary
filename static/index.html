@@ -16,33 +16,34 @@
   <!-- Executive University Navigation Header -->
   <header class="navbar-wrapper">
     <div class="executive-header-card">
-      <!-- Main Tier: Official College Brand, Active Month Selector, & Primary Actions -->
+
+      <!-- ROW 1: Brand | Month | Core Actions -->
       <div class="header-main-row">
-        <!-- Official RVS University Logo & Portal Identity -->
+
+        <!-- Brand: Logo + University Name + Tagline side by side -->
         <div class="brand-cluster">
-          <a href="/" class="univ-logo-wrap" title="RVS University Attendance & Salary Platform">
-            <img src="rvs-logo.png" alt="RVS University - Chittoor" class="univ-brand-logo">
+          <a href="/" class="univ-logo-wrap" title="RVS University Payroll Platform">
+            <img src="rvs-logo.png" alt="RVS University" class="univ-brand-logo">
           </a>
-          <div class="brand-separator"></div>
-          <div class="portal-tagline">
-            <div class="portal-chip">
+          <div class="brand-text-block">
+            <div class="brand-title">RVS University – Chittoor</div>
+            <div class="brand-subtitle">
               <span class="pulse-live-dot"></span>
-              <span class="portal-chip-text">FACULTY & STAFF PAYROLL</span>
+              Faculty &amp; Staff Payroll &nbsp;·&nbsp; Multi-Month Ledger
             </div>
-            <div class="portal-meta">Multi-Month & Yearly Ledger</div>
           </div>
         </div>
 
-        <!-- High-Visibility Active Month Picker Card -->
+        <!-- Month Picker -->
         <div class="month-picker-box">
           <div class="month-box-label">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
               <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
               <line x1="16" y1="2" x2="16" y2="6"></line>
               <line x1="8" y1="2" x2="8" y2="6"></line>
               <line x1="3" y1="10" x2="21" y2="10"></line>
             </svg>
-            <span>ACTIVE MONTH</span>
+            <span>MONTH</span>
           </div>
           <div class="month-select-wrapper">
             <select id="month-select" class="month-select-dropdown">
@@ -54,84 +55,30 @@
           </div>
         </div>
 
-        <!-- Right Action Button Group -->
+        <!-- Core Action Buttons (Top Row: 3 only) -->
         <div class="header-actions-cluster">
-          <!-- Add Staff Button -->
-          <button class="header-btn btn-staff" id="btn-add-staff-modal" title="Manually add Principal, Visiting Faculty, or Custom Staff">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+          <button class="header-btn btn-staff" id="btn-add-staff-modal" title="Add new staff member manually">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
               <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM20 8v6M23 11h-6"/>
             </svg>
             <span>+ Add Staff</span>
           </button>
 
-          <!-- Upload Biometric Button -->
-          <button class="header-btn btn-upload" id="btn-upload-trigger" title="Upload Biometric Raw Excel for this month">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+          <button class="header-btn btn-upload" id="btn-upload-trigger" title="Upload biometric Excel file for this month">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
             </svg>
             <span>Upload File</span>
           </button>
           <input type="file" id="file-input" accept=".xls,.xlsx" style="display: none;">
 
-          <!-- Glowing Bulk Slips Button -->
-          <button class="header-btn btn-bulk-slips" id="btn-bulk-slips-modal" title="Bulk Apply Leave/OD Slips">
-            <span class="pulse-bulk-dot"></span>
-            <span>BULK SLIPS</span>
-          </button>
-
-          <!-- High-Contrast Navy Export Attendance Button -->
-          <button class="header-btn btn-export-excel" id="btn-export" title="Export finalized output.xls (Attendance Days)">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
-            </svg>
-            <span>Export output.xls</span>
-          </button>
-
-          <!-- Emerald Institutional Salary Bill (.xlsx) Export Button -->
-          <button class="header-btn btn-export-salary" id="btn-export-salary" title="Export institutional Salary Bill (.xlsx) with Teaching, Non-Teaching & Bank sheets">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-              <polyline points="14 2 14 8 20 8"></polyline>
-              <line x1="12" y1="18" x2="12" y2="12"></line>
-              <line x1="9" y1="15" x2="15" y2="15"></line>
-            </svg>
-            <span>Salary Bill (.xlsx)</span>
-          </button>
-
-          <!-- Bulk Adjustments Button -->
-          <button class="header-btn btn-bulk-adj" id="btn-bulk-adjust-modal" title="Bulk apply festival advance, bonus, arrears, EPF, or attendance days">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
-            </svg>
-            <span>⚡ Bulk Adjust</span>
-          </button>
-
-          <!-- Bulk Revert to Original Biometrics Button -->
-          <button class="header-btn btn-revert-header" id="btn-bulk-revert-modal" title="Bulk revert staff back to raw original biometric machine punch calculations">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-              <polyline points="1 4 1 10 7 10"></polyline>
-              <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
-            </svg>
-            <span>↺ Revert to Raw</span>
-          </button>
-
-          <!-- Variance Report Button -->
-          <button class="header-btn btn-variance" id="btn-variance-modal" title="Compare month-over-month salary differences, increments, and LOP">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-              <line x1="18" y1="20" x2="18" y2="10"></line>
-              <line x1="12" y1="20" x2="12" y2="4"></line>
-              <line x1="6" y1="20" x2="6" y2="14"></line>
-            </svg>
-            <span>📊 Variance</span>
-          </button>
-
-          <!-- Institutional Banking & Treasury Disbursement Dropdown -->
+          <!-- Banking & Treasury Dropdown -->
           <div class="dropdown-wrap" id="wrap-disbursement-dropdown">
-            <button class="header-btn btn-disburse" id="btn-disburse-menu" title="Banking NEFT, Bulk Pay Slips, Executive Summary, and Cash Denominations">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <button class="header-btn btn-disburse" id="btn-disburse-menu" title="Banking, NEFT, Pay Slips, Executive Summary">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
                 <path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v4M12 14v4M16 14v4"/>
               </svg>
-              <span>🏦 Banking & Treasury ▼</span>
+              <span>🏦 Banking ▼</span>
             </button>
             <div class="dropdown-menu-box" id="menu-disbursement">
               <a href="javascript:void(0)" class="dropdown-item" id="item-export-neft">
@@ -159,15 +106,15 @@
               <a href="javascript:void(0)" class="dropdown-item" id="item-open-exec-summary">
                 <span class="d-icon">📊</span>
                 <div>
-                  <strong>Executive Summary (1-Page Note)</strong>
-                  <div class="d-sub">Department & Statutory remittance breakdown</div>
+                  <strong>Executive Summary</strong>
+                  <div class="d-sub">Department &amp; statutory remittance breakdown</div>
                 </div>
               </a>
               <a href="javascript:void(0)" class="dropdown-item" id="item-open-cash-denominations">
                 <span class="d-icon">💵</span>
                 <div>
                   <strong>Cash Denominations Requisition</strong>
-                  <div class="d-sub">Currency notes breakdown for attenders & support staff</div>
+                  <div class="d-sub">Currency notes breakdown for support staff</div>
                 </div>
               </a>
             </div>
@@ -175,66 +122,90 @@
         </div>
       </div>
 
-      <!-- Sub Tier: View Switcher, Navigation Tabs & Status Counts Strip -->
-      <div class="header-sub-row">
-        <!-- 3-Way Mode Switcher: Unified Master, Attendance Grid, Salary Ledger -->
-        <div class="view-switch-cluster" id="view-mode-cluster">
-          <button class="view-pill active" id="mode-unified" data-mode="unified" title="View both attendance and salary with full inline editing side-by-side">
-            🌟 Unified Master
+      <!-- TOOLBAR: 2 neat rows -->
+      <div class="header-toolbar">
+
+        <!-- Toolbar Row 1: View Switcher + 4 Primary Actions -->
+        <div class="toolbar-row">
+          <!-- View Toggle -->
+          <div class="view-switch-cluster" id="view-mode-cluster">
+            <button class="view-pill active" id="mode-unified" data-mode="unified" title="Attendance + Salary in one table">All-in-One View</button>
+            <button class="view-pill" id="mode-attendance" data-mode="attendance" title="Attendance only">Attendance Only</button>
+            <button class="view-pill" id="mode-salary" data-mode="salary" title="Salary, deductions and bank">Salary &amp; Bank</button>
+          </div>
+          <div class="toolbar-vsep"></div>
+          <!-- Primary Action Buttons -->
+          <button class="header-btn btn-bulk-slips" id="btn-bulk-slips-modal" title="Apply Leave / OD slips in bulk">
+            <span class="pulse-bulk-dot"></span>
+            <span>Bulk Leave Slips</span>
           </button>
-          <button class="view-pill" id="mode-attendance" data-mode="attendance" title="Dedicated attendance register with editable CL, OD, Pay Days, and 1-Click Full Pay">
-            📋 Attendance Grid
+          <button class="header-btn btn-export-excel" id="btn-export" title="Download Attendance Excel file">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+            <span>Export Attendance</span>
           </button>
-          <button class="view-pill" id="mode-salary" data-mode="salary" title="Dedicated salary bill with Base, Gross, PT, WF, Other Ded, Net, and Bank Accounts">
-            💰 Salary & Bank Ledger
+          <button class="header-btn btn-export-salary" id="btn-export-salary" title="Download Salary Bill Excel">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
+            <span>Export Salary</span>
+          </button>
+          <button class="header-btn btn-bulk-adj" id="btn-bulk-adjust-modal" title="Bulk apply bonus, arrears, EPF adjustments">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+            <span>⚡ Bulk Adjust</span>
           </button>
         </div>
 
-        <div class="sub-nav-tabs">
+        <!-- Toolbar Row 2: 2 More Actions + Filters + Live Status -->
+        <div class="toolbar-row">
+          <!-- Secondary Actions -->
+          <button class="header-btn btn-revert-header" id="btn-bulk-revert-modal" title="Reset all staff to raw biometric data">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
+            <span>↺ Revert to Biometric</span>
+          </button>
+          <button class="header-btn btn-variance" id="btn-variance-modal" title="Compare month-over-month salary differences">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+            <span>📊 Variance Report</span>
+          </button>
+          <div class="toolbar-vsep"></div>
+          <!-- Quick Filter Links -->
           <a href="javascript:void(0)" id="nav-filter-review" class="sub-tab-link tab-review">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-            </svg>
-            <span>Needs Review</span>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <span>Needs Attention</span>
             <span class="sub-badge badge-warning" id="nav-review-count">0</span>
           </a>
-
           <a href="javascript:void(0)" id="nav-filter-vip" class="sub-tab-link tab-vip">
-            <span>👑 VIP / Exempt</span>
+            <span>👑 Full Pay Staff</span>
             <span class="sub-badge badge-vip" id="nav-vip-count">1</span>
           </a>
-
           <a href="javascript:void(0)" id="nav-filter-leaves" class="sub-tab-link tab-leaves">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-            </svg>
-            <span>Leaves & OD</span>
+            <span>📅 Leave &amp; OD</span>
           </a>
-        </div>
-
-        <div class="sub-nav-status">
+          <div class="toolbar-vsep"></div>
+          <!-- Live Status -->
           <span class="sync-indicator">
             <span class="sync-dot"></span>
-            <span id="sync-status-text">Biometric & Payroll Database Connected • Live Sync</span>
+            <span id="sync-status-text">Live &amp; Connected</span>
           </span>
         </div>
+
       </div>
     </div>
+  </header>
+
+
   </header>
 
   <main class="page-container">
     <!-- Hero Announcement & Header -->
     <section class="hero-section">
       <div class="hero-badge">
-        <span class="badge-tag">UNIFIED</span>
-        <span>🚀 Single Master Ledger: Attendance Days & Net Salary Consolidated in One Screen!</span>
+        <span class="badge-tag">RVS PAYROLL</span>
+        <span>Attendance + Salary — All staff, all months, one screen</span>
       </div>
 
       <h1 class="hero-title">
-        RVS <span class="highlight-orange">Salary & Biometric</span> Platform
+        RVS <span class="highlight-orange">Salary &amp; Attendance</span> System
       </h1>
       <p class="hero-description">
-        Track attendance across multiple months, manage annual CL/OD leave balances, configure VIP/Principal exemptions, and edit salaries with live 3-way synchronization.
+        Upload biometric data, view attendance, edit leaves and salary, print pay slips — everything in one place.
       </p>
     </section>
 
@@ -246,7 +217,7 @@
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           </div>
           <div class="stat-details">
-            <span class="stat-label">Total Staff Listed</span>
+            <span class="stat-label">Total Staff</span>
             <span class="stat-number" id="stat-total-staff">--</span>
           </div>
         </div>
@@ -256,7 +227,7 @@
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
           </div>
           <div class="stat-details">
-            <span class="stat-label">Monthly Total Budget</span>
+            <span class="stat-label">Total Base Salary</span>
             <span class="stat-number" id="stat-total-budget" style="color: #1d4ed8;">--</span>
           </div>
         </div>
@@ -266,17 +237,17 @@
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
           </div>
           <div class="stat-details">
-            <span class="stat-label">Earned Gross Total</span>
+            <span class="stat-label">Gross Salary</span>
             <span class="stat-number" id="stat-total-gross" style="color: #7e22ce;">--</span>
           </div>
         </div>
 
-        <div class="stat-card stat-alert-card" id="card-needs-review" style="cursor: pointer;" title="Click to filter employees needing review or with LOP">
+        <div class="stat-card stat-alert-card" id="card-needs-review" style="cursor: pointer;" title="Click to show staff with LOP or missing data">
           <div class="stat-icon-wrap icon-amber">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
           </div>
           <div class="stat-details">
-            <span class="stat-label">Deductions (PT+WF+EPF)</span>
+            <span class="stat-label">Total Deductions</span>
             <span class="stat-number" id="stat-total-deductions" style="color: #b45309;">--</span>
           </div>
         </div>
@@ -286,7 +257,7 @@
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
           </div>
           <div class="stat-details">
-            <span class="stat-label">Net Bank Payout</span>
+            <span class="stat-label">Net Salary to Pay</span>
             <span class="stat-number" id="stat-total-net" style="color: #15803d; font-weight: 800;">--</span>
           </div>
         </div>
@@ -296,7 +267,7 @@
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4L12 14.01l-3-3"/></svg>
           </div>
           <div class="stat-details">
-            <span class="stat-label">Payable Days (Worked)</span>
+            <span class="stat-label">Days Worked</span>
             <span class="stat-number" id="stat-total-pay-days" style="color: #0f172a;">--</span>
           </div>
         </div>
@@ -337,15 +308,40 @@
         </select>
       </div>
 
+      <!-- Sort Selector -->
+      <div class="select-field" id="sort-filter-box">
+        <label for="sort-select">Sort By:</label>
+        <select id="sort-select">
+          <option value="code_asc">Emp Code (Default)</option>
+          <option value="mess_desc">🍽️ Mess Fee: High → Low</option>
+          <option value="mess_asc">🍽️ Mess Fee: Low → High</option>
+          <option value="bus_desc">🚌 Bus Fee: High → Low</option>
+          <option value="bus_asc">🚌 Bus Fee: Low → High</option>
+          <option value="hostel_desc">🏠 Hostel / EB: High → Low</option>
+          <option value="hostel_asc">🏠 Hostel / EB: Low → High</option>
+          <option value="ded_desc">📉 Total Ded: High → Low</option>
+          <option value="ded_asc">📉 Total Ded: Low → High</option>
+          <option value="net_desc">💰 Net Salary: High → Low</option>
+          <option value="net_asc">💰 Net Salary: Low → High</option>
+          <option value="gross_desc">💵 Gross: High → Low</option>
+          <option value="days_desc">📅 Pay Days: High → Low</option>
+          <option value="name_asc">🔤 Name (A → Z)</option>
+        </select>
+      </div>
+
       <!-- Quick Filter Pills -->
       <div class="filter-tabs">
         <button class="tab-pill active" data-filter="all">All Staff</button>
         <button class="tab-pill" data-filter="teaching">🎓 Teaching</button>
         <button class="tab-pill" data-filter="non-teaching">👔 Non-Teaching</button>
-        <button class="tab-pill" data-filter="support">🧹 Support / Attender</button>
-        <button class="tab-pill" data-filter="review">⚠️ Needs Review / LOP</button>
-        <button class="tab-pill" data-filter="vip">👑 VIP / Exempt</button>
-        <button class="tab-pill tab-missing-bank" id="tab-missing-bank" data-filter="missing_bank">⚠️ Missing Bank Info</button>
+        <button class="tab-pill" data-filter="support">🧹 Support</button>
+        <button class="tab-pill" data-filter="bus" id="tab-pill-bus" title="Staff with Bus / Transport deduction">🚌 Bus Fee <span class="pill-count" id="count-bus">0</span></button>
+        <button class="tab-pill" data-filter="mess" id="tab-pill-mess" title="Staff with Mess / Food deduction">🍽️ Mess Fee <span class="pill-count" id="count-mess">0</span></button>
+        <button class="tab-pill" data-filter="hostel" id="tab-pill-hostel" title="Staff with Hostel / EB deduction">🏠 Hostel / EB <span class="pill-count" id="count-hostel">0</span></button>
+        <button class="tab-pill" data-filter="deductions" id="tab-pill-ded" title="Staff with any active deductions">📉 Has Deductions <span class="pill-count" id="count-ded">0</span></button>
+        <button class="tab-pill" data-filter="review">⚠️ Has LOP</button>
+        <button class="tab-pill" data-filter="vip">👑 Full Pay</button>
+        <button class="tab-pill tab-missing-bank" id="tab-missing-bank" data-filter="missing_bank">🏦 No Bank Details</button>
       </div>
 
       <!-- Active Payroll Toggle -->
@@ -354,19 +350,19 @@
           <input type="checkbox" id="toggle-active-only" checked>
           <span class="slider-circle"></span>
         </label>
-        <span class="toggle-text">Active Payroll Roster</span>
+        <span class="toggle-text">Active Staff Only</span>
       </div>
     </section>
 
     <!-- Guidance Bar -->
     <div class="guidance-bar">
-      <div class="guide-tag">Unified Ledger</div>
+      <div class="guide-tag">💡 Tip</div>
       <div class="guide-content" id="guidance-content">
-        <span>💡 <strong>All-in-One Master View:</strong> Attendance days and resulting salary amounts are consolidated in one place.</span>
+        <span>Click any number in the table to edit it directly — days, salary, or deductions.</span>
         <span>•</span>
-        <span>Edit <strong>Payable Days</strong> or <strong>Base Salary</strong> inline to instantly recalculate Gross and Net Bank Payout in real time.</span>
+        <span><strong>📄 Slip</strong> = Print pay slip &nbsp;|&nbsp; <strong>📅 Punches</strong> = See daily punch calendar &nbsp;|&nbsp; <strong>✏️ Edit</strong> = Edit all details</span>
         <span>•</span>
-        <span>Click <strong>📄 Pay Slip</strong> for formal printout, <strong>📅 Punches</strong> for daily 1–31 calendar, or <strong>✏️ Edit</strong> to adjust packages.</span>
+        <span><strong>✔ Full</strong> = Give full 31-day salary &nbsp;|&nbsp; <strong>↺ Revert</strong> = Reset to machine punch data</span>
       </div>
     </div>
 
@@ -468,7 +464,11 @@
               <div class="payslip-row"><span>Professional Tax (PT):</span><span id="pf-pay-pt">₹0</span></div>
               <div class="payslip-row"><span>Welfare Fund (WF):</span><span id="pf-pay-wf">₹0</span></div>
               <div class="payslip-row"><span>EPF:</span><span id="pf-pay-epf">₹0</span></div>
-              <div class="payslip-row"><span>IT / Other:</span><span id="pf-pay-it">₹0</span></div>
+              <div class="payslip-row"><span>Income Tax (TDS):</span><span id="pf-pay-it">₹0</span></div>
+              <div class="payslip-row" id="pf-pay-bus-row"><span>Bus Transport:</span><span id="pf-pay-bus">₹0</span></div>
+              <div class="payslip-row" id="pf-pay-hostel-row"><span>Hostel / EB:</span><span id="pf-pay-hostel">₹0</span></div>
+              <div class="payslip-row" id="pf-pay-mess-row"><span>Mess / Food:</span><span id="pf-pay-mess">₹0</span></div>
+              <div class="payslip-row" id="pf-pay-other-row"><span>Other / Advance:</span><span id="pf-pay-other">₹0</span></div>
               <div class="payslip-row payslip-total-row"><span>Total Deductions:</span><strong id="pf-pay-ded" style="color:#b45309;">₹0</strong></div>
             </div>
           </div>
@@ -635,29 +635,41 @@
     </div>
   </div>
 
-  <!-- MODAL: EDIT EMPLOYEE PROFILE & SALARY PACKAGE -->
+  <!-- MODAL: COMPLETE UNIFIED 360° EMPLOYEE & PAYROLL MASTER EDITOR -->
   <div class="modal-overlay" id="modal-employee-package">
-    <div class="modal-window">
+    <div class="modal-window modal-unified-editor">
       <div class="modal-header-bar">
-        <div>
-          <div class="modal-header-pill">Payroll Master</div>
-          <h2 class="modal-emp-name" id="edit-pkg-title">Edit Salary Package & Banking</h2>
-          <p class="modal-emp-meta" id="edit-pkg-subtitle">Emp Code: -- | Current Staff</p>
+        <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 1rem;">
+          <div>
+            <div class="modal-header-pill" style="background:#e0e7ff; color:#3730a3;">Unified 360° Master Editor</div>
+            <h2 class="modal-emp-name" id="edit-pkg-title">Edit Staff Profile, Attendance & Salary</h2>
+            <p class="modal-emp-meta" id="edit-pkg-subtitle">Emp Code: -- | Department: --</p>
+          </div>
+          <div class="editor-month-chip" id="edit-pkg-month-chip">
+            August -2026
+          </div>
         </div>
         <button class="modal-close-btn" id="btn-close-edit-pkg">&times;</button>
       </div>
 
-      <div class="modal-content-area">
+      <div class="modal-content-area unified-editor-scroll">
         <form id="form-edit-package" class="add-staff-form">
           <input type="hidden" id="edit-pkg-emp-code">
-          
+          <input type="hidden" id="edit-pkg-month-days-val" value="31">
+
+          <!-- Section 1: Staff Profile & Institutional Policy -->
+          <div class="editor-section-header">
+            <span class="editor-sec-icon">👤</span>
+            <span>Staff Profile & Institutional Policy</span>
+          </div>
+
           <div class="form-row">
             <div class="form-field">
               <label>Full Name: *</label>
               <input type="text" id="edit-pkg-name" required>
             </div>
             <div class="form-field">
-              <label>Category: *</label>
+              <label>Staff Category: *</label>
               <select id="edit-pkg-category" class="form-select">
                 <option value="Teaching">Teaching Faculty</option>
                 <option value="Non-Teaching">Non-Teaching Staff</option>
@@ -674,49 +686,215 @@
           <div class="form-row">
             <div class="form-field">
               <label>Designation:</label>
-              <input type="text" id="edit-pkg-desig" placeholder="e.g. Professor, Lab Asst">
+              <input type="text" id="edit-pkg-desig" placeholder="e.g. Professor, Lab Asst, Driver">
             </div>
             <div class="form-field">
               <label>Department:</label>
               <input type="text" id="edit-pkg-dept" placeholder="e.g. CSE, ECE, Transport">
             </div>
+            <div class="form-field">
+              <label>Attendance Policy: *</label>
+              <select id="edit-pkg-policy" class="form-select">
+                <option value="standard">Standard Biometric (Punch Required)</option>
+                <option value="exempt_full">👑 VIP Full Pay Exemption (Exempt LOP)</option>
+                <option value="visiting_twice_weekly">Visiting Faculty (Twice Weekly)</option>
+              </select>
+            </div>
           </div>
 
-          <div class="form-row">
-            <div class="form-field">
+          <!-- Section 2: Biometric Attendance & Leave Regularization -->
+          <div class="editor-section-header" style="margin-top: 1.25rem;">
+            <span class="editor-sec-icon">📅</span>
+            <span>Monthly Attendance Days & Leave Regularization</span>
+            <span class="editor-sec-badge" id="edit-pkg-month-info">August -2026 (31 Days)</span>
+          </div>
+
+          <div class="editor-attendance-grid">
+            <div class="form-field att-field-card">
+              <label>Biometric Punch Days</label>
+              <input type="number" id="edit-pkg-bio-days" step="0.5" min="0" max="31" class="editor-num-input" placeholder="0">
+              <small>Raw device presence</small>
+            </div>
+            <div class="form-field att-field-card">
+              <label>Sundays / Holidays</label>
+              <input type="number" id="edit-pkg-holidays" step="0.5" min="0" max="31" class="editor-num-input" placeholder="4">
+              <small>Institutional holidays</small>
+            </div>
+            <div class="form-field att-field-card">
+              <label>Casual Leave (CL)</label>
+              <input type="number" id="edit-pkg-cl" step="0.5" min="0" max="31" class="editor-num-input" placeholder="0">
+              <small>Approved leave slips</small>
+            </div>
+            <div class="form-field att-field-card">
+              <label>On Duty (OD)</label>
+              <input type="number" id="edit-pkg-od" step="0.5" min="0" max="31" class="editor-num-input" placeholder="0">
+              <small>Official duty slips</small>
+            </div>
+            <div class="form-field att-field-card highlight-payable">
+              <label>Total Payable Days *</label>
+              <input type="number" id="edit-pkg-pay-days" step="0.5" min="0" max="31" class="editor-num-input" style="font-weight: 800; color: #1e3a8a;" required>
+              <small>Direct salary basis</small>
+            </div>
+            <div class="att-field-card lop-card">
+              <label>Loss of Pay (LOP)</label>
+              <div class="editor-lop-display" id="edit-pkg-lop-display">0d LOP</div>
+              <small>Unpaid absent days</small>
+            </div>
+          </div>
+
+          <!-- Section 3: Salary Earnings & Allowances -->
+          <div class="editor-section-header" style="margin-top: 1.25rem;">
+            <span class="editor-sec-icon">💰</span>
+            <span>Salary Package, Allowances & Resulting Gross</span>
+          </div>
+
+          <div class="form-row" style="align-items: flex-end;">
+            <div class="form-field" style="flex: 1.2;">
               <label>Base Monthly Package (₹): *</label>
-              <input type="number" id="edit-pkg-base-sal" step="100" required>
+              <input type="number" id="edit-pkg-base-sal" step="100" min="0" class="editor-num-input" required>
             </div>
-            <div class="form-field">
-              <label>Default EPF Amount (₹):</label>
-              <input type="number" id="edit-pkg-epf" step="10" value="0">
+            <div class="form-field" style="flex: 1.2;">
+              <label>Arrears / Bonus / Festival (₹):</label>
+              <input type="number" id="edit-pkg-arrears" step="50" min="0" value="0" class="editor-num-input">
+            </div>
+            <div class="gross-preview-card" style="flex: 1.6;">
+              <span class="gross-lbl">Earned Gross Salary:</span>
+              <span class="gross-val" id="edit-pkg-gross-preview">₹0</span>
+              <small id="edit-pkg-gross-formula">Base ÷ Days × Pay Days + Arrears</small>
             </div>
           </div>
 
-          <div style="font-size: 0.82rem; font-weight: 700; color: #1e3a8a; margin-top: 0.75rem; margin-bottom: 0.35rem; text-transform: uppercase; letter-spacing: 0.05em;">
-            Banking & Disbursement Credentials
+          <!-- Section 4: Monthly Deductions Breakdown -->
+          <div class="editor-section-header" style="margin-top: 1.25rem;">
+            <span class="editor-sec-icon">📉</span>
+            <span>Monthly Statutory & Institutional Deductions</span>
           </div>
+
+          <div class="editor-deductions-grid">
+            <div class="form-field ded-field-card">
+              <div class="ded-card-header">
+                <label>Prof. Tax (PT)</label>
+                <span class="pill-badge pill-pt">AP Govt</span>
+              </div>
+              <input type="number" id="edit-pkg-pt" step="10" min="0" class="editor-num-input" placeholder="200">
+              <small>AP Slab (Gross > 20k = ₹200)</small>
+            </div>
+
+            <div class="form-field ded-field-card">
+              <div class="ded-card-header">
+                <label>Welfare Fund (WF)</label>
+                <span class="pill-badge pill-wf">SVCET</span>
+              </div>
+              <input type="number" id="edit-pkg-wf" step="5" min="0" class="editor-num-input" placeholder="75">
+              <small>Teach ₹75 | Non-Teach ₹30</small>
+            </div>
+
+            <div class="form-field ded-field-card">
+              <div class="ded-card-header">
+                <label>EPF / PF</label>
+                <span class="pill-badge">EPFO</span>
+              </div>
+              <input type="number" id="edit-pkg-epf" step="10" min="0" class="editor-num-input" placeholder="0">
+              <small>Provident Fund amount</small>
+            </div>
+
+            <div class="form-field ded-field-card">
+              <div class="ded-card-header">
+                <label>Income Tax / TDS</label>
+                <span class="pill-badge">IT Dept</span>
+              </div>
+              <input type="number" id="edit-pkg-it" step="100" min="0" class="editor-num-input" placeholder="0">
+              <small>Monthly tax withholding</small>
+            </div>
+
+            <div class="form-field ded-field-card">
+              <div class="ded-card-header">
+                <label>Bus / Transport</label>
+                <span class="pill-badge" style="background:#e0e7ff; color:#4338ca;">Bus</span>
+              </div>
+              <input type="number" id="edit-pkg-bus" step="50" min="0" class="editor-num-input" placeholder="0">
+              <small>College route transport</small>
+            </div>
+
+            <div class="form-field ded-field-card">
+              <div class="ded-card-header">
+                <label>Hostel / EB</label>
+                <span class="pill-badge" style="background:#fef3c7; color:#b45309;">Hostel</span>
+              </div>
+              <input type="number" id="edit-pkg-hostel-eb" step="50" min="0" class="editor-num-input" placeholder="0">
+              <small>Quarters & power charges</small>
+            </div>
+
+            <div class="form-field ded-field-card">
+              <div class="ded-card-header">
+                <label>Mess / Food</label>
+                <span class="pill-badge" style="background:#fee2e2; color:#b91c1c;">Mess</span>
+              </div>
+              <input type="number" id="edit-pkg-mess" step="50" min="0" class="editor-num-input" placeholder="0">
+              <small>Hostel mess & canteen</small>
+            </div>
+
+            <div class="form-field ded-field-card">
+              <div class="ded-card-header">
+                <label>Other Deductions</label>
+                <span class="pill-badge">Campus</span>
+              </div>
+              <input type="number" id="edit-pkg-other-ded" step="50" min="0" class="editor-num-input" placeholder="0">
+              <small>Advance, cell & misc</small>
+            </div>
+
+            <div class="ded-field-card ded-total-card">
+              <label>Total Deductions</label>
+              <div class="ded-total-val" id="edit-pkg-total-ded-preview">₹275</div>
+              <small>Sum of all deductions</small>
+            </div>
+          </div>
+
+          <!-- Section 5: Take-Home Net Salary Highlight -->
+          <div class="net-payout-highlight-card">
+            <div class="net-payout-left">
+              <div class="net-payout-label">FINAL NET TAKE-HOME SALARY</div>
+              <div class="net-payout-amount" id="edit-pkg-net-preview">₹0</div>
+              <div class="net-payout-calc-breakdown" id="edit-pkg-breakdown-text">Gross ₹0 - Deductions ₹0</div>
+            </div>
+            <div class="net-payout-right">
+              <div class="net-status-badge">✅ Live Net Payout</div>
+            </div>
+          </div>
+
+          <!-- Section 6: Banking Credentials -->
+          <div class="editor-section-header" style="margin-top: 1.25rem;">
+            <span class="editor-sec-icon">🏦</span>
+            <span>Bank Account & NEFT / RTGS Credentials</span>
+          </div>
+
           <div class="form-row">
             <div class="form-field">
               <label>Bank Name:</label>
-              <input type="text" id="edit-pkg-bank-name" placeholder="e.g. PNB, Canara Bank, SBI">
+              <input type="text" id="edit-pkg-bank-name" placeholder="e.g. PNB, Canara Bank, SBI, HDFC">
             </div>
             <div class="form-field">
               <label>Bank Account Number:</label>
               <input type="text" id="edit-pkg-acc-no" placeholder="e.g. 4017000100088921">
             </div>
-          </div>
-
-          <div class="form-field">
-            <label>IFSC Code:</label>
-            <input type="text" id="edit-pkg-ifsc" placeholder="e.g. PUNB0401700">
+            <div class="form-field">
+              <label>IFSC Code:</label>
+              <input type="text" id="edit-pkg-ifsc" placeholder="e.g. PUNB0401700">
+            </div>
           </div>
         </form>
       </div>
 
-      <div class="modal-footer-bar">
-        <button class="btn-secondary-pill" id="btn-cancel-edit-pkg">Cancel</button>
-        <button class="btn-navy-pill" id="btn-save-edit-pkg">Save Package & Recalculate</button>
+      <div class="modal-footer-bar" style="display:flex; justify-content:space-between; align-items:center;">
+        <button type="button" class="btn-row-action btn-row-revert" id="btn-revert-from-modal" style="padding: 0.55rem 1.1rem; font-size: 0.82rem;" title="Revert this employee to raw machine punches">
+          ↺ Revert to Raw Biometrics
+        </button>
+        <div style="display: flex; gap: 0.65rem;">
+          <button class="btn-secondary-pill" id="btn-cancel-edit-pkg">Cancel</button>
+          <button class="btn-navy-pill" id="btn-save-edit-pkg" style="padding: 0.55rem 1.6rem; font-weight: 700;">
+            💾 Save All Changes & Recalculate
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -764,6 +942,9 @@
               <label>Adjustment Type: *</label>
               <select id="bulk-adj-field" class="form-select">
                 <option value="arrears">Arrears / Bonus / Festival Allowance (₹)</option>
+                <option value="bus_deduction">🚌 Bus / Transport Fee (₹)</option>
+                <option value="hostel_eb_deduction">🏠 Hostel / EB Charges (₹)</option>
+                <option value="mess_deduction">🍽️ Mess / Food Fee (₹)</option>
                 <option value="epf_deduction">EPF Deduction (₹)</option>
                 <option value="it_deduction">Income Tax / TDS (₹)</option>
                 <option value="other_deductions">Other Deductions (₹)</option>
