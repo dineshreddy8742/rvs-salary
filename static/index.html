@@ -106,6 +106,15 @@
             <span>⚡ Bulk Adjust</span>
           </button>
 
+          <!-- Bulk Revert to Original Biometrics Button -->
+          <button class="header-btn btn-revert-header" id="btn-bulk-revert-modal" title="Bulk revert staff back to raw original biometric machine punch calculations">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <polyline points="1 4 1 10 7 10"></polyline>
+              <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+            </svg>
+            <span>↺ Revert to Raw</span>
+          </button>
+
           <!-- Variance Report Button -->
           <button class="header-btn btn-variance" id="btn-variance-modal" title="Compare month-over-month salary differences, increments, and LOP">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
@@ -781,6 +790,73 @@
       <div class="modal-footer-bar">
         <button class="btn-secondary-pill" id="btn-cancel-bulk-adjust">Cancel</button>
         <button class="btn-navy-pill" id="btn-apply-bulk-adjust">Execute Bulk Update</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: BULK REVERT TO ORIGINAL BIOMETRICS -->
+  <div class="modal-overlay" id="modal-bulk-revert">
+    <div class="modal-window">
+      <div class="modal-header-bar">
+        <div>
+          <div class="modal-header-pill" style="background:#ffedd5; color:#ea580c;">Biometric Restoration</div>
+          <h2 class="modal-emp-name">↺ Revert to Original Biometrics</h2>
+          <p class="modal-emp-meta">Reset accidental edits, manual leaves, and Full Pay back to raw machine punch data</p>
+        </div>
+        <button class="modal-close-btn" id="btn-close-bulk-revert">&times;</button>
+      </div>
+
+      <div class="modal-content-area">
+        <div class="bulk-instructions-box" style="background:#fff7ed; border-color:#fed7aa; color:#9a3412;">
+          <strong>⚠️ What this will do:</strong>
+          <ul style="margin: 0.5rem 0 0 1.2rem; padding: 0; font-size: 0.8rem; line-height: 1.4;">
+            <li>Clears any manual day-level overrides and slip entries.</li>
+            <li>Re-sums actual presence, missed punches, and absences directly from raw machine logs.</li>
+            <li>Restores standard base package and clears any temporary arrears or deduction overrides.</li>
+          </ul>
+        </div>
+
+        <form id="form-bulk-revert" class="add-staff-form">
+          <div class="form-field">
+            <label>Revert Target Scope: *</label>
+            <select id="bulk-revert-scope" class="form-select">
+              <option value="all">Entire College (All staff in active month)</option>
+              <option value="department">Specific Department Only</option>
+              <option value="category">Specific Staff Category Only</option>
+            </select>
+          </div>
+
+          <div class="form-row">
+            <div class="form-field" id="bulk-revert-dept-box" style="display:none;">
+              <label>Target Department:</label>
+              <select id="bulk-revert-dept" class="form-select">
+                <option value="all">All Departments</option>
+              </select>
+            </div>
+
+            <div class="form-field" id="bulk-revert-cat-box" style="display:none;">
+              <label>Target Category:</label>
+              <select id="bulk-revert-category" class="form-select">
+                <option value="all">All Categories</option>
+                <option value="Teaching">Teaching Faculty</option>
+                <option value="Non-Teaching">Non-Teaching Staff</option>
+                <option value="Transport">Transport / Drivers</option>
+                <option value="Attender">Attenders</option>
+                <option value="Garden Staff">Garden Staff</option>
+                <option value="Security">Security</option>
+                <option value="Management">Management</option>
+                <option value="Admission">Admission</option>
+              </select>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      <div class="modal-footer-bar">
+        <button class="btn-secondary-pill" id="btn-cancel-bulk-revert">Cancel</button>
+        <button class="btn-navy-pill" style="background:#ea580c; border-color:#c2410c;" id="btn-apply-bulk-revert">
+          ↺ Revert to Original Biometrics
+        </button>
       </div>
     </div>
   </div>

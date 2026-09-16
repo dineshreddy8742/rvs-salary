@@ -174,6 +174,41 @@ def grant_full_attendance():
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+@app.route('/api/revert-to-original', methods=['POST'])
+def revert_to_original():
+    """1-Click button to revert an employee back to original raw biometric punches & standard salary."""
+    data = request.json or {}
+    emp_code = data.get('emp_code')
+    month_year = data.get('month_year', 'August -2026')
+
+    if not emp_code:
+        return jsonify({'status': 'error', 'message': 'emp_code required'}), 400
+
+    try:
+        pf = database.revert_employee_to_original(emp_code, month_year)
+        return jsonify({
+            'status': 'success',
+            'message': f'Emp {emp_code} successfully reverted to raw biometric logs',
+            'portfolio': pf
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/bulk-revert', methods=['POST'])
+def bulk_revert():
+    """Bulk revert multiple employees back to raw biometric calculation."""
+    data = request.json or {}
+    month_year = data.get('month_year', 'August -2026')
+    scope = data.get('scope', 'all')
+    department = data.get('department')
+    category = data.get('category')
+
+    try:
+        res = database.bulk_revert_to_original(month_year, scope, department, category)
+        return jsonify(res)
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 @app.route('/api/update-employee', methods=['POST'])
 def update_employee():
     """Option 1: Inline edit for leaves, OD, holiday, or biometric days."""

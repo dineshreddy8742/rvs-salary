@@ -424,6 +424,163 @@ def grant_full_attendance(emp_code: str, month_year: str):
     except Exception as e:
         print(f"Error recalculating salary: {e}")
 
+def revert_employee_to_original(emp_code: str, month_year: str) -> dict:
+    """
+    Reverts an employee's monthly attendance and salary record back to the raw original biometric data.
+    - Clears all day-level override statuses in daily_logs.
+    - Re-evaluates presence, leaves, OD, and absences from raw biometric status.
+    - Clears monthly salary overrides in monthly_records (base_salary, arrears, other_deductions).
+    - Recalculates salary from master salary profile.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # 1. Clear day-level override status
+    cursor.execute("""
+    UPDATE daily_logs 
+    SET override_status = NULL 
+    WHERE emp_code = ? AND month_year = ?
+    """, (emp_code, month_year))
+
+    # 2. Check employee policy
+    cursor.execute("SELECT attendance_policy, is_manual FROM employees WHERE emp_code = ?", (emp_code,))
+    emp_row = cursor.fetchone()
+    policy = emp_row['attendance_policy'] if emp_row else 'standard'
+
+    # 3. Check daily logs for this employee
+    cursor.execute("""
+    SELECT status, day_num FROM daily_logs 
+    WHERE emp_code = ? AND month_year = ? 
+    ORDER BY day_num ASC
+    """, (emp_code, month_year))
+    days = cursor.fetchall()
+
+    if policy == 'exempt_full':
+        total = 31.0
+        present_count = 25.0
+        hol = 6.0
+        cl_count = 0.0
+        od_count = 0.0
+        rem_str = "Full Attendance (VIP / Principal)"
+        needs_review = 0
+    elif days:
+        present_count = 0.0
+        cl_count = 0.0
+        od_count = 0.0
+        absent_days = []
+        missed_punches = []
+
+        for d in days:
+            st = (d['status'] or '').upper()
+            d_num = d['day_num']
+            if 'CL' in st or 'LEAVE' in st:
+                if '1/2' in st:
+                    cl_count += 0.5
+                    if 'PRESENT' in st: present_count += 0.5
+                else:
+                    cl_count += 1.0
+            elif 'OD' in st or 'ON DUTY' in st:
+                od_count += 1.0
+            elif 'PRESENT' in st:
+                if '1/2' in st: present_count += 0.5
+                else: present_count += 1.0
+            elif 'NO OUTPUNCH' in st or 'NO OUT PUNCH' in st:
+                missed_punches.append(d_num)
+            elif 'ABSENT' in st and 'HOLIDAY' not in st:
+                absent_days.append(d_num)
+
+        hol = 6.0
+        total = min(31.0, present_count + hol + cl_count + od_count)
+
+        rem_parts = []
+        if absent_days: rem_parts.append(f"ab-{','.join(str(d) for d in absent_days)}")
+        if missed_punches: rem_parts.append(f"{','.join(str(d) for d in missed_punches)} no out punch")
+        rem_str = ", ".join(rem_parts)
+        needs_review = 1 if (absent_days or missed_punches) else 0
+    else:
+        present_count = 25.0
+        hol = 6.0
+        cl_count = 0.0
+        od_count = 0.0
+        total = 31.0
+        rem_str = ""
+        needs_review = 0
+
+    # 4. Reset monthly_records back to raw
+    cursor.execute("""
+    UPDATE monthly_records
+    SET biometric_days = ?,
+        holiday = ?,
+        availed_leaves = ?,
+        sv_od = ?,
+        total_pay_days = ?,
+        remarks = ?,
+        needs_review = ?,
+        base_salary = NULL,
+        arrears = 0.0,
+        other_deductions = 0.0,
+        pt_deduction = NULL,
+        wf_deduction = NULL,
+        epf_deduction = NULL,
+        it_deduction = 0.0
+    WHERE emp_code = ? AND month_year = ?
+    """, (
+        present_count,
+        hol,
+        cl_count if cl_count > 0 else None,
+        od_count if od_count > 0 else None,
+        total,
+        rem_str,
+        needs_review,
+        emp_code,
+        month_year
+    ))
+
+    conn.commit()
+    conn.close()
+
+    # 5. Recalculate salary with baseline profile
+    recalculate_monthly_salary(emp_code, month_year, total)
+    return get_employee_portfolio(emp_code)
+
+def bulk_revert_to_original(month_year: str, scope: str = 'all', department: Optional[str] = None, category: Optional[str] = None) -> dict:
+    """
+    Bulk reverts multiple employees back to raw original biometric data.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+
+    query = """
+    SELECT m.emp_code, e.department, p.category
+    FROM monthly_records m
+    JOIN employees e ON m.emp_code = e.emp_code
+    LEFT JOIN salary_profiles p ON m.emp_code = p.emp_code
+    WHERE m.month_year = ?
+    """
+    cursor.execute(query, (month_year,))
+    rows = cursor.fetchall()
+    conn.close()
+
+    reverted_codes = []
+    for r in rows:
+        ec = r['emp_code']
+        dept = r['department']
+        cat = r['category'] or 'Non-Teaching'
+
+        if scope == 'department' and department and department != 'all' and dept != department:
+            continue
+        if scope == 'category' and category and category != 'all' and cat != category:
+            continue
+
+        revert_employee_to_original(ec, month_year)
+        reverted_codes.append(ec)
+
+    return {
+        'status': 'success',
+        'month_year': month_year,
+        'reverted_count': len(reverted_codes)
+    }
+
 def update_monthly_field(emp_code: str, month_year: str, field: str, value: Any):
     """Update an inline field (leaves, od, holiday, bio) in SQLite and recalculate Total Pay Days."""
     conn = get_db()

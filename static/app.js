@@ -294,6 +294,28 @@ function setupEventListeners() {
     });
   }
 
+  // Bulk Revert Modal
+  const bulkRevertModal = document.getElementById('modal-bulk-revert');
+  const btnBulkRevertOpen = document.getElementById('btn-bulk-revert-modal');
+  if (btnBulkRevertOpen) btnBulkRevertOpen.addEventListener('click', openBulkRevertModal);
+  const btnBulkRevertClose = document.getElementById('btn-close-bulk-revert');
+  if (btnBulkRevertClose) btnBulkRevertClose.addEventListener('click', () => bulkRevertModal.classList.remove('active'));
+  const btnBulkRevertCancel = document.getElementById('btn-cancel-bulk-revert');
+  if (btnBulkRevertCancel) btnBulkRevertCancel.addEventListener('click', () => bulkRevertModal.classList.remove('active'));
+  const btnBulkRevertApply = document.getElementById('btn-apply-bulk-revert');
+  if (btnBulkRevertApply) btnBulkRevertApply.addEventListener('click', executeBulkRevert);
+
+  const bulkRevertScopeSelect = document.getElementById('bulk-revert-scope');
+  if (bulkRevertScopeSelect) {
+    bulkRevertScopeSelect.addEventListener('change', (e) => {
+      const scope = e.target.value;
+      const deptBox = document.getElementById('bulk-revert-dept-box');
+      const catBox = document.getElementById('bulk-revert-cat-box');
+      if (deptBox) deptBox.style.display = scope === 'department' ? 'block' : 'none';
+      if (catBox) catBox.style.display = scope === 'category' ? 'block' : 'none';
+    });
+  }
+
   // Variance Modal
   const varModal = document.getElementById('modal-salary-variance');
   const btnVarOpen = document.getElementById('btn-variance-modal');
@@ -878,6 +900,9 @@ function renderTable() {
             <button class="btn-row-action" style="color: #15803d;" onclick="grantFullAttendance('${emp.emp_code}')" title="1-Click Grant 31 Full Pay Days">
               ✔ Full
             </button>
+            <button class="btn-row-action btn-row-revert" onclick="revertToOriginal('${emp.emp_code}')" title="↺ Revert back to original raw biometric punches (clears accidental Full Pay / edits)">
+              ↺ Revert
+            </button>
             <button class="btn-row-action" onclick="openEditPackageModal('${emp.emp_code}')" title="Edit Package & Bank Details">
               ✏️ Edit
             </button>
@@ -948,6 +973,9 @@ function renderTable() {
             </button>
             <button class="btn-row-action" style="color: #15803d; font-weight: 700;" onclick="grantFullAttendance('${emp.emp_code}')" title="1-Click Grant 31 Full Days">
               ✔ Full Pay
+            </button>
+            <button class="btn-row-action btn-row-revert" onclick="revertToOriginal('${emp.emp_code}')" title="↺ Revert back to original raw biometric punches (clears accidental Full Pay / edits)">
+              ↺ Revert
             </button>
             <button class="btn-row-action" onclick="openPortfolio('${emp.emp_code}')" title="Open 360° Leave Passbook">
               👤 360°
@@ -1042,6 +1070,9 @@ function renderTable() {
           <div class="row-action-cluster">
             <button class="btn-row-action" style="color: #1e3a8a; font-weight: 800;" onclick="openFormalPaySlip('${emp.emp_code}')" title="Print Official Pay Slip">
               🖨️ Slip
+            </button>
+            <button class="btn-row-action btn-row-revert" onclick="revertToOriginal('${emp.emp_code}')" title="↺ Reset to standard package (clears temporary overrides)">
+              ↺ Reset
             </button>
             <button class="btn-row-action" onclick="openEditPackageModal('${emp.emp_code}')" title="Edit Package & Bank Details">
               ⚙️ Edit
@@ -1165,6 +1196,86 @@ async function grantFullAttendance(empCode) {
     }
   } catch (err) {
     alert('Error granting full attendance');
+  }
+}
+
+// 1-Click Revert Individual Employee Back to Raw Original Biometrics
+async function revertToOriginal(empCode) {
+  const emp = unifiedRecords.find(r => String(r.emp_code) === String(empCode));
+  const empName = emp ? emp.name : `Emp ${empCode}`;
+  const confirmMsg = `Revert ${empName} (${empCode}) back to raw biometric machine punch calculations?\n\nThis will clear any manual Full Pay, day overrides, or temporary edits for ${currentMonth}.`;
+  if (!confirm(confirmMsg)) return;
+
+  try {
+    const res = await fetch('/api/revert-to-original', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ emp_code: empCode, month_year: currentMonth })
+    });
+    const data = await res.json();
+    if (data.status === 'success') {
+      showToast(`↺ Reverted ${empName} (${empCode}) to original biometrics!`);
+      await loadData();
+    } else {
+      alert('Error reverting: ' + data.message);
+    }
+  } catch (err) {
+    alert('Network error reverting employee');
+  }
+}
+
+// -----------------------------------------------------------------------------
+// BULK REVERT TO ORIGINAL BIOMETRICS MODAL
+// -----------------------------------------------------------------------------
+function openBulkRevertModal() {
+  const deptSelect = document.getElementById('bulk-revert-dept');
+  if (deptSelect) {
+    const depts = Array.from(new Set(unifiedRecords.map(e => e.department))).sort();
+    deptSelect.innerHTML = '<option value="all">All Departments</option>';
+    depts.forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d;
+      opt.textContent = d;
+      deptSelect.appendChild(opt);
+    });
+  }
+  document.getElementById('modal-bulk-revert').classList.add('active');
+}
+
+async function executeBulkRevert(e) {
+  if (e) e.preventDefault();
+  const scope = document.getElementById('bulk-revert-scope').value;
+  const dept = document.getElementById('bulk-revert-dept').value;
+  const cat = document.getElementById('bulk-revert-category').value;
+
+  let targetDesc = 'Entire College (All Staff)';
+  if (scope === 'department') targetDesc = `Department: ${dept}`;
+  else if (scope === 'category') targetDesc = `Category: ${cat}`;
+
+  const confirmMsg = `⚠️ ARE YOU SURE?\n\nBulk Revert Target: ${targetDesc} for ${currentMonth}\n\nThis will reset attendance, leaves, and salary back to raw biometric machine punches for all matching staff!`;
+  if (!confirm(confirmMsg)) return;
+
+  try {
+    const res = await fetch('/api/bulk-revert', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        month_year: currentMonth,
+        scope: scope,
+        department: dept,
+        category: cat
+      })
+    });
+    const data = await res.json();
+    if (data.status === 'success') {
+      document.getElementById('modal-bulk-revert').classList.remove('active');
+      showToast(`↺ Successfully reverted ${data.reverted_count} staff back to original biometrics!`);
+      await loadData();
+    } else {
+      alert('Error during bulk revert: ' + data.message);
+    }
+  } catch (err) {
+    alert('Network error executing bulk revert');
   }
 }
 

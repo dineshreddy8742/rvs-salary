@@ -1128,6 +1128,25 @@ input:checked + .slider-circle:before { transform: translateX(16px); }
   box-shadow: 0 6px 16px rgba(5, 150, 105, 0.35) !important;
 }
 
+.btn-revert-header {
+  background: #fff7ed !important;
+  color: #c2410c !important;
+  border-color: #fdba74 !important;
+}
+.btn-revert-header:hover {
+  background: #ffedd5 !important;
+  color: #9a3412 !important;
+  border-color: #fb923c !important;
+}
+.btn-row-revert {
+  color: #ea580c !important;
+  font-weight: 700 !important;
+}
+.btn-row-revert:hover {
+  background: #fff7ed !important;
+  color: #c2410c !important;
+}
+
 /* View Switcher Cluster */
 .view-switch-cluster {
   display: inline-flex;
