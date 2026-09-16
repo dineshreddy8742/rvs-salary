@@ -1,6 +1,7 @@
 import os
 import tempfile
 import json
+import re
 from flask import Flask, request, jsonify, send_file, send_from_directory
 import database
 from attendance_engine import AttendanceEngine
@@ -9,6 +10,9 @@ from export_salary_excel import export_salary_to_xlsx
 import disbursement_engine
 import payroll_engine
 
+def clean_month_str(month_str: str) -> str:
+    clean = re.sub(r'[\s\-]+', '_', month_str).strip('_')
+    return clean or 'August_2026'
 
 app = Flask(__name__, static_folder='static', static_url_path='')
 
@@ -327,10 +331,14 @@ def export_file():
 
     records = database.get_month_records(month_year, active_only=active_only, reference_codes=REFERENCE_CODES)
 
-    temp_out = os.path.join(tempfile.gettempdir(), f'RVS_Monthly_Salary_{month_year}.xls')
+    clean_m = clean_month_str(month_year)
+    out_filename = f'SVCET_Attendance_{clean_m}.xls'
+    temp_out = os.path.join(tempfile.gettempdir(), out_filename)
     export_to_xls(records, temp_out, month_year_str=month_year)
 
-    return send_file(temp_out, as_attachment=True, download_name=f'RVS_Monthly_Salary_{month_year}.xls')
+    resp = send_file(temp_out, as_attachment=True, download_name=out_filename)
+    resp.headers["Content-Disposition"] = f'attachment; filename="{out_filename}"'
+    return resp
 
 # =============================================================================
 # SALARY & PAYROLL GENERATION REST APIS
@@ -489,10 +497,14 @@ def export_salary_file():
     data = database.get_month_salary_records(month_year, active_only=active_only, reference_codes=REFERENCE_CODES)
     records = data.get('records', [])
 
-    temp_out = os.path.join(tempfile.gettempdir(), f'SVCET_Salary_Bill_{month_year}.xlsx')
+    clean_m = clean_month_str(month_year)
+    out_filename = f'SVCET_Salary_Bill_{clean_m}.xlsx'
+    temp_out = os.path.join(tempfile.gettempdir(), out_filename)
     export_salary_to_xlsx(records, temp_out, month_year_str=month_year)
 
-    return send_file(temp_out, as_attachment=True, download_name=f'SVCET_Salary_Bill_{month_year}.xlsx')
+    resp = send_file(temp_out, as_attachment=True, download_name=out_filename)
+    resp.headers["Content-Disposition"] = f'attachment; filename="{out_filename}"'
+    return resp
 
 @app.route('/api/salary/export-neft', methods=['GET'])
 def export_neft_file():
@@ -505,11 +517,15 @@ def export_neft_file():
     records = data.get('records', [])
 
     csv_content = disbursement_engine.generate_bank_neft_csv(records, month_year, bank_filter)
-    temp_out = os.path.join(tempfile.gettempdir(), f'SVCET_Bank_NEFT_Transfer_{month_year}.csv')
+    clean_m = clean_month_str(month_year)
+    out_filename = f'SVCET_Bank_NEFT_Transfer_{clean_m}.csv'
+    temp_out = os.path.join(tempfile.gettempdir(), out_filename)
     with open(temp_out, 'w', newline='', encoding='utf-8') as f:
         f.write(csv_content)
 
-    return send_file(temp_out, as_attachment=True, download_name=f'SVCET_Bank_NEFT_Transfer_{month_year}.csv', mimetype='text/csv')
+    resp = send_file(temp_out, as_attachment=True, download_name=out_filename, mimetype='text/csv')
+    resp.headers["Content-Disposition"] = f'attachment; filename="{out_filename}"'
+    return resp
 
 @app.route('/api/salary/export-slips-zip', methods=['GET'])
 def export_slips_zip():
@@ -520,10 +536,14 @@ def export_slips_zip():
     data = database.get_month_salary_records(month_year, active_only=active_only, reference_codes=REFERENCE_CODES)
     records = data.get('records', [])
 
-    temp_zip = os.path.join(tempfile.gettempdir(), f'SVCET_PaySlips_{month_year}.zip')
+    clean_m = clean_month_str(month_year)
+    out_filename = f'SVCET_PaySlips_{clean_m}.zip'
+    temp_zip = os.path.join(tempfile.gettempdir(), out_filename)
     disbursement_engine.generate_bulk_payslips_zip(records, month_year, temp_zip)
 
-    return send_file(temp_zip, as_attachment=True, download_name=f'SVCET_PaySlips_{month_year}.zip', mimetype='application/zip')
+    resp = send_file(temp_zip, as_attachment=True, download_name=out_filename, mimetype='application/zip')
+    resp.headers["Content-Disposition"] = f'attachment; filename="{out_filename}"'
+    return resp
 
 @app.route('/api/salary/export-slips-pdf', methods=['GET'])
 def export_slips_pdf():
@@ -534,10 +554,14 @@ def export_slips_pdf():
     data = database.get_month_salary_records(month_year, active_only=active_only, reference_codes=REFERENCE_CODES)
     records = data.get('records', [])
 
-    temp_pdf = os.path.join(tempfile.gettempdir(), f'SVCET_Consolidated_PaySlips_{month_year}.pdf')
+    clean_m = clean_month_str(month_year)
+    out_filename = f'SVCET_Consolidated_PaySlips_{clean_m}.pdf'
+    temp_pdf = os.path.join(tempfile.gettempdir(), out_filename)
     disbursement_engine.generate_consolidated_payslips_pdf(records, month_year, temp_pdf)
 
-    return send_file(temp_pdf, as_attachment=True, download_name=f'SVCET_Consolidated_PaySlips_{month_year}.pdf', mimetype='application/pdf')
+    resp = send_file(temp_pdf, as_attachment=True, download_name=out_filename, mimetype='application/pdf')
+    resp.headers["Content-Disposition"] = f'attachment; filename="{out_filename}"'
+    return resp
 
 @app.route('/api/salary/executive-summary', methods=['GET'])
 def get_executive_summary():

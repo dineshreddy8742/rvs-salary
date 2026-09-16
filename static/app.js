@@ -14,6 +14,22 @@ let currentViewMode = 'attendance'; // 'attendance' or 'salary'
 let currentDashboardMode = 'unified'; // 'unified', 'attendance', or 'salary'
 let unifiedRecords = [];
 
+function getCleanMonth() {
+  return (currentMonth || 'August_2026').replace(/[\s\-]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+}
+
+function triggerFileDownload(url, filename) {
+  const link = document.createElement('a');
+  link.href = url;
+  if (filename) link.setAttribute('download', filename);
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  setTimeout(() => {
+    try { document.body.removeChild(link); } catch(e) {}
+  }, 1000);
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
   setupEventListeners();
@@ -96,16 +112,18 @@ function setupEventListeners() {
 
   // Export Attendance button (.xls)
   document.getElementById('btn-export').addEventListener('click', () => {
-    showToast(`⚡ Exporting ${currentMonth} Attendance to output.xls...`);
-    window.location.href = `/api/export?month=${encodeURIComponent(currentMonth)}&active_only=${activeOnly}`;
+    const fn = `SVCET_Attendance_${getCleanMonth()}.xls`;
+    showToast(`⚡ Exporting ${currentMonth} Attendance to ${fn}...`);
+    triggerFileDownload(`/api/export?month=${encodeURIComponent(currentMonth)}&active_only=${activeOnly}`, fn);
   });
 
   // Export Salary Bill button (.xlsx)
   const btnExportSal = document.getElementById('btn-export-salary');
   if (btnExportSal) {
     btnExportSal.addEventListener('click', () => {
-      showToast(`⚡ Exporting ${currentMonth} Institutional Salary Bill (.xlsx)...`);
-      window.location.href = `/api/salary/export?month=${encodeURIComponent(currentMonth)}&active_only=${activeOnly}`;
+      const fn = `SVCET_Salary_Bill_${getCleanMonth()}.xlsx`;
+      showToast(`⚡ Exporting ${currentMonth} Institutional Salary Bill (${fn})...`);
+      triggerFileDownload(`/api/salary/export?month=${encodeURIComponent(currentMonth)}&active_only=${activeOnly}`, fn);
     });
   }
 
@@ -393,8 +411,9 @@ function setupEventListeners() {
   const itemExportNeft = document.getElementById('item-export-neft');
   if (itemExportNeft) {
     itemExportNeft.addEventListener('click', () => {
-      showToast(`⚡ Downloading Bank Corporate NEFT (.csv) for ${currentMonth}...`);
-      window.location.href = `/api/salary/export-neft?month=${encodeURIComponent(currentMonth)}&active_only=${activeOnly}`;
+      const fn = `SVCET_Bank_NEFT_Transfer_${getCleanMonth()}.csv`;
+      showToast(`⚡ Downloading Bank Corporate NEFT (${fn})...`);
+      triggerFileDownload(`/api/salary/export-neft?month=${encodeURIComponent(currentMonth)}&active_only=${activeOnly}`, fn);
     });
   }
 
@@ -402,8 +421,9 @@ function setupEventListeners() {
   const itemExportZip = document.getElementById('item-export-slips-zip');
   if (itemExportZip) {
     itemExportZip.addEventListener('click', () => {
-      showToast(`📦 Generating Official PDF Pay Slips (.zip) for all staff...`);
-      window.location.href = `/api/salary/export-slips-zip?month=${encodeURIComponent(currentMonth)}&active_only=${activeOnly}`;
+      const fn = `SVCET_PaySlips_${getCleanMonth()}.zip`;
+      showToast(`📦 Generating Official PDF Pay Slips (${fn})...`);
+      triggerFileDownload(`/api/salary/export-slips-zip?month=${encodeURIComponent(currentMonth)}&active_only=${activeOnly}`, fn);
     });
   }
 
@@ -411,8 +431,9 @@ function setupEventListeners() {
   const itemExportPdf = document.getElementById('item-export-slips-pdf');
   if (itemExportPdf) {
     itemExportPdf.addEventListener('click', () => {
-      showToast(`📄 Generating Consolidated Multi-Page PDF for ${currentMonth}...`);
-      window.location.href = `/api/salary/export-slips-pdf?month=${encodeURIComponent(currentMonth)}&active_only=${activeOnly}`;
+      const fn = `SVCET_Consolidated_PaySlips_${getCleanMonth()}.pdf`;
+      showToast(`📄 Generating Consolidated Multi-Page PDF (${fn})...`);
+      triggerFileDownload(`/api/salary/export-slips-pdf?month=${encodeURIComponent(currentMonth)}&active_only=${activeOnly}`, fn);
     });
   }
 
