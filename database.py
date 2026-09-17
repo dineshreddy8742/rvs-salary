@@ -149,16 +149,22 @@ def has_monthly_records() -> bool:
     conn.close()
     return cnt > 0
 
-def seed_from_engine(engine, month_year: str = "August -2026"):
-    """Populate database from an AttendanceEngine instance if empty."""
+def seed_from_engine(engine, month_year: str = "August -2026", overwrite: bool = False):
+    """Populate database from an AttendanceEngine instance."""
     conn = get_db()
     cursor = conn.cursor()
 
     # Check if month already seeded
     cursor.execute("SELECT COUNT(*) as cnt FROM monthly_records WHERE month_year = ?", (month_year,))
-    if cursor.fetchone()['cnt'] > 0:
+    already_exists = cursor.fetchone()['cnt'] > 0
+    if already_exists and not overwrite:
         conn.close()
         return
+
+    if already_exists and overwrite:
+        print(f"Overwriting existing records for {month_year}...")
+        cursor.execute("DELETE FROM monthly_records WHERE month_year = ?", (month_year,))
+        cursor.execute("DELETE FROM daily_logs WHERE month_year = ?", (month_year,))
 
     print(f"Seeding database for {month_year}...")
     vip_full_pay_codes = {'101', '707', '900', '1060', '1015', '1019', '1021', '4001', '1030', 'SHAJAHAN', 'SHIVA_DRIVER'}

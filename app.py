@@ -424,18 +424,40 @@ def upload_file():
         return jsonify({'status': 'error', 'message': 'No file uploaded'}), 400
     
     f = request.files['file']
-    month_name = request.form.get('month_name', 'August -2026')
+    if not f or not f.filename:
+        return jsonify({'status': 'error', 'message': 'Empty or invalid file'}), 400
+
+    month_name = (request.form.get('month_name') or 'August -2026').strip()
     
-    save_path = os.path.join(tempfile.gettempdir(), f.filename)
-    f.save(save_path)
+    save_path = None
+    try:
+        from werkzeug.utils import secure_filename
+        filename = secure_filename(f.filename) or 'biometric_input.xls'
+        save_path = os.path.join(tempfile.gettempdir(), f"rvs_upload_{filename}")
+        f.save(save_path)
 
-    engine = AttendanceEngine(save_path, REF_FILE if os.path.exists(REF_FILE) else None)
-    database.seed_from_engine(engine, month_name)
+        ref_file = REF_FILE if os.path.exists(REF_FILE) else None
+        engine = AttendanceEngine(save_path, ref_file)
+        database.seed_from_engine(engine, month_name, overwrite=True)
 
-    return jsonify({
-        'status': 'success',
-        'message': f'Successfully loaded {f.filename} for {month_name}'
-    })
+        return jsonify({
+            'status': 'success',
+            'message': f'Successfully loaded and analyzed {f.filename} for {month_name}'
+        })
+    except Exception as e:
+        print(f"Error parsing uploaded file: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'status': 'error',
+            'message': f'Failed to parse file: {str(e)}'
+        }), 500
+    finally:
+        if save_path and os.path.exists(save_path):
+            try:
+                os.remove(save_path)
+            except Exception:
+                pass
 
 @app.route('/api/export', methods=['GET'])
 def export_file():

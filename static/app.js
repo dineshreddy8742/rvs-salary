@@ -253,25 +253,42 @@ function setupEventListeners() {
     if (!file) return;
 
     const monthPrompt = prompt('Enter the Month & Year for this biometric file:', currentMonth);
-    if (!monthPrompt) return;
+    if (!monthPrompt) {
+      fileInput.value = '';
+      return;
+    }
 
     const formData = new FormData();
     formData.append('file', file);
     formData.append('month_name', monthPrompt);
 
-    showToast(`Uploading & Analyzing ${file.name} for ${monthPrompt}...`);
+    showToast(`⏳ Uploading & Analyzing ${file.name} for ${monthPrompt}... Please wait.`);
     try {
       const res = await fetch('/api/upload', { method: 'POST', body: formData });
-      const data = await res.json();
-      if (data.status === 'success') {
-        showToast('File analyzed and saved to database successfully!');
+      let data = null;
+      try {
+        data = await res.json();
+      } catch (jsonErr) {
+        if (res.status === 401) {
+          alert('Session expired. Please log in again.');
+          window.location.href = '/login';
+          return;
+        }
+        throw new Error(`Server returned HTTP ${res.status}: ${res.statusText || 'Upload failed'}`);
+      }
+
+      if (res.ok && data && data.status === 'success') {
+        showToast('✅ File analyzed and saved to database successfully!');
         currentMonth = monthPrompt;
         await loadMonths();
       } else {
-        alert('Upload error: ' + data.message);
+        alert('Upload Error: ' + ((data && data.message) || res.statusText || 'Failed to process file'));
       }
     } catch (err) {
-      alert('Network error uploading file');
+      console.error('Upload error:', err);
+      alert('Upload failed: ' + (err.message || 'Connection error. If the file is large, please allow 30 seconds.'));
+    } finally {
+      fileInput.value = '';
     }
   });
 
