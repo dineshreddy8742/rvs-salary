@@ -845,16 +845,48 @@ function updateSalaryToggleUI() {
     btn.classList.add('salary-revealed');
     btn.title = 'Click to lock salary columns';
     if (icon) icon.textContent = '👁️';
-    if (text) text.textContent = 'Salary: Visible — Click to Lock';
+    if (text) text.textContent = '🔓 Salary Visible';
+    _showLockBanner();
   } else {
     btn.classList.remove('salary-revealed');
     btn.title = 'Enter PIN to reveal salary columns (Principal instruction)';
     if (icon) icon.textContent = '🔒';
     if (text) text.textContent = 'Salary Columns: Locked';
+    _hideLockBanner();
   }
 
   // Sync KPI cards to lock/unlock state
   updateSalaryKPIMask();
+}
+
+// ─────────────────────────────────────────────────────────────────
+// FLOATING LOCK BANNER (shown when salary is revealed)
+// ─────────────────────────────────────────────────────────────────
+function _showLockBanner() {
+  let banner = document.getElementById('salary-lock-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'salary-lock-banner';
+    banner.innerHTML = `
+      <span style="font-size:1.1rem;">🔓</span>
+      <span><strong>Salary Unlocked</strong> — visible to you now</span>
+      <button id="btn-lock-banner-now" onclick="lockSalaryNow()" style="margin-left:auto;background:#b91c1c;color:#fff;border:none;border-radius:8px;padding:7px 18px;font-weight:800;cursor:pointer;font-size:0.82rem;letter-spacing:0.3px;">🔒 Lock Salary Now</button>
+    `;
+    document.body.appendChild(banner);
+  }
+  banner.classList.add('visible');
+}
+
+function _hideLockBanner() {
+  const banner = document.getElementById('salary-lock-banner');
+  if (banner) banner.classList.remove('visible');
+}
+
+function lockSalaryNow() {
+  showSalaryColumns = false;
+  updateSalaryToggleUI();
+  renderTable();
+  showToast('🔒 Salary columns locked');
 }
 
 // ─────────────────────────────────────────────────────────────────
