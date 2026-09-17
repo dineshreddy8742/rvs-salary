@@ -259,17 +259,53 @@ def apply_principal_rules_to_db(month_year: str = "August -2026"):
     conn = get_db()
     cursor = conn.cursor()
 
-    # 1. Direct VIP Full-Pay IDs
-    vip_codes = ['101', '707', '900', '1060', '1015', '1019', '1021', '4001', '1030', 'SHAJAHAN', 'SHIVA_DRIVER']
-    for vc in vip_codes:
-        cursor.execute("UPDATE employees SET attendance_policy = 'exempt_full' WHERE emp_code = ?", (vc,))
-        cursor.execute("""
-        UPDATE monthly_records 
-        SET biometric_days = 25.0, holiday = 6.0, total_pay_days = 31.0, remarks = 'Full Attendance (Principal Override)', needs_review = 0, absent_days_json = '[]', missed_punches_json = '[]', late_punches_json = '[]'
-        WHERE emp_code = ? AND month_year = ?
-        """, (vc, month_year))
+    m_days = float(payroll_engine.get_days_in_month_str(month_year) or 31)
+    holidays = 6.0
+    bio_days = max(0.0, m_days - holidays)
 
-    # Name-based checks for VIPs
+    # Known VIP / Exempt staff who may not exist in raw biometric machines
+    NON_BIOMETRIC_STAFF = {
+        '101': {'name': 'Dr .M. Mohan Babu', 'dept': 'General', 'desig': 'Principal'},
+        '707': {'name': 'R. Gunasekaran', 'dept': 'IT', 'desig': 'Asst.Prof'},
+        '900': {'name': 'I. Sudarsan Kumar', 'dept': 'HAS', 'desig': 'Professor & DAP'},
+        '1060': {'name': 'Vivekand Adhikari', 'dept': 'Administration', 'desig': 'IR Officer'},
+        '1015': {'name': 'R Hari Krishna', 'dept': 'Exam Section', 'desig': 'Clerk'},
+        '1019': {'name': 'Bishal Kumar Sha', 'dept': 'TAP', 'desig': 'Executive Assistant'},
+        '1021': {'name': 'M P Balaji', 'dept': 'Management Staff', 'desig': 'Accounts Officer'},
+        '4001': {'name': 'R. Poorna Chandra', 'dept': 'Management Staff', 'desig': 'Administrative officer'},
+        '1030': {'name': 'Thangeeru Surendera', 'dept': 'Transport', 'desig': 'VC Driver'},
+        'SHAJAHAN': {'name': 'S Shajahan', 'dept': 'Management Staff', 'desig': 'P A To Chairman'},
+        'SHIVA_DRIVER': {'name': 'Shiva', 'dept': 'Transport', 'desig': 'Principal Diver'},
+    }
+
+    # 1. Ensure all designated VIP staff exist in employees table & monthly_records for this month
+    for vc, meta in NON_BIOMETRIC_STAFF.items():
+        # Ensure employee row exists
+        cursor.execute("SELECT COUNT(*) as cnt FROM employees WHERE emp_code = ?", (vc,))
+        if cursor.fetchone()['cnt'] == 0:
+            cursor.execute("""
+            INSERT INTO employees (emp_code, name, designation, department, annual_cl_quota, annual_od_quota, attendance_policy, is_manual)
+            VALUES (?, ?, ?, ?, 12.0, 15.0, 'exempt_full', 1)
+            """, (vc, meta['name'], meta['desig'], meta['dept']))
+        else:
+            cursor.execute("UPDATE employees SET attendance_policy = 'exempt_full' WHERE emp_code = ?", (vc,))
+
+        # Ensure monthly_records row exists for this specific month (even if absent from uploaded Excel)
+        cursor.execute("SELECT COUNT(*) as cnt FROM monthly_records WHERE emp_code = ? AND month_year = ?", (vc, month_year))
+        if cursor.fetchone()['cnt'] == 0:
+            cursor.execute("""
+            INSERT INTO monthly_records 
+            (emp_code, month_year, biometric_days, holiday, availed_leaves, sv_od, total_pay_days, remarks, needs_review, absent_days_json, missed_punches_json, late_punches_json)
+            VALUES (?, ?, ?, ?, NULL, NULL, ?, 'Full Attendance (Principal Override)', 0, '[]', '[]', '[]')
+            """, (vc, month_year, bio_days, holidays, m_days))
+        else:
+            cursor.execute("""
+            UPDATE monthly_records 
+            SET biometric_days = ?, holiday = ?, total_pay_days = ?, remarks = 'Full Attendance (Principal Override)', needs_review = 0, absent_days_json = '[]', missed_punches_json = '[]', late_punches_json = '[]'
+            WHERE emp_code = ? AND month_year = ?
+            """, (bio_days, holidays, m_days, vc, month_year))
+
+    # Name-based checks for other VIPs in database
     cursor.execute("SELECT emp_code, name, designation, department FROM employees")
     emps = cursor.fetchall()
     for e in emps:
@@ -281,11 +317,32 @@ def apply_principal_rules_to_db(month_year: str = "August -2026"):
         if (any(k in nl for k in ['mohan babu', 'gunasekaran', 'gunaskaran', 'veveka', 'adhikari', 'hari krishna', 'visal kumar', 'shajahan']) or 
             ('siva' in nl and ('driver' in dl or 'transport' in deptl))):
             cursor.execute("UPDATE employees SET attendance_policy = 'exempt_full' WHERE emp_code = ?", (ec,))
+            cursor.execute("SELECT COUNT(*) as cnt FROM monthly_records WHERE emp_code = ? AND month_year = ?", (ec, month_year))
+            if cursor.fetchone()['cnt'] == 0:
+                cursor.execute("""
+                INSERT INTO monthly_records 
+                (emp_code, month_year, biometric_days, holiday, availed_leaves, sv_od, total_pay_days, remarks, needs_review, absent_days_json, missed_punches_json, late_punches_json)
+                VALUES (?, ?, ?, ?, NULL, NULL, ?, 'Full Attendance (Principal Override)', 0, '[]', '[]', '[]')
+                """, (ec, month_year, bio_days, holidays, m_days))
+            else:
+                cursor.execute("""
+                UPDATE monthly_records 
+                SET biometric_days = ?, holiday = ?, total_pay_days = ?, remarks = 'Full Attendance (Principal Override)', needs_review = 0, absent_days_json = '[]', missed_punches_json = '[]', late_punches_json = '[]'
+                WHERE emp_code = ? AND month_year = ?
+                """, (bio_days, holidays, m_days, ec, month_year))
+
+    # Also ensure any other employee marked as 'exempt_full' gets full pay for this month
+    cursor.execute("SELECT emp_code FROM employees WHERE attendance_policy = 'exempt_full'")
+    exempt_rows = cursor.fetchall()
+    for row in exempt_rows:
+        x_ec = row['emp_code']
+        cursor.execute("SELECT COUNT(*) as cnt FROM monthly_records WHERE emp_code = ? AND month_year = ?", (x_ec, month_year))
+        if cursor.fetchone()['cnt'] == 0:
             cursor.execute("""
-            UPDATE monthly_records 
-            SET biometric_days = 25.0, holiday = 6.0, total_pay_days = 31.0, remarks = 'Full Attendance (Principal Override)', needs_review = 0, absent_days_json = '[]', missed_punches_json = '[]', late_punches_json = '[]'
-            WHERE emp_code = ? AND month_year = ?
-            """, (ec, month_year))
+            INSERT INTO monthly_records 
+            (emp_code, month_year, biometric_days, holiday, availed_leaves, sv_od, total_pay_days, remarks, needs_review, absent_days_json, missed_punches_json, late_punches_json)
+            VALUES (?, ?, ?, ?, NULL, NULL, ?, 'Full Attendance (VIP / Exempt)', 0, '[]', '[]', '[]')
+            """, (x_ec, month_year, bio_days, holidays, m_days))
 
     # 2. 1053 (S. Pachaiyappan) - >=12 days
     cursor.execute("SELECT biometric_days, total_pay_days FROM monthly_records WHERE emp_code = '1053' AND month_year = ?", (month_year,))
@@ -293,9 +350,9 @@ def apply_principal_rules_to_db(month_year: str = "August -2026"):
     if r1053 and (float(r1053['biometric_days'] or 0) >= 12 or float(r1053['total_pay_days'] or 0) >= 12):
         cursor.execute("""
         UPDATE monthly_records 
-        SET biometric_days = 25.0, holiday = 6.0, total_pay_days = 31.0, remarks = 'Full Attendance (Principal Override)', needs_review = 0, absent_days_json = '[]', missed_punches_json = '[]', late_punches_json = '[]'
+        SET biometric_days = ?, holiday = ?, total_pay_days = ?, remarks = 'Full Attendance (Principal Override)', needs_review = 0, absent_days_json = '[]', missed_punches_json = '[]', late_punches_json = '[]'
         WHERE emp_code = '1053' AND month_year = ?
-        """, (month_year,))
+        """, (bio_days, holidays, m_days, month_year))
 
     # 3. 1203 (Dr J Velmurugan, IT HOD) - >=14 days
     cursor.execute("SELECT biometric_days, total_pay_days FROM monthly_records WHERE emp_code = '1203' AND month_year = ?", (month_year,))
@@ -303,9 +360,9 @@ def apply_principal_rules_to_db(month_year: str = "August -2026"):
     if r1203 and (float(r1203['biometric_days'] or 0) >= 14 or float(r1203['total_pay_days'] or 0) >= 14):
         cursor.execute("""
         UPDATE monthly_records 
-        SET biometric_days = 25.0, holiday = 6.0, total_pay_days = 31.0, remarks = 'Full Attendance (Principal Override)', needs_review = 0, absent_days_json = '[]', missed_punches_json = '[]', late_punches_json = '[]'
+        SET biometric_days = ?, holiday = ?, total_pay_days = ?, remarks = 'Full Attendance (Principal Override)', needs_review = 0, absent_days_json = '[]', missed_punches_json = '[]', late_punches_json = '[]'
         WHERE emp_code = '1203' AND month_year = ?
-        """, (month_year,))
+        """, (bio_days, holidays, m_days, month_year))
 
     # 4. Transport Dept: remove late punch penalties
     transport_ids = ['625', '26', '27', '626', '627', '648', '1198', '628', '622', '6621', '606', '623', '603', '653', '605', '6623', '607', '6633', '610', '613']
@@ -321,6 +378,9 @@ def apply_principal_rules_to_db(month_year: str = "August -2026"):
 
 def get_month_records(month_year: str, active_only: bool = True, reference_codes: Optional[set] = None) -> List[dict]:
     """Retrieve all employee summaries for a specific month."""
+    # Ensure all VIPs and non-biometric staff are guaranteed present with full pay for this month
+    apply_principal_rules_to_db(month_year)
+
     conn = get_db()
     cursor = conn.cursor()
 
@@ -1016,6 +1076,7 @@ def recalculate_monthly_salary(emp_code: str, month_year: str, total_pay_days: O
 
 def populate_month_salaries_if_empty(month_year: str):
     """Ensure all employees in a month have computed salary figures."""
+    apply_principal_rules_to_db(month_year)
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT emp_code, total_pay_days, net_salary FROM monthly_records WHERE month_year = ?", (month_year,))
