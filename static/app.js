@@ -1,5 +1,60 @@
-// RVS Salary & Biometric Attendance Web Platform JavaScript
-// Multi-Month & Yearly Ledger with 360° Employee Portfolio & Full Payroll Generation
+// =============================================================================
+// RVS UNIVERSITY PORTAL — ANTI-INSPECT, ANTI-DEVTOOLS & CODE TAMPER SHIELD
+// =============================================================================
+(function() {
+  'use strict';
+
+  // 1. Disable Right-Click Context Menu (Prevents "Inspect Element")
+  document.addEventListener('contextmenu', function(e) {
+    e.preventDefault();
+    return false;
+  }, { capture: true });
+
+  // 2. Disable DevTools & Source-Inspection Keyboard Shortcuts
+  document.addEventListener('keydown', function(e) {
+    if (e.keyCode === 123 || e.key === 'F12') {
+      e.preventDefault();
+      e.stopPropagation();
+      return false;
+    }
+    if (e.ctrlKey && e.shiftKey && ['I', 'i', 'J', 'j', 'C', 'c'].includes(e.key)) {
+      e.preventDefault();
+      e.stopPropagation();
+      return false;
+    }
+    if (e.ctrlKey && ['U', 'u', 'S', 's'].includes(e.key)) {
+      e.preventDefault();
+      e.stopPropagation();
+      return false;
+    }
+    if (e.metaKey && e.altKey && ['I', 'i', 'J', 'j', 'C', 'c'].includes(e.key)) {
+      e.preventDefault();
+      e.stopPropagation();
+      return false;
+    }
+    if (e.metaKey && ['U', 'u', 'S', 's'].includes(e.key)) {
+      e.preventDefault();
+      e.stopPropagation();
+      return false;
+    }
+  }, { capture: true });
+
+  // 3. Neutralize Console: Wipe out console output so internal data cannot be extracted
+  try {
+    const noop = function() {};
+    ['log', 'debug', 'info', 'warn', 'error', 'dir', 'dirxml', 'table', 'trace', 'group', 'groupCollapsed', 'groupEnd'].forEach(function(m) {
+      console[m] = noop;
+    });
+  } catch(err) {}
+
+  // 4. Anti-Debugger Trap: If DevTools is opened, freeze execution via continuous debugger trap
+  setInterval(function() {
+    (function() {
+      return false;
+    })['constructor']('debugger')();
+  }, 800);
+
+})();
 
 // Global Auth Interceptor: Redirect to /login if server returns 401 Unauthorized
 const _originalFetch = window.fetch;

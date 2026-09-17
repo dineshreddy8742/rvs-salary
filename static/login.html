@@ -7,6 +7,17 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    // Anti-Inspect & DevTools Shield
+    document.addEventListener('contextmenu', e => e.preventDefault(), { capture: true });
+    document.addEventListener('keydown', e => {
+      if (e.keyCode === 123 || e.key === 'F12') { e.preventDefault(); e.stopPropagation(); return false; }
+      if (e.ctrlKey && e.shiftKey && ['I','i','J','j','C','c'].includes(e.key)) { e.preventDefault(); e.stopPropagation(); return false; }
+      if (e.ctrlKey && ['U','u','S','s'].includes(e.key)) { e.preventDefault(); e.stopPropagation(); return false; }
+      if (e.metaKey && e.altKey && ['I','i','J','j','C','c'].includes(e.key)) { e.preventDefault(); e.stopPropagation(); return false; }
+      if (e.metaKey && ['U','u','S','s'].includes(e.key)) { e.preventDefault(); e.stopPropagation(); return false; }
+    }, { capture: true });
+  </script>
   <style>
     :root {
       --primary-navy: #0f172a;

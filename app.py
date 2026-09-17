@@ -24,29 +24,50 @@ app.config['PERMANENT_SESSION_LIFETIME'] = 86400 * 30  # 30-day session
 AUTH_USERNAME = os.environ.get('PORTAL_USERNAME', 'rvsuniversity')
 AUTH_PASSWORD = os.environ.get('PORTAL_PASSWORD', 'rvs@123')
 
-# Security Interceptor: Block unauthenticated access to APIs, downloads, and pages
+# Security Interceptor: Block unauthenticated access to APIs, downloads, scripts, and pages
 @app.before_request
 def require_authentication():
     path = request.path
 
-    # Public routes & assets
+    # Strictly protect JavaScript source code, database, and Excel files from unauthenticated download
+    if path.endswith(('.js', '.ts', '.map', '.db', '.py', '.xls', '.xlsx', '.csv', '.json')):
+        if not session.get('logged_in'):
+            return jsonify({
+                'status': 'error',
+                'message': 'Access denied. Authentication required to inspect or download application scripts and data.'
+            }), 401
+
+    # Public routes & static assets needed for login
     public_endpoints = {'/login', '/api/auth/login', '/api/auth/status', '/rvs-logo.png'}
-    if path in public_endpoints or path.startswith('/static/'):
+    if path in public_endpoints:
         return
-    # Allow static resources required for login page
+    # Allow CSS, fonts, and images needed for login page
     if path.endswith(('.css', '.png', '.jpg', '.jpeg', '.ico', '.svg', '.woff2', '.ttf')):
         return
 
-    # Check session
+    # Check session for all other routes
     if not session.get('logged_in'):
-        # Block inspect / direct API calls with 401 Unauthorized JSON
         if path.startswith('/api/'):
             return jsonify({
                 'status': 'error',
                 'message': 'Unauthorized. Please log in to RVS University Payroll Portal.'
             }), 401
-        # Redirect browser navigation to login page
         return redirect('/login')
+
+@app.after_request
+def add_security_headers(response):
+    """Inject security headers to prevent caching, sniffing, framing, and code inspection."""
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    
+    # Prevent caching of all sensitive scripts, pages, and API responses
+    if request.path.endswith(('.js', '.html', '')) or request.path.startswith('/api/'):
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+    return response
 
 # -----------------------------------------------------------------------------
 # AUTHENTICATION ROUTES
