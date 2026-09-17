@@ -729,17 +729,16 @@ function renderUnifiedKPIs(attStats, salStats) {
   const elStaff = document.getElementById('stat-total-staff');
   if (elStaff) elStaff.textContent = totalStaff;
 
-  const elBudget = document.getElementById('stat-total-budget');
-  if (elBudget) elBudget.textContent = f(salStats.total_payroll_budget);
+  // Store raw salary values globally so we can mask/unmask without re-fetching
+  window._kpiSalaryData = {
+    budget:  salStats.total_payroll_budget,
+    gross:   salStats.total_gross_disbursed,
+    ded:     salStats.total_all_deductions,
+    net:     salStats.total_net_disbursed
+  };
 
-  const elGross = document.getElementById('stat-total-gross');
-  if (elGross) elGross.textContent = f(salStats.total_gross_disbursed);
-
-  const elDed = document.getElementById('stat-total-deductions');
-  if (elDed) elDed.textContent = f(salStats.total_all_deductions);
-
-  const elNet = document.getElementById('stat-total-net');
-  if (elNet) elNet.textContent = f(salStats.total_net_disbursed);
+  // Apply mask based on current lock state
+  updateSalaryKPIMask();
 
   const elDays = document.getElementById('stat-total-pay-days');
   if (elDays) {
@@ -770,6 +769,40 @@ function renderUnifiedKPIs(attStats, salStats) {
 
   const elDedPill = document.getElementById('count-ded');
   if (elDedPill) elDedPill.textContent = dedCount;
+}
+
+// Mask or unmask salary KPI cards based on showSalaryColumns
+function updateSalaryKPIMask() {
+  const f = (n) => '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+  const locked = !showSalaryColumns;
+  const d = window._kpiSalaryData || {};
+
+  const lockedHtml = '<span style="font-size:0.78rem;letter-spacing:0.5px;opacity:0.7;">🔒 Locked</span>';
+
+  const elBudget = document.getElementById('stat-total-budget');
+  if (elBudget) elBudget.innerHTML = locked ? lockedHtml : f(d.budget);
+
+  const elGross = document.getElementById('stat-total-gross');
+  if (elGross) elGross.innerHTML = locked ? lockedHtml : f(d.gross);
+
+  const elDed = document.getElementById('stat-total-deductions');
+  if (elDed) elDed.innerHTML = locked ? lockedHtml : f(d.ded);
+
+  const elNet = document.getElementById('stat-total-net');
+  if (elNet) elNet.innerHTML = locked ? lockedHtml : f(d.net);
+
+  // Dim/highlight the stat cards visually
+  ['stat-total-budget','stat-total-gross','stat-total-deductions','stat-total-net'].forEach(id => {
+    const card = document.getElementById(id)?.closest('.stat-card');
+    if (card) {
+      card.style.opacity = locked ? '0.65' : '1';
+      card.style.filter = locked ? 'grayscale(0.4)' : 'none';
+      card.style.cursor = locked ? 'pointer' : '';
+      card.title = locked ? 'Click 🔒 Salary Columns: Locked to reveal' : '';
+      // Click to open PIN if locked
+      card.onclick = locked ? openPinModal : null;
+    }
+  });
 }
 
 function populateDepartmentSelect(depts) {
@@ -819,6 +852,9 @@ function updateSalaryToggleUI() {
     if (icon) icon.textContent = '🔒';
     if (text) text.textContent = 'Salary Columns: Locked';
   }
+
+  // Sync KPI cards to lock/unlock state
+  updateSalaryKPIMask();
 }
 
 // ─────────────────────────────────────────────────────────────────
