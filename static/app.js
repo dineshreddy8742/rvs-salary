@@ -860,26 +860,83 @@ function updateSalaryToggleUI() {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// FLOATING LOCK BANNER (shown when salary is revealed)
+// FLOATING LOCK BANNER — Small draggable pill
 // ─────────────────────────────────────────────────────────────────
 function _showLockBanner() {
-  let banner = document.getElementById('salary-lock-banner');
-  if (!banner) {
-    banner = document.createElement('div');
-    banner.id = 'salary-lock-banner';
-    banner.innerHTML = `
-      <span style="font-size:1.1rem;">🔓</span>
-      <span><strong>Salary Unlocked</strong> — visible to you now</span>
-      <button id="btn-lock-banner-now" onclick="lockSalaryNow()" style="margin-left:auto;background:#b91c1c;color:#fff;border:none;border-radius:8px;padding:7px 18px;font-weight:800;cursor:pointer;font-size:0.82rem;letter-spacing:0.3px;">🔒 Lock Salary Now</button>
+  let pill = document.getElementById('salary-lock-banner');
+  if (!pill) {
+    pill = document.createElement('div');
+    pill.id = 'salary-lock-banner';
+    pill.innerHTML = `
+      <span class="slb-drag-handle" title="Drag to move">⠿</span>
+      <span class="slb-icon">🔓</span>
+      <span class="slb-label">Salary Open</span>
+      <button class="slb-btn" onclick="lockSalaryNow()" title="Click to lock salary">🔒 Lock</button>
     `;
-    document.body.appendChild(banner);
+    document.body.appendChild(pill);
+    _makeDraggable(pill);
   }
-  banner.classList.add('visible');
+  pill.classList.add('visible');
+}
+
+function _makeDraggable(el) {
+  let startX, startY, startLeft, startTop, dragging = false;
+  const handle = el.querySelector('.slb-drag-handle') || el;
+
+  handle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    dragging = true;
+    startX = e.clientX;
+    startY = e.clientY;
+    const rect = el.getBoundingClientRect();
+    startLeft = rect.left;
+    startTop = rect.top;
+    el.style.transition = 'none';
+    el.style.left = startLeft + 'px';
+    el.style.top = startTop + 'px';
+    el.style.bottom = 'auto';
+    el.style.transform = 'none';
+    document.body.style.userSelect = 'none';
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    el.style.left = (startLeft + dx) + 'px';
+    el.style.top  = (startTop  + dy) + 'px';
+  });
+
+  document.addEventListener('mouseup', () => {
+    dragging = false;
+    document.body.style.userSelect = '';
+    el.style.transition = '';
+  });
+
+  // Touch support
+  handle.addEventListener('touchstart', (e) => {
+    const t = e.touches[0];
+    startX = t.clientX; startY = t.clientY;
+    const rect = el.getBoundingClientRect();
+    startLeft = rect.left; startTop = rect.top;
+    el.style.transition = 'none';
+    el.style.left = startLeft + 'px';
+    el.style.top = startTop + 'px';
+    el.style.bottom = 'auto';
+    el.style.transform = 'none';
+  }, { passive: true });
+
+  document.addEventListener('touchmove', (e) => {
+    if (!el.classList.contains('visible')) return;
+    const t = e.touches[0];
+    el.style.left = (startLeft + t.clientX - startX) + 'px';
+    el.style.top  = (startTop  + t.clientY - startY) + 'px';
+  }, { passive: true });
 }
 
 function _hideLockBanner() {
-  const banner = document.getElementById('salary-lock-banner');
-  if (banner) banner.classList.remove('visible');
+  const pill = document.getElementById('salary-lock-banner');
+  if (pill) pill.classList.remove('visible');
 }
 
 function lockSalaryNow() {

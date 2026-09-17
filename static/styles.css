@@ -3177,35 +3177,82 @@ html, body {
 }
 
 /* ─────────────────────────────────────────────────────
-   FLOATING SALARY LOCK BANNER
-   Appears at bottom when salary is unlocked
+   FLOATING SALARY LOCK PILL — Small draggable widget
 ───────────────────────────────────────────────────── */
 #salary-lock-banner {
   position: fixed;
-  bottom: -80px;
-  left: 50%;
-  transform: translateX(-50%);
+  bottom: -60px;               /* hidden off-screen */
+  right: 24px;
+  left: auto;
+  transform: none;
   z-index: 9999;
-  background: linear-gradient(135deg, #1e3a8a, #1d4ed8);
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   color: #fff;
-  padding: 12px 22px;
-  border-radius: 14px;
-  display: flex;
+  padding: 6px 10px 6px 6px;
+  border-radius: 20px;
+  display: inline-flex;
   align-items: center;
-  gap: 12px;
-  min-width: 380px;
-  max-width: 92vw;
-  box-shadow: 0 8px 32px rgba(15,23,42,0.28), 0 2px 8px rgba(0,0,0,0.12);
-  font-size: 0.85rem;
+  gap: 6px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+  font-size: 0.75rem;
   font-weight: 500;
   font-family: 'Plus Jakarta Sans', sans-serif;
-  transition: bottom 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: bottom 0.38s cubic-bezier(0.34, 1.56, 0.64, 1);
+  cursor: default;
+  white-space: nowrap;
+  user-select: none;
 }
 
 #salary-lock-banner.visible {
-  bottom: 24px;
+  bottom: 20px;
 }
 
-#salary-lock-banner strong {
-  font-weight: 800;
+/* Drag handle — the ⠿ dots */
+#salary-lock-banner .slb-drag-handle {
+  cursor: grab;
+  font-size: 0.9rem;
+  opacity: 0.55;
+  padding: 2px 4px;
+  border-radius: 6px;
+  line-height: 1;
+}
+#salary-lock-banner .slb-drag-handle:hover { opacity: 0.9; }
+#salary-lock-banner .slb-drag-handle:active { cursor: grabbing; }
+
+/* Icon */
+#salary-lock-banner .slb-icon {
+  font-size: 0.88rem;
+  line-height: 1;
+}
+
+/* Label text */
+#salary-lock-banner .slb-label {
+  font-size: 0.73rem;
+  font-weight: 600;
+  opacity: 0.88;
+  letter-spacing: 0.2px;
+}
+
+/* Lock button */
+#salary-lock-banner .slb-btn {
+  background: #dc2626;
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  padding: 4px 10px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, transform 0.1s;
+  line-height: 1.4;
+}
+#salary-lock-banner .slb-btn:hover {
+  background: #b91c1c;
+  transform: scale(1.05);
+}
+#salary-lock-banner .slb-btn:active {
+  transform: scale(0.96);
 }
