@@ -1852,6 +1852,41 @@ async function executeBulkRevert(e) {
 // =============================================================================
 // EMPLOYEE 360° PORTFOLIO & LEAVE PASSBOOK MODAL
 // =============================================================================
+
+// Hides or reveals salary section inside the portfolio modal based on lock state
+function _maskPortfolioSalary() {
+  const salarySection = document.getElementById('pf-payslip-box');  // the full pay slip card
+  const printBtn      = document.getElementById('btn-print-payslip');
+
+  if (!showSalaryColumns) {
+    if (salarySection) salarySection.style.display = 'none';
+    if (printBtn) printBtn.style.display = 'none';
+
+    // Show locked notice
+    let notice = document.getElementById('pf-salary-locked-notice');
+    if (!notice) {
+      notice = document.createElement('div');
+      notice.id = 'pf-salary-locked-notice';
+      notice.style.cssText = 'background:rgba(30,41,59,0.05);border:1.5px dashed #cbd5e1;border-radius:12px;padding:22px 24px;text-align:center;color:#64748b;font-size:0.88rem;margin:16px 0 8px;';
+      notice.innerHTML = `
+        <div style="font-size:2rem;margin-bottom:6px;">🔒</div>
+        <strong style="font-size:1rem;color:#334155;">Salary data is locked</strong><br>
+        <span style="opacity:0.75;font-size:0.82rem;">Enter PIN to view salary, deductions & net pay</span><br>
+        <button onclick="openPinModal()" style="margin-top:12px;background:#1d4ed8;color:#fff;border:none;border-radius:8px;padding:8px 20px;font-weight:700;cursor:pointer;font-size:0.81rem;">🔑 Enter PIN to Unlock</button>
+      `;
+      if (salarySection && salarySection.parentNode) {
+        salarySection.parentNode.insertBefore(notice, salarySection);
+      }
+    }
+    notice.style.display = '';
+  } else {
+    if (salarySection) salarySection.style.display = '';
+    if (printBtn) printBtn.style.display = '';
+    const notice = document.getElementById('pf-salary-locked-notice');
+    if (notice) notice.style.display = 'none';
+  }
+}
+
 async function openPortfolio(empCode) {
   try {
     activePortfolioEmpCode = empCode;
@@ -1861,6 +1896,8 @@ async function openPortfolio(empCode) {
 
     renderPortfolioModal(data.portfolio);
     document.getElementById('modal-portfolio').classList.add('active');
+    // Apply salary mask to portfolio sections
+    _maskPortfolioSalary();
   } catch (err) {
     alert('Error loading employee portfolio');
   }
@@ -2152,6 +2189,13 @@ function showToast(msg) {
 // 1. UNIFIED 360° MASTER PROFILE, ATTENDANCE & SALARY EDITOR
 // -----------------------------------------------------------------------------
 function openEditPackageModal(empCode) {
+  // Block edit modal salary sections when locked — redirect to PIN
+  if (!showSalaryColumns) {
+    showToast('🔒 Unlock salary to access the full edit panel');
+    openPinModal();
+    return;
+  }
+
   const emp = unifiedRecords.find(e => String(e.emp_code) === String(empCode)) || 
               allSalaryRecords.find(e => String(e.emp_code) === String(empCode));
   if (!emp) return;
