@@ -1,6 +1,26 @@
 // RVS Salary & Biometric Attendance Web Platform JavaScript
 // Multi-Month & Yearly Ledger with 360° Employee Portfolio & Full Payroll Generation
 
+// Global Auth Interceptor: Redirect to /login if server returns 401 Unauthorized
+const _originalFetch = window.fetch;
+window.fetch = async function(...args) {
+  const response = await _originalFetch.apply(this, args);
+  if (response && response.status === 401) {
+    window.location.href = '/login';
+  }
+  return response;
+};
+
+// Portal Logout Action
+async function handleLogout() {
+  if (confirm('Are you sure you want to log out of RVS University Payroll Portal?')) {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (e) {}
+    window.location.href = '/login';
+  }
+}
+
 let allEmployees = [];
 let allSalaryRecords = [];
 let currentFilter = 'all';

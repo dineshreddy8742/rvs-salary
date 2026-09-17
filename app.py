@@ -2,7 +2,7 @@ import os
 import tempfile
 import json
 import re
-from flask import Flask, request, jsonify, send_file, send_from_directory
+from flask import Flask, request, jsonify, send_file, send_from_directory, session, redirect, url_for
 import database
 from attendance_engine import AttendanceEngine
 from export_excel import export_to_xls
@@ -15,7 +15,88 @@ def clean_month_str(month_str: str) -> str:
     return clean or 'August_2026'
 
 app = Flask(__name__, static_folder='static', static_url_path='')
+app.secret_key = os.environ.get('SECRET_KEY', 'rvs_university_chittoor_payroll_secret_2026_super_key')
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['PERMANENT_SESSION_LIFETIME'] = 86400 * 30  # 30-day session
 
+# Single Official Master Portal Credentials
+AUTH_USERNAME = os.environ.get('PORTAL_USERNAME', 'rvsuniversity')
+AUTH_PASSWORD = os.environ.get('PORTAL_PASSWORD', 'rvs@123')
+
+# Security Interceptor: Block unauthenticated access to APIs, downloads, and pages
+@app.before_request
+def require_authentication():
+    path = request.path
+
+    # Public routes & assets
+    public_endpoints = {'/login', '/api/auth/login', '/api/auth/status', '/rvs-logo.png'}
+    if path in public_endpoints or path.startswith('/static/'):
+        return
+    # Allow static resources required for login page
+    if path.endswith(('.css', '.png', '.jpg', '.jpeg', '.ico', '.svg', '.woff2', '.ttf')):
+        return
+
+    # Check session
+    if not session.get('logged_in'):
+        # Block inspect / direct API calls with 401 Unauthorized JSON
+        if path.startswith('/api/'):
+            return jsonify({
+                'status': 'error',
+                'message': 'Unauthorized. Please log in to RVS University Payroll Portal.'
+            }), 401
+        # Redirect browser navigation to login page
+        return redirect('/login')
+
+# -----------------------------------------------------------------------------
+# AUTHENTICATION ROUTES
+# -----------------------------------------------------------------------------
+@app.route('/login', methods=['GET'])
+def login_page():
+    if session.get('logged_in'):
+        return redirect('/')
+    return send_from_directory('static', 'login.html')
+
+@app.route('/api/auth/login', methods=['POST'])
+def auth_login():
+    data = request.json or {}
+    username = (data.get('username') or '').strip()
+    password = (data.get('password') or '').strip()
+
+    if username == AUTH_USERNAME and password == AUTH_PASSWORD:
+        session.permanent = True
+        session['logged_in'] = True
+        session['username'] = username
+        return jsonify({
+            'status': 'success',
+            'message': 'Authenticated successfully'
+        })
+
+    return jsonify({
+        'status': 'error',
+        'message': 'Invalid username or password. Access denied.'
+    }), 401
+
+@app.route('/api/auth/status', methods=['GET'])
+def auth_status():
+    return jsonify({
+        'logged_in': bool(session.get('logged_in')),
+        'username': session.get('username') or ''
+    })
+
+@app.route('/api/auth/logout', methods=['POST', 'GET'])
+@app.route('/logout', methods=['GET'])
+def auth_logout():
+    session.clear()
+    if request.is_json or request.path.startswith('/api/'):
+        return jsonify({'status': 'success', 'message': 'Logged out successfully'})
+    return redirect('/login')
+
+@app.route('/')
+def index():
+    if not session.get('logged_in'):
+        return redirect('/login')
+    return send_from_directory('static', 'index.html')
 # Initialize database & salary profiles
 database.init_db()
 if os.path.exists('database'):
@@ -61,10 +142,6 @@ if os.path.exists(REF_FILE):
         REFERENCE_CODES.update({'101', '707', '900', '1060', '1015', '1019', '1021', '4001', '1030', 'SHAJAHAN', 'SHIVA_DRIVER'})
     except Exception as e:
         print("Error reading reference codes:", e)
-
-@app.route('/')
-def index():
-    return send_from_directory('static', 'index.html')
 
 @app.route('/api/months', methods=['GET'])
 def get_months():
