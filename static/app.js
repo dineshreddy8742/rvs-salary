@@ -803,6 +803,11 @@ function updateSalaryKPIMask() {
       card.onclick = locked ? openPinModal : null;
     }
   });
+
+  // Hide / show salary-gated toolbar buttons (Banking, Export Salary, Bulk Adjust, Variance)
+  document.querySelectorAll('.salary-gated').forEach(el => {
+    el.style.display = locked ? 'none' : '';
+  });
 }
 
 function populateDepartmentSelect(depts) {

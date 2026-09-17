@@ -73,7 +73,7 @@
           <input type="file" id="file-input" accept=".xls,.xlsx" style="display: none;">
 
           <!-- Banking & Treasury Dropdown -->
-          <div class="dropdown-wrap" id="wrap-disbursement-dropdown">
+          <div class="dropdown-wrap salary-gated" id="wrap-disbursement-dropdown">
             <button class="header-btn btn-disburse" id="btn-disburse-menu" title="Banking, NEFT, Pay Slips, Executive Summary">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
                 <path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v4M12 14v4M16 14v4"/>
@@ -149,11 +149,11 @@
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
             <span>Export Attendance</span>
           </button>
-          <button class="header-btn btn-export-salary" id="btn-export-salary" title="Download Salary Bill Excel">
+          <button class="header-btn btn-export-salary salary-gated" id="btn-export-salary" title="Download Salary Bill Excel">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
             <span>Export Salary</span>
           </button>
-          <button class="header-btn btn-bulk-adj" id="btn-bulk-adjust-modal" title="Bulk apply bonus, arrears, EPF adjustments">
+          <button class="header-btn btn-bulk-adj salary-gated" id="btn-bulk-adjust-modal" title="Bulk apply bonus, arrears, EPF adjustments">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
             <span>⚡ Bulk Adjust</span>
           </button>
@@ -166,7 +166,7 @@
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
             <span>↺ Revert to Biometric</span>
           </button>
-          <button class="header-btn btn-variance" id="btn-variance-modal" title="Compare month-over-month salary differences">
+          <button class="header-btn btn-variance salary-gated" id="btn-variance-modal" title="Compare month-over-month salary differences">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
             <span>📊 Variance Report</span>
           </button>
