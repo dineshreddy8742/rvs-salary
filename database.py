@@ -138,7 +138,16 @@ def get_available_months() -> List[str]:
     cursor.execute("SELECT DISTINCT month_year FROM monthly_records ORDER BY id ASC")
     rows = cursor.fetchall()
     conn.close()
-    return [r['month_year'] for r in rows] if rows else ["August -2026"]
+    return [r['month_year'] for r in rows]
+
+def has_monthly_records() -> bool:
+    """Check if monthly_records table has any rows."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) as cnt FROM monthly_records")
+    cnt = cursor.fetchone()['cnt']
+    conn.close()
+    return cnt > 0
 
 def seed_from_engine(engine, month_year: str = "August -2026"):
     """Populate database from an AttendanceEngine instance if empty."""
@@ -152,9 +161,18 @@ def seed_from_engine(engine, month_year: str = "August -2026"):
         return
 
     print(f"Seeding database for {month_year}...")
+    vip_full_pay_codes = {'101', '707', '900', '1060', '1015', '1019', '1021', '4001', '1030', 'SHAJAHAN', 'SHIVA_DRIVER'}
+
     for emp_code, emp in engine.employees.items():
-        # Set Principal and certain VIPs to exempt_full by default
-        policy = 'exempt_full' if emp_code in ('101',) or 'principal' in str(emp.get('designation', '')).lower() else 'standard'
+        name_l = str(emp.get('name', '')).lower()
+        desig_l = str(emp.get('designation', '')).lower()
+        dept_l = str(emp.get('department', '')).lower()
+
+        is_vip = (emp_code in vip_full_pay_codes or 
+                  'principal' in desig_l or 
+                  any(k in name_l for k in ['mohan babu', 'gunasekaran', 'gunaskaran', 'veveka', 'adhikari', 'hari krishna', 'visal kumar', 'bishal kumar', 'shajahan']) or
+                  ('siva' in name_l and ('driver' in desig_l or 'transport' in dept_l)))
+        policy = 'exempt_full' if is_vip else 'standard'
         
         cursor.execute("""
         INSERT OR REPLACE INTO employees (emp_code, name, designation, department, annual_cl_quota, annual_od_quota, attendance_policy, is_manual)
@@ -223,6 +241,83 @@ def seed_from_engine(engine, month_year: str = "August -2026"):
     conn.commit()
     conn.close()
     print(f"Database seeded successfully for {month_year}.")
+    apply_principal_rules_to_db(month_year)
+
+def apply_principal_rules_to_db(month_year: str = "August -2026"):
+    """
+    Enforce Principal Sir's 21 attendance rules directly on database records:
+    - 101, 707, 900, 1060, 1015, 1019, 1021, 4001, 1030, Shajahan, Siva driver: 31 full days.
+    - 1053: >=12 days -> 31 full days.
+    - 1203: >=14 days -> 31 full days.
+    - 536: CSE Bala Subramanyam before 12:10 = full day.
+    - 109: Civil M. Lilaakar before 11:00 am = full day.
+    - Transport IDs: no late penalties, no out punch counted as present.
+    - Electricians: 8:30 in, 16:30 out full day no penalty.
+    - Attenders / Garden: 8:35 in threshold.
+    - Admission: 6 days/week, Sunday work offsets absent.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # 1. Direct VIP Full-Pay IDs
+    vip_codes = ['101', '707', '900', '1060', '1015', '1019', '1021', '4001', '1030', 'SHAJAHAN', 'SHIVA_DRIVER']
+    for vc in vip_codes:
+        cursor.execute("UPDATE employees SET attendance_policy = 'exempt_full' WHERE emp_code = ?", (vc,))
+        cursor.execute("""
+        UPDATE monthly_records 
+        SET biometric_days = 25.0, holiday = 6.0, total_pay_days = 31.0, remarks = 'Full Attendance (Principal Override)', needs_review = 0, absent_days_json = '[]', missed_punches_json = '[]', late_punches_json = '[]'
+        WHERE emp_code = ? AND month_year = ?
+        """, (vc, month_year))
+
+    # Name-based checks for VIPs
+    cursor.execute("SELECT emp_code, name, designation, department FROM employees")
+    emps = cursor.fetchall()
+    for e in emps:
+        ec = e['emp_code']
+        nl = (e['name'] or '').lower()
+        dl = (e['designation'] or '').lower()
+        deptl = (e['department'] or '').lower()
+        
+        if (any(k in nl for k in ['mohan babu', 'gunasekaran', 'gunaskaran', 'veveka', 'adhikari', 'hari krishna', 'visal kumar', 'shajahan']) or 
+            ('siva' in nl and ('driver' in dl or 'transport' in deptl))):
+            cursor.execute("UPDATE employees SET attendance_policy = 'exempt_full' WHERE emp_code = ?", (ec,))
+            cursor.execute("""
+            UPDATE monthly_records 
+            SET biometric_days = 25.0, holiday = 6.0, total_pay_days = 31.0, remarks = 'Full Attendance (Principal Override)', needs_review = 0, absent_days_json = '[]', missed_punches_json = '[]', late_punches_json = '[]'
+            WHERE emp_code = ? AND month_year = ?
+            """, (ec, month_year))
+
+    # 2. 1053 (S. Pachaiyappan) - >=12 days
+    cursor.execute("SELECT biometric_days, total_pay_days FROM monthly_records WHERE emp_code = '1053' AND month_year = ?", (month_year,))
+    r1053 = cursor.fetchone()
+    if r1053 and (float(r1053['biometric_days'] or 0) >= 12 or float(r1053['total_pay_days'] or 0) >= 12):
+        cursor.execute("""
+        UPDATE monthly_records 
+        SET biometric_days = 25.0, holiday = 6.0, total_pay_days = 31.0, remarks = 'Full Attendance (Principal Override)', needs_review = 0, absent_days_json = '[]', missed_punches_json = '[]', late_punches_json = '[]'
+        WHERE emp_code = '1053' AND month_year = ?
+        """, (month_year,))
+
+    # 3. 1203 (Dr J Velmurugan, IT HOD) - >=14 days
+    cursor.execute("SELECT biometric_days, total_pay_days FROM monthly_records WHERE emp_code = '1203' AND month_year = ?", (month_year,))
+    r1203 = cursor.fetchone()
+    if r1203 and (float(r1203['biometric_days'] or 0) >= 14 or float(r1203['total_pay_days'] or 0) >= 14):
+        cursor.execute("""
+        UPDATE monthly_records 
+        SET biometric_days = 25.0, holiday = 6.0, total_pay_days = 31.0, remarks = 'Full Attendance (Principal Override)', needs_review = 0, absent_days_json = '[]', missed_punches_json = '[]', late_punches_json = '[]'
+        WHERE emp_code = '1203' AND month_year = ?
+        """, (month_year,))
+
+    # 4. Transport Dept: remove late punch penalties
+    transport_ids = ['625', '26', '27', '626', '627', '648', '1198', '628', '622', '6621', '606', '623', '603', '653', '605', '6623', '607', '6633', '610', '613']
+    for tid in transport_ids:
+        cursor.execute("""
+        UPDATE monthly_records 
+        SET late_punches_json = '[]'
+        WHERE emp_code = ? AND month_year = ?
+        """, (tid, month_year))
+
+    conn.commit()
+    conn.close()
 
 def get_month_records(month_year: str, active_only: bool = True, reference_codes: Optional[set] = None) -> List[dict]:
     """Retrieve all employee summaries for a specific month."""

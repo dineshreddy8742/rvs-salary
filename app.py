@@ -28,10 +28,15 @@ RAW_FILE = 'raw input from biometric.xls'
 REF_FILE = 'output.xls'
 
 # Seed database if empty
-if not os.path.exists(database.DB_FILE) or len(database.get_available_months()) == 0:
+if not database.has_monthly_records():
     if os.path.exists(RAW_FILE):
         engine = AttendanceEngine(RAW_FILE, REF_FILE if os.path.exists(REF_FILE) else None)
         database.seed_from_engine(engine, "August -2026")
+
+try:
+    database.apply_principal_rules_to_db("August -2026")
+except Exception as e:
+    print("Notice on applying principal rules:", e)
 
 # Cache reference employee codes for active_only filter
 REFERENCE_CODES = set()
@@ -42,7 +47,18 @@ if os.path.exists(REF_FILE):
         for i in range(len(df_ref)):
             val0 = df_ref.iloc[i, 0]
             if pd.to_numeric(val0, errors='coerce') is not None and pd.notna(pd.to_numeric(val0, errors='coerce')):
-                REFERENCE_CODES.add(str(df_ref.iloc[i, 1]).strip())
+                raw_ec = str(df_ref.iloc[i, 1]).strip() if pd.notna(df_ref.iloc[i, 1]) else ''
+                name = str(df_ref.iloc[i, 2]).strip() if pd.notna(df_ref.iloc[i, 2]) else ''
+                if not raw_ec or raw_ec.lower() == 'nan':
+                    if 'shajahan' in name.lower():
+                        raw_ec = 'SHAJAHAN'
+                    elif 'shiva' in name.lower() or 'siva' in name.lower():
+                        raw_ec = 'SHIVA_DRIVER'
+                    else:
+                        raw_ec = f"REF_{int(val0)}"
+                REFERENCE_CODES.add(raw_ec)
+        # Always keep VIPs active
+        REFERENCE_CODES.update({'101', '707', '900', '1060', '1015', '1019', '1021', '4001', '1030', 'SHAJAHAN', 'SHIVA_DRIVER'})
     except Exception as e:
         print("Error reading reference codes:", e)
 

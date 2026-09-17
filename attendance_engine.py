@@ -43,10 +43,19 @@ class AttendanceEngine:
                     if curr_dept not in depts_found:
                         depts_found.append(curr_dept)
                 elif pd.to_numeric(r[0], errors='coerce') is not None and pd.notna(pd.to_numeric(r[0], errors='coerce')):
-                    ec = str(r[1]).strip()
-                    name = str(r[2]).strip()
+                    raw_ec = str(r[1]).strip() if pd.notna(r[1]) else ''
+                    name = str(r[2]).strip() if pd.notna(r[2]) else ''
                     desig = str(r[3]).strip() if pd.notna(r[3]) else ''
-                    self.reference_metadata[ec] = {
+                    
+                    if not raw_ec or raw_ec.lower() == 'nan':
+                        if 'shajahan' in name.lower():
+                            raw_ec = 'SHAJAHAN'
+                        elif 'shiva' in name.lower() or 'siva' in name.lower():
+                            raw_ec = 'SHIVA_DRIVER'
+                        else:
+                            raw_ec = f"REF_{int(r[0])}"
+
+                    self.reference_metadata[raw_ec] = {
                         'name': name,
                         'designation': desig,
                         'dept': curr_dept
@@ -70,7 +79,37 @@ class AttendanceEngine:
             except Exception as e:
                 print(f"Error parsing sheet {sheet_name}: {e}")
 
-        # If reference metadata has specific order / employees, filter or align
+        # Inject VIPs & reference employees who have no biometric records per Principal instructions
+        if self.reference_metadata:
+            for ec, meta in self.reference_metadata.items():
+                if ec not in parsed_emps:
+                    parsed_emps[ec] = {
+                        'emp_code': ec,
+                        'name': meta['name'],
+                        'designation': meta.get('designation', 'Staff'),
+                        'department': meta.get('dept', 'General'),
+                        'raw_summary': 'Total Duration=00:00 Present=25.0 Absent=0.0 Leaves=0.0 Holiday=6.0',
+                        'days': [
+                            {
+                                'day': d,
+                                'date': f"{d:02d}-Aug-2026",
+                                'in_time': '09:00',
+                                'out_time': '17:00',
+                                'shift': 'GS',
+                                'duration': '08:00',
+                                'status': 'Present',
+                                'remarks': '',
+                                'override_status': None
+                            } for d in range(1, 32)
+                        ],
+                        'sheet': 'VIP_Reference',
+                        'manual_cl_override': None,
+                        'manual_od_override': None,
+                        'manual_holiday_override': 6.0,
+                        'manual_biometric_override': 25.0,
+                        'manual_remarks_override': 'Full Month (Principal Override)'
+                    }
+
         self.employees = parsed_emps
         self.calculate_all_summaries()
 
@@ -209,26 +248,93 @@ class AttendanceEngine:
             if m_l:
                 raw_leaves = float(m_l.group(1))
 
+        # Apply Principal Sir's time overrides on daily records
+        code = str(emp.get('emp_code', '')).strip()
+        dept_lower_str = str(emp.get('department', '')).lower()
+        desig_lower = str(emp.get('designation', '')).lower()
+        name_lower = str(emp.get('name', '')).lower()
+
+        transport_ids = {'625', '26', '27', '626', '627', '648', '1198', '628', '622', '6621', '606', '623', '603', '653', '605', '6623', '607', '6633', '610', '613'}
+        electrician_ids = {'206', '243', '218', '217', '213'}
+        admission_ids = {'2005', '2006', '6001', '1040', '1017', '2011', '6000', '2010', '2007', '2013', '2514', '2512', '2511', '2503', '2502', '2505', '2051', '2508', '6004', '6005'}
+
+        is_transport = (code in transport_ids or 'transport' in dept_lower_str)
+        is_electrician = (code in electrician_ids)
+        is_admission = (code in admission_ids or 'admission' in dept_lower_str)
+
         for day in emp['days']:
             d_num = day['day']
             st = day.get('override_status') or day['status']
             in_t = day['in_time']
             out_t = day['out_time']
+            
+            # Helper to parse HH:MM
+            def get_time(t_str):
+                if t_str and re.match(r'^\d{2}:\d{2}$', t_str):
+                    parts = t_str.split(':')
+                    return int(parts[0]), int(parts[1])
+                return -1, -1
 
-            # Check late arrivals (>09:25 AM)
-            if in_t and re.match(r'^\d{2}:\d{2}$', in_t):
-                try:
-                    parts = in_t.split(':')
-                    hh, mm = int(parts[0]), int(parts[1])
-                    if hh == 9 and mm > 25:
-                        late_punches.append(f"{hh}.{mm:02d}")
-                    elif hh > 9 and hh < 13:
-                        late_punches.append(f"{hh}.{mm:02d}")
-                except Exception:
-                    pass
+            in_h, in_m = get_time(in_t)
+            out_h, out_m = get_time(out_t)
 
-            # Evaluate day status
             st_upper = st.upper()
+            
+            # Admission dept: work on Sunday is credited as a present working day (August 2, 9, 16, 23, 30)
+            if is_admission and d_num in (2, 9, 16, 23, 30) and (in_t or out_t):
+                st_upper = 'PRESENT'
+
+            # Principal Overrides for Presence
+            if in_t or out_t: # Has some punch
+                if is_transport:
+                    # Transport: no time limit, any punch is full day
+                    if in_t and out_t:
+                        st_upper = 'PRESENT'
+                elif code == '536' and in_h != -1:
+                    # CSE Bala Subramanyam: before 12:10 = full day
+                    if in_h < 12 or (in_h == 12 and in_m <= 10):
+                        st_upper = 'PRESENT'
+                elif code == '109' and in_h != -1:
+                    # Civil M. Lilaakar: before 11:00 = full day
+                    if in_h < 11:
+                        st_upper = 'PRESENT'
+                elif is_electrician:
+                    # Electrician: in 8:30, out 16:30 -> full day
+                    if in_h != -1 and out_h != -1:
+                        if (in_h < 8 or (in_h == 8 and in_m <= 35)) and (out_h >= 16 and (out_h > 16 or out_m >= 30)):
+                            st_upper = 'PRESENT'
+                elif 'attender' in dept_lower_str:
+                    # Attenders: in 8:35, out 17:30
+                    if in_h != -1 and out_h != -1:
+                        if (in_h < 8 or (in_h == 8 and in_m <= 35)) and (out_h >= 17 and (out_h > 17 or out_m >= 30)):
+                            st_upper = 'PRESENT'
+                elif 'garden' in dept_lower_str:
+                    # Garden staff: in 8:35, out 17:10
+                    if in_h != -1 and out_h != -1:
+                        if (in_h < 8 or (in_h == 8 and in_m <= 35)) and (out_h >= 17 and (out_h > 17 or out_m >= 10)):
+                            st_upper = 'PRESENT'
+
+            # Standard late check
+            target_in_h, target_in_m = 9, 25
+            if code == '1018': # Media Purdvi Raj
+                target_in_h, target_in_m = 9, 35
+            elif code == '109': # Civil M. Lilaakar: before 11:00 am
+                target_in_h, target_in_m = 11, 0
+            elif code == '536': # CSE Bala Subramanyam: before 12:10
+                target_in_h, target_in_m = 12, 10
+            elif 'attender' in dept_lower_str or 'garden' in dept_lower_str:
+                target_in_h, target_in_m = 8, 35
+                
+            # No late punch penalties for Transport Dept
+            if in_h != -1 and not is_transport:
+                # Electrician: if they come early by 8:35, no late penalty
+                if is_electrician and (in_h < 8 or (in_h == 8 and in_m <= 35)):
+                    pass
+                elif in_h == target_in_h and in_m > target_in_m:
+                    late_punches.append(f"{in_h}.{in_m:02d}")
+                elif in_h > target_in_h and in_h < 13:
+                    late_punches.append(f"{in_h}.{in_m:02d}")
+
             if 'CL' in st_upper or 'LEAVE' in st_upper:
                 if '1/2' in st or 'HALF' in st_upper:
                     cl_count += 0.5
@@ -243,23 +349,26 @@ class AttendanceEngine:
                     present_count += 0.5
                     half_days.append(f"{d_num}(1/2)")
                 elif 'HOLIDAY' in st_upper:
-                    # Attended holiday (15-Aug / Sunday / 26-Aug)
-                    # Counted into presence
                     present_count += 1.0
                 else:
                     present_count += 1.0
             elif 'NO OUTPUNCH' in st_upper or 'NO OUT PUNCH' in st_upper:
-                missed_out_punches.append(d_num)
-                # By default, raw machine counts as 0, but if morning punch is present, we log it
+                if is_transport:
+                    present_count += 1.0 # Transport rule overrides NO OUTPUNCH
+                else:
+                    missed_out_punches.append(d_num)
             elif 'ABSENT' in st_upper and 'HOLIDAY' not in st_upper:
                 absent_days.append(d_num)
             elif 'HOLIDAY' in st_upper:
-                # Regular holiday
                 pass
 
         # If raw summary recorded leaves and daily didn't have explicit CL, use raw_leaves
         if raw_leaves > 0 and cl_count == 0:
             cl_count = raw_leaves
+
+        # Admission dept: 6 days a week, Sunday punches offset absences
+        if is_admission and (present_count + holiday >= 26):
+            absent_days = []
 
         # Apply manual overrides (Option 1 / Option 3)
         if emp.get('manual_cl_override') is not None:
@@ -277,23 +386,49 @@ class AttendanceEngine:
             if len(late_punches) >= 4:
                 biometric_days = max(0.0, biometric_days - 0.5)
 
-        # Build Remarks
-        remarks_parts = []
-        if emp.get('manual_remarks_override'):
-            remarks_parts.append(emp['manual_remarks_override'])
+        # Full Pay Overrides per Principal Instructions
+        full_pay_ids = {'101', '707', '1015', '1019', '1021', '4001', '1030', '900', '1060', 'SHAJAHAN', 'SHIVA_DRIVER'}
+        is_full_pay = False
+        
+        if code in full_pay_ids:
+            is_full_pay = True
+        elif any(k in name_lower for k in ['mohan babu', 'gunasekaran', 'gunaskaran', 'veveka', 'adhikari', 'hari krishna', 'visal kumar', 'bishal kumar', 'shajahan', 'surendera']):
+            is_full_pay = True
+        elif 'siva' in name_lower and ('driver' in desig_lower or 'driver' in dept_lower_str or 'transport' in dept_lower_str):
+            is_full_pay = True
+            
+        if code == '1053' and (biometric_days >= 12 or present_count >= 12):
+            is_full_pay = True
+            
+        if code == '1203' and (biometric_days >= 14 or present_count >= 14):
+            is_full_pay = True
+            
+        if is_full_pay:
+            holiday = 6.0
+            biometric_days = 25.0
+            total_pay_days = 31.0
+            absent_days = []
+            missed_out_punches = []
+            late_punches = []
+            remarks_parts = ["Full Attendance (Principal Override)"]
         else:
-            if absent_days:
-                # Group consecutive absent days into ranges
-                ranges = self._format_day_ranges(absent_days)
-                remarks_parts.append(f"ab-{ranges}")
-            if missed_out_punches:
-                p_str = ", ".join(str(d) for d in missed_out_punches)
-                remarks_parts.append(f"{p_str} no out punch")
-            if late_punches:
-                # Show up to 4 late times
-                remarks_parts.append(f"({','.join(late_punches[:6])})")
-            if half_days:
-                remarks_parts.append(", ".join(half_days[:3]))
+            # Build Remarks
+            remarks_parts = []
+            if emp.get('manual_remarks_override'):
+                remarks_parts.append(emp['manual_remarks_override'])
+            else:
+                if absent_days:
+                    # Group consecutive absent days into ranges
+                    ranges = self._format_day_ranges(absent_days)
+                    remarks_parts.append(f"ab-{ranges}")
+                if missed_out_punches:
+                    p_str = ", ".join(str(d) for d in missed_out_punches)
+                    remarks_parts.append(f"{p_str} no out punch")
+                if late_punches:
+                    # Show up to 6 late times
+                    remarks_parts.append(f"({','.join(late_punches[:6])})")
+                if half_days:
+                    remarks_parts.append(", ".join(half_days[:3]))
 
         remarks_str = ", ".join(remarks_parts) if remarks_parts else ""
 

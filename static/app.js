@@ -12,6 +12,7 @@ let currentMonth = 'August -2026';
 let activePortfolioEmpCode = null;
 let currentViewMode = 'attendance'; // 'attendance' or 'salary'
 let currentDashboardMode = 'unified'; // 'unified', 'attendance', or 'salary'
+let showSalaryColumns = false; // Principal Instruction: Salary columns hidden by default
 let unifiedRecords = [];
 
 function getCleanMonth() {
@@ -19,20 +20,34 @@ function getCleanMonth() {
 }
 
 function triggerFileDownload(url, filename) {
-  const link = document.createElement('a');
-  link.href = url;
-  if (filename) link.setAttribute('download', filename);
-  link.style.display = 'none';
-  document.body.appendChild(link);
-  link.click();
-  setTimeout(() => {
-    try { document.body.removeChild(link); } catch(e) {}
-  }, 1000);
+  fetch(url)
+    .then(response => {
+      if (!response.ok) throw new Error('Network response was not ok');
+      return response.blob();
+    })
+    .then(blob => {
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      if (filename) link.setAttribute('download', filename);
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      setTimeout(() => {
+        try { document.body.removeChild(link); } catch(e) {}
+        window.URL.revokeObjectURL(blobUrl);
+      }, 1000);
+    })
+    .catch(error => {
+      console.error('Download error:', error);
+      alert('Error downloading file. Please try again.');
+    });
 }
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
   setupEventListeners();
+  updateSalaryToggleUI();
   loadMonths();
 });
 
@@ -101,6 +116,16 @@ function setupEventListeners() {
         e.currentTarget.classList.add('active');
         switchDashboardMode(e.currentTarget.dataset.mode);
       });
+    });
+  }
+
+  // Salary Visibility Toggle (Principal Sir Request)
+  const btnToggleSalary = document.getElementById('btn-toggle-salary-cols');
+  if (btnToggleSalary) {
+    btnToggleSalary.addEventListener('click', () => {
+      showSalaryColumns = !showSalaryColumns;
+      updateSalaryToggleUI();
+      renderTable();
     });
   }
 
@@ -760,6 +785,28 @@ function populateCategorySelect(cats) {
 }
 
 // -----------------------------------------------------------------------------
+// SALARY COLUMNS VISIBILITY TOGGLE (PRINCIPAL SIR REQUEST)
+// -----------------------------------------------------------------------------
+function updateSalaryToggleUI() {
+  const btn = document.getElementById('btn-toggle-salary-cols');
+  const icon = document.getElementById('salary-toggle-icon');
+  const text = document.getElementById('salary-toggle-text');
+  if (!btn) return;
+
+  if (showSalaryColumns) {
+    btn.classList.add('salary-revealed');
+    if (icon) icon.textContent = '👁️';
+    if (text) text.textContent = 'Salary Columns: Visible';
+    showToast('👁️ Salary columns revealed (Base Rate, Gross, PT, WF, Bus, Hostel, Mess, Other, Net Pay)');
+  } else {
+    btn.classList.remove('salary-revealed');
+    if (icon) icon.textContent = '🔒';
+    if (text) text.textContent = 'Salary Columns: Hidden';
+    showToast('🔒 Salary columns hidden per Principal instructions');
+  }
+}
+
+// -----------------------------------------------------------------------------
 // RENDER DYNAMIC MASTER TABLE (3 MODES: UNIFIED MASTER, ATTENDANCE, SALARY)
 // -----------------------------------------------------------------------------
 function renderTable() {
@@ -772,35 +819,61 @@ function renderTable() {
 
   // 1. Render Table Headers based on Active Dashboard Mode
   if (mode === 'unified') {
-    thead.innerHTML = `
-      <tr>
-        <th style="width: 38px; text-align: center;" class="sticky-col-code">#</th>
-        <th style="width: 78px; text-align: center; cursor: pointer;" class="sticky-col-code" onclick="handleHeaderSort('code')" title="Sort by Emp Code">Emp Code ↕</th>
-        <th style="min-width: 190px; cursor: pointer;" onclick="handleHeaderSort('name')" title="Sort by Name (A → Z)">Staff Member ↕</th>
-        <th style="width: 65px;">Dept</th>
-        
-        <!-- Biometric Attendance Columns -->
-        <th style="width: 50px; text-align: center;" class="th-section-att" title="Total Calendar Days in Month">Month</th>
-        <th style="width: 55px; text-align: center;" class="th-section-att" title="Biometric Punch Present Days">Present</th>
-        <th style="width: 58px; text-align: center;" class="th-section-att" title="Casual Leave (CL) Slips - Click to edit directly">CL ✎</th>
-        <th style="width: 58px; text-align: center;" class="th-section-att" title="On Duty (OD) Slips - Click to edit directly">OD ✎</th>
-        <th style="width: 65px; text-align: center;" class="th-section-att" title="Loss of Pay (Unpaid Absent Days)">LOP</th>
-        <th style="width: 68px; text-align: center; cursor: pointer;" class="th-section-att" onclick="handleHeaderSort('days')" title="Sort by Eligible Pay Days - Click to edit directly">Pay Days ✎ ↕</th>
-        
-        <!-- Financial Salary Columns -->
-        <th style="width: 85px; text-align: right;" class="th-section-sal" title="Monthly Base Salary Package - Click to edit directly">Base Rate ✎</th>
-        <th style="width: 85px; text-align: right; cursor: pointer;" class="th-section-sal" onclick="handleHeaderSort('gross')" title="Sort by Earned Gross salary computed from Pay Days">Earned Gross ↕</th>
-        <th style="width: 65px; text-align: center;" class="th-section-sal" title="AP Statutory Professional Tax Slab (> ₹20,000 = ₹200)">PT (₹200)</th>
-        <th style="width: 65px; text-align: center;" class="th-section-sal" title="SVCET Staff Welfare Fund (Teaching = ₹75, Non-Teaching = ₹30)">WF (₹75)</th>
-        <th style="width: 68px; text-align: right; cursor: pointer;" class="th-section-sal" onclick="handleHeaderSort('bus')" title="Sort by Bus Transport Fee (Click to toggle High ↔ Low)">Bus ✎ ↕</th>
-        <th style="width: 68px; text-align: right; cursor: pointer;" class="th-section-sal" onclick="handleHeaderSort('hostel')" title="Sort by Hostel & Electricity Fee (Click to toggle High ↔ Low)">Hostel ✎ ↕</th>
-        <th style="width: 68px; text-align: right; cursor: pointer;" class="th-section-sal" onclick="handleHeaderSort('mess')" title="Sort by Mess & Food Charges (Click to toggle High ↔ Low)">Mess ✎ ↕</th>
-        <th style="width: 65px; text-align: right;" class="th-section-sal" title="Other Deductions (Advance, Misc) - Click to edit directly">Other ✎</th>
-        <th style="width: 105px; text-align: right; background: #ecfdf5; color: #047857; font-weight: 800; cursor: pointer;" onclick="handleHeaderSort('net')" title="Sort by Net Salary (Click to toggle High ↔ Low)">Net Pay (₹) ↕</th>
-        
-        <th style="width: 185px; text-align: center;">Actions</th>
-      </tr>
-    `;
+    if (showSalaryColumns) {
+      thead.innerHTML = `
+        <tr>
+          <th style="width: 38px; text-align: center;" class="sticky-col-code">#</th>
+          <th style="width: 78px; text-align: center; cursor: pointer;" class="sticky-col-code" onclick="handleHeaderSort('code')" title="Sort by Emp Code">Emp Code ↕</th>
+          <th style="min-width: 190px; cursor: pointer;" onclick="handleHeaderSort('name')" title="Sort by Name (A → Z)">Staff Member ↕</th>
+          <th style="width: 65px;">Dept</th>
+          
+          <!-- Biometric Attendance Columns -->
+          <th style="width: 50px; text-align: center;" class="th-section-att" title="Total Calendar Days in Month">Month</th>
+          <th style="width: 55px; text-align: center;" class="th-section-att" title="Biometric Punch Present Days">Present</th>
+          <th style="width: 58px; text-align: center;" class="th-section-att" title="Casual Leave (CL) Slips - Click to edit directly">CL ✎</th>
+          <th style="width: 58px; text-align: center;" class="th-section-att" title="On Duty (OD) Slips - Click to edit directly">OD ✎</th>
+          <th style="width: 65px; text-align: center;" class="th-section-att" title="Loss of Pay (Unpaid Absent Days)">LOP</th>
+          <th style="width: 68px; text-align: center; cursor: pointer;" class="th-section-att" onclick="handleHeaderSort('days')" title="Sort by Eligible Pay Days - Click to edit directly">Pay Days ✎ ↕</th>
+          
+          <!-- Financial Salary Columns (Revealed per User Toggle) -->
+          <th style="width: 85px; text-align: right;" class="th-section-sal" title="Monthly Base Salary Package - Click to edit directly">Base Rate ✎</th>
+          <th style="width: 85px; text-align: right; cursor: pointer;" class="th-section-sal" onclick="handleHeaderSort('gross')" title="Sort by Earned Gross salary computed from Pay Days">Earned Gross ↕</th>
+          <th style="width: 65px; text-align: center;" class="th-section-sal" title="AP Statutory Professional Tax Slab (> ₹20,000 = ₹200)">PT (₹200)</th>
+          <th style="width: 65px; text-align: center;" class="th-section-sal" title="SVCET Staff Welfare Fund (Teaching = ₹75, Non-Teaching = ₹30)">WF (₹75)</th>
+          <th style="width: 68px; text-align: right; cursor: pointer;" class="th-section-sal" onclick="handleHeaderSort('bus')" title="Sort by Bus Transport Fee (Click to toggle High ↔ Low)">Bus ✎ ↕</th>
+          <th style="width: 68px; text-align: right; cursor: pointer;" class="th-section-sal" onclick="handleHeaderSort('hostel')" title="Sort by Hostel & Electricity Fee (Click to toggle High ↔ Low)">Hostel ✎ ↕</th>
+          <th style="width: 68px; text-align: right; cursor: pointer;" class="th-section-sal" onclick="handleHeaderSort('mess')" title="Sort by Mess & Food Charges (Click to toggle High ↔ Low)">Mess ✎ ↕</th>
+          <th style="width: 65px; text-align: right;" class="th-section-sal" title="Other Deductions (Advance, Misc) - Click to edit directly">Other ✎</th>
+          <th style="width: 105px; text-align: right; background: #ecfdf5; color: #047857; font-weight: 800; cursor: pointer;" onclick="handleHeaderSort('net')" title="Sort by Net Salary (Click to toggle High ↔ Low)">Net Pay (₹) ↕</th>
+          
+          <th style="width: 185px; text-align: center;">Actions</th>
+        </tr>
+      `;
+    } else {
+      thead.innerHTML = `
+        <tr>
+          <th style="width: 38px; text-align: center;" class="sticky-col-code">#</th>
+          <th style="width: 78px; text-align: center; cursor: pointer;" class="sticky-col-code" onclick="handleHeaderSort('code')" title="Sort by Emp Code">Emp Code ↕</th>
+          <th style="min-width: 190px; cursor: pointer;" onclick="handleHeaderSort('name')" title="Sort by Name (A → Z)">Staff Member ↕</th>
+          <th style="width: 65px;">Dept</th>
+          
+          <!-- Biometric Attendance Columns -->
+          <th style="width: 50px; text-align: center;" class="th-section-att" title="Total Calendar Days in Month">Month</th>
+          <th style="width: 55px; text-align: center;" class="th-section-att" title="Biometric Punch Present Days">Present</th>
+          <th style="width: 58px; text-align: center;" class="th-section-att" title="Casual Leave (CL) Slips - Click to edit directly">CL ✎</th>
+          <th style="width: 58px; text-align: center;" class="th-section-att" title="On Duty (OD) Slips - Click to edit directly">OD ✎</th>
+          <th style="width: 65px; text-align: center;" class="th-section-att" title="Loss of Pay (Unpaid Absent Days)">LOP</th>
+          <th style="width: 68px; text-align: center; cursor: pointer;" class="th-section-att" onclick="handleHeaderSort('days')" title="Sort by Eligible Pay Days - Click to edit directly">Pay Days ✎ ↕</th>
+          
+          <!-- Salary Hidden Placeholder Column (Default per Principal Request) -->
+          <th style="width: 150px; text-align: center; background: #fffbeb; color: #b45309; font-size: 0.74rem;" title="Salary columns are hidden per Principal's instruction. Click 'Salary Columns: Hidden' to reveal.">
+            🔒 Salary Hidden
+          </th>
+          
+          <th style="width: 185px; text-align: center;">Actions</th>
+        </tr>
+      `;
+    }
   } else if (mode === 'attendance') {
     thead.innerHTML = `
       <tr>
@@ -911,7 +984,7 @@ function renderTable() {
     }
   });
 
-  const totalCols = (mode === 'unified') ? 17 : ((mode === 'attendance') ? 13 : 15);
+  const totalCols = (mode === 'unified') ? (showSalaryColumns ? 20 : 12) : ((mode === 'attendance') ? 13 : 18);
 
   if (filtered.length === 0) {
     tbody.innerHTML = `<tr><td colspan="${totalCols}" style="text-align: center; padding: 3rem; color: #94a3b8; font-weight: 500;">No employees found matching the selected filter.</td></tr>`;
@@ -994,6 +1067,7 @@ function renderTable() {
                  onchange="handleUnifiedInlineEdit('${emp.emp_code}', 'total_pay_days', this.value, this)">
         </td>
 
+        ${showSalaryColumns ? `
         <!-- Directly Editable Base Package -->
         <td style="text-align: right;">
           <input type="number" step="500" min="0" 
@@ -1064,6 +1138,12 @@ function renderTable() {
             ₹${Math.round(emp.net_salary).toLocaleString('en-IN')}
           </strong>
         </td>
+        ` : `
+        <!-- Salary Hidden Placeholder Cell -->
+        <td style="text-align: center; background: #fffdf5; color: #94a3b8; font-size: 0.74rem;">
+          <span class="badge-pill" style="background:#fef3c7; color:#92400e; font-size:0.7rem; font-weight:700;">🔒 Hidden</span>
+        </td>
+        `}
 
         <!-- Actions Column -->
         <td style="text-align: center;">
