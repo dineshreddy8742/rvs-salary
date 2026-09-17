@@ -15,6 +15,14 @@ let currentDashboardMode = 'unified'; // 'unified', 'attendance', or 'salary'
 let showSalaryColumns = false; // Principal Instruction: Salary columns hidden by default
 let unifiedRecords = [];
 
+// === PIN LOCK SYSTEM ===
+const SALARY_PIN_KEY = 'rvs_salary_pin';
+let _pinBuffer = '';          // current digits entered
+let _pinMode = 'unlock';      // 'unlock' | 'set-new' | 'confirm-new'
+let _pinNewCandidate = '';    // temp for change-pin flow
+function _getSavedPin() { return localStorage.getItem(SALARY_PIN_KEY) || '1234'; }
+function _savePin(p) { localStorage.setItem(SALARY_PIN_KEY, p); }
+
 function getCleanMonth() {
   return (currentMonth || 'August_2026').replace(/[\s\-]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
 }
@@ -119,13 +127,20 @@ function setupEventListeners() {
     });
   }
 
-  // Salary Visibility Toggle (Principal Sir Request)
+  // Salary Visibility Toggle — PIN Gated (Principal Sir Request)
   const btnToggleSalary = document.getElementById('btn-toggle-salary-cols');
   if (btnToggleSalary) {
     btnToggleSalary.addEventListener('click', () => {
-      showSalaryColumns = !showSalaryColumns;
-      updateSalaryToggleUI();
-      renderTable();
+      if (showSalaryColumns) {
+        // Already revealed → instantly lock
+        showSalaryColumns = false;
+        updateSalaryToggleUI();
+        renderTable();
+        showToast('🔒 Salary columns locked');
+      } else {
+        // Hidden → require PIN to reveal
+        openPinModal();
+      }
     });
   }
 
@@ -795,15 +810,150 @@ function updateSalaryToggleUI() {
 
   if (showSalaryColumns) {
     btn.classList.add('salary-revealed');
+    btn.title = 'Click to lock salary columns';
     if (icon) icon.textContent = '👁️';
-    if (text) text.textContent = 'Salary Columns: Visible';
-    showToast('👁️ Salary columns revealed (Base Rate, Gross, PT, WF, Bus, Hostel, Mess, Other, Net Pay)');
+    if (text) text.textContent = 'Salary: Visible — Click to Lock';
   } else {
     btn.classList.remove('salary-revealed');
+    btn.title = 'Enter PIN to reveal salary columns (Principal instruction)';
     if (icon) icon.textContent = '🔒';
-    if (text) text.textContent = 'Salary Columns: Hidden';
-    showToast('🔒 Salary columns hidden per Principal instructions');
+    if (text) text.textContent = 'Salary Columns: Locked';
   }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// PIN LOCK MODAL FUNCTIONS
+// ─────────────────────────────────────────────────────────────────
+function openPinModal() {
+  _pinBuffer = '';
+  _pinMode = 'unlock';
+  _pinNewCandidate = '';
+  const modal = document.getElementById('modal-salary-pin');
+  if (!modal) return;
+  document.getElementById('pin-lock-icon').textContent = '🔐';
+  document.getElementById('pin-subtitle').textContent = 'Enter 4-digit PIN to reveal salary';
+  document.getElementById('pin-error-msg').textContent = '';
+  document.getElementById('btn-change-pin').style.display = '';
+  _updatePinDots();
+  modal.classList.add('active');
+  // Keyboard support
+  document.addEventListener('keydown', _pinKeyboardHandler);
+}
+
+function closePinModal() {
+  const modal = document.getElementById('modal-salary-pin');
+  if (modal) modal.classList.remove('active');
+  _pinBuffer = '';
+  document.removeEventListener('keydown', _pinKeyboardHandler);
+}
+
+function _pinKeyboardHandler(e) {
+  if (e.key >= '0' && e.key <= '9') { pinKeyPress(parseInt(e.key)); }
+  else if (e.key === 'Backspace') { pinDelete(); }
+  else if (e.key === 'Escape') { closePinModal(); }
+  else if (e.key === 'Delete') { pinClear(); }
+}
+
+function pinKeyPress(digit) {
+  if (_pinBuffer.length >= 4) return;
+  _pinBuffer += String(digit);
+  _updatePinDots();
+  if (_pinBuffer.length === 4) {
+    setTimeout(_processPinSubmit, 180);
+  }
+}
+
+function pinDelete() {
+  _pinBuffer = _pinBuffer.slice(0, -1);
+  _updatePinDots();
+  document.getElementById('pin-error-msg').textContent = '';
+}
+
+function pinClear() {
+  _pinBuffer = '';
+  _updatePinDots();
+  document.getElementById('pin-error-msg').textContent = '';
+}
+
+function _updatePinDots() {
+  for (let i = 0; i < 4; i++) {
+    const dot = document.getElementById(`pin-dot-${i}`);
+    if (!dot) continue;
+    dot.classList.toggle('filled', i < _pinBuffer.length);
+    dot.classList.toggle('active', i === _pinBuffer.length);
+  }
+}
+
+function _processPinSubmit() {
+  const errEl = document.getElementById('pin-error-msg');
+  const iconEl = document.getElementById('pin-lock-icon');
+
+  if (_pinMode === 'unlock') {
+    if (_pinBuffer === _getSavedPin()) {
+      // ✅ Correct PIN
+      iconEl.textContent = '✅';
+      setTimeout(() => {
+        closePinModal();
+        showSalaryColumns = true;
+        updateSalaryToggleUI();
+        renderTable();
+        showToast('👁️ Salary columns revealed — click the button again to lock');
+      }, 300);
+    } else {
+      // ❌ Wrong PIN
+      iconEl.textContent = '❌';
+      errEl.textContent = '❌ Incorrect PIN. Please try again.';
+      _pinBuffer = '';
+      _updatePinDots();
+      // Shake animation
+      const card = document.querySelector('.salary-pin-card');
+      if (card) { card.classList.add('pin-shake'); setTimeout(() => card.classList.remove('pin-shake'), 500); }
+      setTimeout(() => { iconEl.textContent = '🔐'; }, 600);
+    }
+
+  } else if (_pinMode === 'set-new') {
+    // First entry for change — store candidate
+    _pinNewCandidate = _pinBuffer;
+    _pinBuffer = '';
+    _pinMode = 'confirm-new';
+    _updatePinDots();
+    document.getElementById('pin-subtitle').textContent = 'Re-enter new PIN to confirm';
+    iconEl.textContent = '🔑';
+    errEl.textContent = '';
+
+  } else if (_pinMode === 'confirm-new') {
+    if (_pinBuffer === _pinNewCandidate) {
+      _savePin(_pinBuffer);
+      iconEl.textContent = '✅';
+      errEl.style.color = '#15803d';
+      errEl.textContent = '✅ PIN changed successfully!';
+      setTimeout(() => {
+        closePinModal();
+        showToast('🔑 Salary PIN updated successfully');
+      }, 1000);
+    } else {
+      iconEl.textContent = '❌';
+      errEl.style.color = '#dc2626';
+      errEl.textContent = '❌ PINs do not match. Try again.';
+      _pinBuffer = '';
+      _pinMode = 'set-new';
+      _pinNewCandidate = '';
+      _updatePinDots();
+      document.getElementById('pin-subtitle').textContent = 'Enter new 4-digit PIN';
+      setTimeout(() => { iconEl.textContent = '🔑'; }, 600);
+    }
+  }
+}
+
+function showChangePinMode() {
+  _pinMode = 'set-new';
+  _pinBuffer = '';
+  _pinNewCandidate = '';
+  _updatePinDots();
+  document.getElementById('pin-lock-icon').textContent = '🔑';
+  document.getElementById('pin-subtitle').textContent = 'Enter new 4-digit PIN';
+  document.getElementById('pin-error-msg').textContent = '';
+  document.getElementById('btn-change-pin').style.display = 'none';
 }
 
 // -----------------------------------------------------------------------------
@@ -2189,6 +2339,12 @@ async function openSalaryVarianceModal() {
 // -----------------------------------------------------------------------------
 async function openFormalPaySlip(empCode) {
   if (!empCode) return;
+  // Gate: salary must be revealed (PIN required)
+  if (!showSalaryColumns) {
+    showToast('🔒 Enter PIN to view pay slips');
+    openPinModal();
+    return;
+  }
   try {
     const res = await fetch(`/api/salary/slip-data?month=${encodeURIComponent(currentMonth)}&emp_code=${encodeURIComponent(empCode)}`);
     const data = await res.json();

@@ -1196,6 +1196,51 @@
   <!-- Toast Notification -->
   <div class="toast-popup" id="app-toast"></div>
 
+  <!-- ===== SALARY PIN LOCK MODAL ===== -->
+  <div class="modal-overlay" id="modal-salary-pin">
+    <div class="modal-card salary-pin-card">
+      <!-- Header -->
+      <div class="salary-pin-header">
+        <div class="salary-pin-lock-icon" id="pin-lock-icon">🔐</div>
+        <h2 class="salary-pin-title">Salary Access Control</h2>
+        <p class="salary-pin-subtitle" id="pin-subtitle">Enter PIN to reveal salary columns</p>
+      </div>
+
+      <!-- PIN Dots Display -->
+      <div class="pin-dots-row" id="pin-dots-row">
+        <span class="pin-dot" id="pin-dot-0"></span>
+        <span class="pin-dot" id="pin-dot-1"></span>
+        <span class="pin-dot" id="pin-dot-2"></span>
+        <span class="pin-dot" id="pin-dot-3"></span>
+      </div>
+
+      <!-- Error message -->
+      <div class="pin-error-msg" id="pin-error-msg"></div>
+
+      <!-- Number Pad -->
+      <div class="pin-numpad" id="pin-numpad">
+        <button class="pin-key" data-val="1" onclick="pinKeyPress(1)">1</button>
+        <button class="pin-key" data-val="2" onclick="pinKeyPress(2)">2</button>
+        <button class="pin-key" data-val="3" onclick="pinKeyPress(3)">3</button>
+        <button class="pin-key" data-val="4" onclick="pinKeyPress(4)">4</button>
+        <button class="pin-key" data-val="5" onclick="pinKeyPress(5)">5</button>
+        <button class="pin-key" data-val="6" onclick="pinKeyPress(6)">6</button>
+        <button class="pin-key" data-val="7" onclick="pinKeyPress(7)">7</button>
+        <button class="pin-key" data-val="8" onclick="pinKeyPress(8)">8</button>
+        <button class="pin-key" data-val="9" onclick="pinKeyPress(9)">9</button>
+        <button class="pin-key pin-key-clear" onclick="pinClear()">✕</button>
+        <button class="pin-key" data-val="0" onclick="pinKeyPress(0)">0</button>
+        <button class="pin-key pin-key-del" onclick="pinDelete()">⌫</button>
+      </div>
+
+      <!-- Change PIN option -->
+      <div class="pin-footer-options">
+        <button class="pin-change-link" id="btn-change-pin" onclick="showChangePinMode()">🔑 Change PIN</button>
+        <button class="pin-cancel-link" onclick="closePinModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>
