@@ -255,7 +255,7 @@ class AttendanceEngine:
         name_lower = str(emp.get('name', '')).lower()
 
         transport_ids = {'625', '26', '27', '626', '627', '648', '1198', '628', '622', '6621', '606', '623', '603', '653', '605', '6623', '607', '6633', '610', '613'}
-        electrician_ids = {'206', '243', '218', '217', '213'}
+        electrician_ids = {'206', '243', '218', '217', '213', '214'}  # 214 = M. Hemadri Reddy (Electrician Supervisor)
         admission_ids = {'2005', '2006', '6001', '1040', '1017', '2011', '6000', '2010', '2007', '2013', '2514', '2512', '2511', '2503', '2502', '2505', '2051', '2508', '6004', '6005'}
 
         is_transport = (code in transport_ids or 'transport' in dept_lower_str)
