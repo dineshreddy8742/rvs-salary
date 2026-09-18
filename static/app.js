@@ -219,6 +219,43 @@ function setupEventListeners() {
     });
   }
 
+  // Mobile Sidebar Drawer Toggle & Backdrop
+  const sidebar = document.getElementById('app-sidebar');
+  const sidebarBackdrop = document.getElementById('sidebar-backdrop');
+  const btnToggleSidebar = document.getElementById('btn-toggle-sidebar');
+  const btnCloseSidebar = document.getElementById('btn-close-sidebar');
+
+  if (btnToggleSidebar && sidebar) {
+    btnToggleSidebar.addEventListener('click', () => {
+      sidebar.classList.toggle('active');
+      if (sidebarBackdrop) sidebarBackdrop.classList.toggle('active');
+    });
+  }
+  if (btnCloseSidebar && sidebar) {
+    btnCloseSidebar.addEventListener('click', () => {
+      sidebar.classList.remove('active');
+      if (sidebarBackdrop) sidebarBackdrop.classList.remove('active');
+    });
+  }
+  if (sidebarBackdrop && sidebar) {
+    sidebarBackdrop.addEventListener('click', () => {
+      sidebar.classList.remove('active');
+      sidebarBackdrop.classList.remove('active');
+    });
+  }
+
+  // Sidebar Quick Category Filter Buttons
+  document.querySelectorAll('.sidebar-cat-pill').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const filter = e.currentTarget.dataset.sidebarFilter;
+      setFilterPill(filter);
+      if (window.innerWidth <= 1024 && sidebar) {
+        sidebar.classList.remove('active');
+        if (sidebarBackdrop) sidebarBackdrop.classList.remove('active');
+      }
+    });
+  });
+
   // Active Only toggle
   document.getElementById('toggle-active-only').addEventListener('change', (e) => {
     activeOnly = e.target.checked;
@@ -654,6 +691,13 @@ function setFilterPill(filterName) {
   document.querySelectorAll('.filter-tabs .tab-pill').forEach(b => b.classList.remove('active'));
   const target = document.querySelector(`.filter-tabs [data-filter="${filterName}"]`);
   if (target) target.classList.add('active');
+
+  // Keep sidebar category pills synchronized
+  document.querySelectorAll('.sidebar-cat-pill').forEach(b => {
+    if (b.dataset.sidebarFilter === filterName) b.classList.add('active');
+    else b.classList.remove('active');
+  });
+
   currentFilter = filterName;
   renderTable();
   const tableSec = document.getElementById('table-section');

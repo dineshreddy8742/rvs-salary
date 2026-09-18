@@ -24,196 +24,250 @@
   <!-- Ambient Top Sunset Glow Decor -->
   <div class="sunset-glow-bg"></div>
 
-  <!-- Executive University Navigation Header -->
-  <header class="navbar-wrapper">
-    <div class="executive-header-card">
-
-      <!-- ROW 1: Brand | Month | Core Actions -->
-      <div class="header-main-row">
-
-        <!-- Brand: Logo + University Name + Tagline side by side -->
-        <div class="brand-cluster">
-          <a href="/" class="univ-logo-wrap" title="RVS University Payroll Platform">
-            <img src="rvs-logo.png" alt="RVS University" class="univ-brand-logo">
+  <div class="app-layout">
+    <!-- COLLAPSIBLE EXECUTIVE SIDEBAR -->
+    <aside class="app-sidebar" id="app-sidebar">
+      <!-- Sidebar Brand -->
+      <div class="sidebar-brand-box">
+        <div class="sidebar-brand-row">
+          <a href="/" class="sidebar-logo-link" title="RVS University Payroll Portal">
+            <img src="rvs-logo.png" alt="RVS University" class="sidebar-brand-logo">
           </a>
-          <div class="brand-text-block">
-            <div class="brand-title">RVS University – Chittoor</div>
-            <div class="brand-subtitle">
-              <span class="pulse-live-dot"></span>
-              Faculty &amp; Staff Payroll &nbsp;·&nbsp; Multi-Month Ledger
-            </div>
+          <button class="sidebar-close-btn" id="btn-close-sidebar" aria-label="Close Sidebar">✕</button>
+        </div>
+        <div class="sidebar-brand-text">
+          <div class="sidebar-title">RVS University – Chittoor</div>
+          <div class="sidebar-subtitle">
+            <span class="pulse-live-dot"></span>
+            <span>Faculty &amp; Staff Payroll &nbsp;·&nbsp; Multi-Month Ledger</span>
           </div>
         </div>
+      </div>
 
-        <!-- Month Picker -->
-        <div class="month-picker-box">
-          <div class="month-box-label">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-              <line x1="16" y1="2" x2="16" y2="6"></line>
-              <line x1="8" y1="2" x2="8" y2="6"></line>
-              <line x1="3" y1="10" x2="21" y2="10"></line>
-            </svg>
-            <span>MONTH</span>
-          </div>
-          <div class="month-select-wrapper">
-            <select id="month-select" class="month-select-dropdown">
-              <option value="August -2026">August -2026</option>
-            </select>
-            <svg class="dropdown-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-              <polyline points="6 9 12 15 18 9"></polyline>
-            </svg>
-          </div>
+      <!-- Month Selector Box in Sidebar -->
+      <div class="sidebar-month-card">
+        <div class="sidebar-section-header">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="16" y1="2" x2="16" y2="6"></line>
+            <line x1="8" y1="2" x2="8" y2="6"></line>
+            <line x1="3" y1="10" x2="21" y2="10"></line>
+          </svg>
+          <span>ACTIVE MONTH</span>
         </div>
+        <div class="month-select-wrapper sidebar-month-select">
+          <select id="month-select" class="month-select-dropdown">
+            <option value="August -2026">August -2026</option>
+          </select>
+          <svg class="dropdown-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </div>
+      </div>
 
-        <!-- Core Action Buttons (Top Row: 3 only) -->
-        <div class="header-actions-cluster">
-          <button class="header-btn btn-staff" id="btn-add-staff-modal" title="Add new staff member manually">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-              <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM20 8v6M23 11h-6"/>
-            </svg>
-            <span>+ Add Staff</span>
+      <!-- Navigation Section 1: View Modes -->
+      <div class="sidebar-nav-section">
+        <div class="sidebar-section-label">VIEW MODES</div>
+        <div class="sidebar-view-cluster" id="view-mode-cluster">
+          <button class="view-pill active" id="mode-unified" data-mode="unified" title="Attendance + Salary in one table">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+            <span>All-in-One View</span>
           </button>
-
-          <button class="header-btn btn-upload" id="btn-upload-trigger" title="Upload biometric Excel file for this month">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
-            </svg>
-            <span>Upload File</span>
+          <button class="view-pill" id="mode-attendance" data-mode="attendance" title="Attendance only">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <span>Attendance Only</span>
           </button>
-          <input type="file" id="file-input" accept=".xls,.xlsx" style="display: none;">
-
-          <!-- Banking & Treasury Dropdown -->
-          <div class="dropdown-wrap salary-gated" id="wrap-disbursement-dropdown">
-            <button class="header-btn btn-disburse" id="btn-disburse-menu" title="Banking, NEFT, Pay Slips, Executive Summary">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-                <path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v4M12 14v4M16 14v4"/>
-              </svg>
-              <span>🏦 Banking ▼</span>
-            </button>
-            <div class="dropdown-menu-box" id="menu-disbursement">
-              <a href="javascript:void(0)" class="dropdown-item" id="item-export-neft">
-                <span class="d-icon">🏦</span>
-                <div>
-                  <strong>Bank NEFT / RTGS File (.csv)</strong>
-                  <div class="d-sub">Direct upload for PNB / SBI corporate net banking</div>
-                </div>
-              </a>
-              <a href="javascript:void(0)" class="dropdown-item" id="item-export-slips-zip">
-                <span class="d-icon">📦</span>
-                <div>
-                  <strong>All Pay Slips (.zip)</strong>
-                  <div class="d-sub">Individual official PDF payslips for all staff</div>
-                </div>
-              </a>
-              <a href="javascript:void(0)" class="dropdown-item" id="item-export-slips-pdf">
-                <span class="d-icon">📄</span>
-                <div>
-                  <strong>All Pay Slips Merged (.pdf)</strong>
-                  <div class="d-sub">Single multi-page PDF document for office archives</div>
-                </div>
-              </a>
-              <div class="dropdown-divider"></div>
-              <a href="javascript:void(0)" class="dropdown-item" id="item-open-exec-summary">
-                <span class="d-icon">📊</span>
-                <div>
-                  <strong>Executive Summary</strong>
-                  <div class="d-sub">Department &amp; statutory remittance breakdown</div>
-                </div>
-              </a>
-              <a href="javascript:void(0)" class="dropdown-item" id="item-open-cash-denominations">
-                <span class="d-icon">💵</span>
-                <div>
-                  <strong>Cash Denominations Requisition</strong>
-                  <div class="d-sub">Currency notes breakdown for support staff</div>
-                </div>
-              </a>
-            </div>
-          </div>
-
-          <!-- Logout Button -->
-          <button class="header-btn btn-logout" id="btn-portal-logout" title="Sign out of RVS University Payroll Portal" onclick="handleLogout()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>
-            </svg>
-            <span>Logout</span>
+          <button class="view-pill" id="mode-salary" data-mode="salary" title="Salary, deductions and bank">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            <span>Salary &amp; Bank</span>
           </button>
         </div>
       </div>
 
-      <!-- TOOLBAR: 2 neat rows -->
-      <div class="header-toolbar">
-
-        <!-- Toolbar Row 1: View Switcher + 4 Primary Actions -->
-        <div class="toolbar-row">
-          <!-- View Toggle -->
-          <div class="view-switch-cluster" id="view-mode-cluster">
-            <button class="view-pill active" id="mode-unified" data-mode="unified" title="Attendance + Salary in one table">All-in-One View</button>
-            <button class="view-pill" id="mode-attendance" data-mode="attendance" title="Attendance only">Attendance Only</button>
-            <button class="view-pill" id="mode-salary" data-mode="salary" title="Salary, deductions and bank">Salary &amp; Bank</button>
-          </div>
-          <div class="toolbar-vsep"></div>
-          <!-- Salary Visibility Toggle (Principal Sir's Request) -->
-          <button class="header-btn btn-toggle-salary" id="btn-toggle-salary-cols" title="Principal Instruction: Hide / View Base Rate, Earned Gross, PT, WF, Bus, Hostel, Mess, Other, Net Pay">
-            <span id="salary-toggle-icon">🔒</span>
-            <span id="salary-toggle-text">Salary Columns: Hidden</span>
-          </button>
-          <div class="toolbar-vsep"></div>
-          <!-- Primary Action Buttons -->
-          <button class="header-btn btn-bulk-slips" id="btn-bulk-slips-modal" title="Apply Leave / OD slips in bulk">
-            <span class="pulse-bulk-dot"></span>
-            <span>Bulk Leave Slips</span>
-          </button>
-          <button class="header-btn btn-export-excel" id="btn-export" title="Download Attendance Excel file">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-            <span>Export Attendance</span>
-          </button>
-          <button class="header-btn btn-export-salary salary-gated" id="btn-export-salary" title="Download Salary Bill Excel">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
-            <span>Export Salary</span>
-          </button>
-          <button class="header-btn btn-bulk-adj salary-gated" id="btn-bulk-adjust-modal" title="Bulk apply bonus, arrears, EPF adjustments">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
-            <span>⚡ Bulk Adjust</span>
-          </button>
-        </div>
-
-        <!-- Toolbar Row 2: 2 More Actions + Filters + Live Status -->
-        <div class="toolbar-row">
-          <!-- Secondary Actions -->
-          <button class="header-btn btn-revert-header" id="btn-bulk-revert-modal" title="Reset all staff to raw biometric data">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
-            <span>↺ Revert to Biometric</span>
-          </button>
-          <button class="header-btn btn-variance salary-gated" id="btn-variance-modal" title="Compare month-over-month salary differences">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
-            <span>📊 Variance Report</span>
-          </button>
-          <div class="toolbar-vsep"></div>
-          <!-- Quick Filter Links -->
-          <a href="javascript:void(0)" id="nav-filter-review" class="sub-tab-link tab-review">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-            <span>Needs Attention</span>
+      <!-- Navigation Section 2: Audit & Attention Badges -->
+      <div class="sidebar-nav-section">
+        <div class="sidebar-section-label">AUDIT &amp; ATTENTION</div>
+        <div class="sidebar-audit-list">
+          <a href="javascript:void(0)" id="nav-filter-review" class="sidebar-audit-item tab-review" title="Review staff with LOP or punch issues">
+            <div class="sidebar-audit-left">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              <span>Needs Attention</span>
+            </div>
             <span class="sub-badge badge-warning" id="nav-review-count">0</span>
           </a>
-          <a href="javascript:void(0)" id="nav-filter-vip" class="sub-tab-link tab-vip">
-            <span>👑 Full Pay Staff</span>
+
+          <a href="javascript:void(0)" id="nav-filter-vip" class="sidebar-audit-item tab-vip" title="Staff with 100% full pay waiver">
+            <div class="sidebar-audit-left">
+              <span class="sidebar-icon">👑</span>
+              <span>Full Pay Staff</span>
+            </div>
             <span class="sub-badge badge-vip" id="nav-vip-count">1</span>
           </a>
-          <a href="javascript:void(0)" id="nav-filter-leaves" class="sub-tab-link tab-leaves">
-            <span>📅 Leave &amp; OD</span>
-          </a>
-          <div class="toolbar-vsep"></div>
-          <!-- Live Status -->
-          <span class="sync-indicator">
-            <span class="sync-dot"></span>
-            <span id="sync-status-text">Live &amp; Connected</span>
-          </span>
-        </div>
 
+          <a href="javascript:void(0)" id="nav-filter-leaves" class="sidebar-audit-item tab-leaves" title="Staff with Leaves or On-Duty">
+            <div class="sidebar-audit-left">
+              <span class="sidebar-icon">📅</span>
+              <span>Leave &amp; OD</span>
+            </div>
+          </a>
+        </div>
       </div>
-    </div>
-  </header>
+
+      <!-- Navigation Section 3: Quick Staff Categories -->
+      <div class="sidebar-nav-section">
+        <div class="sidebar-section-label">QUICK STAFF FILTERS</div>
+        <div class="sidebar-category-pills">
+          <button class="sidebar-cat-pill active" data-sidebar-filter="all">👥 All Staff</button>
+          <button class="sidebar-cat-pill" data-sidebar-filter="teaching">🎓 Teaching</button>
+          <button class="sidebar-cat-pill" data-sidebar-filter="non-teaching">👔 Non-Teaching</button>
+          <button class="sidebar-cat-pill" data-sidebar-filter="support">🧹 Support</button>
+          <button class="sidebar-cat-pill" data-sidebar-filter="deductions">📉 Has Deductions</button>
+          <button class="sidebar-cat-pill" data-sidebar-filter="review">⚠️ Has LOP</button>
+        </div>
+      </div>
+
+      <!-- Sidebar Footer: Status & Logout -->
+      <div class="sidebar-bottom-footer">
+        <div class="sidebar-live-status">
+          <span class="sync-dot"></span>
+          <span id="sync-status-text">Live &amp; Connected</span>
+        </div>
+        <button class="sidebar-logout-button" id="btn-portal-logout" title="Sign out of RVS University Payroll Portal" onclick="handleLogout()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>
+          </svg>
+          <span>Sign Out</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Mobile Drawer Backdrop -->
+    <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+
+    <!-- MAIN APP WRAPPER -->
+    <div class="app-main-wrapper">
+      <!-- TOP EXECUTIVE NAVBAR (Clean & Non-Colliding) -->
+      <header class="app-topbar">
+        <div class="topbar-inner">
+          <div class="topbar-left">
+            <button class="topbar-hamburger-btn" id="btn-toggle-sidebar" aria-label="Toggle Sidebar Navigation">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <line x1="3" y1="6" x2="21" y2="6"></line>
+                <line x1="3" y1="12" x2="21" y2="12"></line>
+                <line x1="3" y1="18" x2="21" y2="18"></line>
+              </svg>
+            </button>
+            <div class="topbar-title-cluster">
+              <span class="topbar-portal-tag">RVS UNIVERSITY</span>
+              <span class="topbar-portal-title">Payroll &amp; Biometric Ledger</span>
+            </div>
+          </div>
+
+          <!-- Grouped Action Buttons with zero collision -->
+          <div class="topbar-actions-cluster">
+            <!-- Salary Visibility Toggle -->
+            <button class="header-btn btn-toggle-salary" id="btn-toggle-salary-cols" title="Principal Instruction: Hide / View Base Rate, Earned Gross, PT, WF, Bus, Hostel, Mess, Other, Net Pay">
+              <span id="salary-toggle-icon">🔒</span>
+              <span id="salary-toggle-text">Salary Columns: Hidden</span>
+            </button>
+
+            <!-- Add Staff & Upload -->
+            <button class="header-btn btn-staff" id="btn-add-staff-modal" title="Add new staff member manually">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM20 8v6M23 11h-6"/>
+              </svg>
+              <span>+ Add Staff</span>
+            </button>
+
+            <button class="header-btn btn-upload" id="btn-upload-trigger" title="Upload biometric Excel file for this month">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+              </svg>
+              <span>Upload File</span>
+            </button>
+            <input type="file" id="file-input" accept=".xls,.xlsx" style="display: none;">
+
+            <!-- Banking Dropdown -->
+            <div class="dropdown-wrap salary-gated" id="wrap-disbursement-dropdown">
+              <button class="header-btn btn-disburse" id="btn-disburse-menu" title="Banking, NEFT, Pay Slips, Executive Summary">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                  <path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v4M12 14v4M16 14v4"/>
+                </svg>
+                <span>🏦 Banking ▼</span>
+              </button>
+              <div class="dropdown-menu-box" id="menu-disbursement">
+                <a href="javascript:void(0)" class="dropdown-item" id="item-export-neft">
+                  <span class="d-icon">🏦</span>
+                  <div>
+                    <strong>Bank NEFT / RTGS File (.csv)</strong>
+                    <div class="d-sub">Direct upload for PNB / SBI corporate net banking</div>
+                  </div>
+                </a>
+                <a href="javascript:void(0)" class="dropdown-item" id="item-export-slips-zip">
+                  <span class="d-icon">📦</span>
+                  <div>
+                    <strong>All Pay Slips (.zip)</strong>
+                    <div class="d-sub">Individual official PDF payslips for all staff</div>
+                  </div>
+                </a>
+                <a href="javascript:void(0)" class="dropdown-item" id="item-export-slips-pdf">
+                  <span class="d-icon">📄</span>
+                  <div>
+                    <strong>All Pay Slips Merged (.pdf)</strong>
+                    <div class="d-sub">Single multi-page PDF document for office archives</div>
+                  </div>
+                </a>
+                <div class="dropdown-divider"></div>
+                <a href="javascript:void(0)" class="dropdown-item" id="item-open-exec-summary">
+                  <span class="d-icon">📊</span>
+                  <div>
+                    <strong>Executive Summary</strong>
+                    <div class="d-sub">Department &amp; statutory remittance breakdown</div>
+                  </div>
+                </a>
+                <a href="javascript:void(0)" class="dropdown-item" id="item-open-cash-denominations">
+                  <span class="d-icon">💵</span>
+                  <div>
+                    <strong>Cash Denominations Requisition</strong>
+                    <div class="d-sub">Currency notes breakdown for support staff</div>
+                  </div>
+                </a>
+              </div>
+            </div>
+
+            <!-- Operations Actions -->
+            <button class="header-btn btn-bulk-slips" id="btn-bulk-slips-modal" title="Apply Leave / OD slips in bulk">
+              <span class="pulse-bulk-dot"></span>
+              <span>Bulk Slips</span>
+            </button>
+
+            <button class="header-btn btn-export-excel" id="btn-export" title="Download Attendance Excel file">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+              <span>Export Attn</span>
+            </button>
+
+            <button class="header-btn btn-export-salary salary-gated" id="btn-export-salary" title="Download Salary Bill Excel">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
+              <span>Export Sal</span>
+            </button>
+
+            <button class="header-btn btn-bulk-adj salary-gated" id="btn-bulk-adjust-modal" title="Bulk apply bonus, arrears, EPF adjustments">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+              <span>⚡ Adjust</span>
+            </button>
+
+            <button class="header-btn btn-revert-header" id="btn-bulk-revert-modal" title="Reset all staff to raw biometric data">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
+              <span>↺ Revert</span>
+            </button>
+
+            <button class="header-btn btn-variance salary-gated" id="btn-variance-modal" title="Compare month-over-month salary differences">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+              <span>📊 Variance</span>
+            </button>
+          </div>
+        </div>
+      </header>
 
   <main class="page-container">
     <!-- Hero Announcement & Header -->
@@ -407,6 +461,8 @@
       </div>
     </section>
   </main>
+  </div><!-- /.app-main-wrapper -->
+</div><!-- /.app-layout -->
 
   <!-- MODAL: EMPLOYEE 360° ANNUAL PORTFOLIO & LEAVE PASSBOOK -->
   <div class="modal-overlay" id="modal-portfolio">

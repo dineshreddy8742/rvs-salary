@@ -77,78 +77,437 @@ body {
   z-index: 0;
 }
 
-/* Executive University Header Container */
-.navbar-wrapper {
-  position: sticky;
-  top: 0.85rem;
-  z-index: 50;
-  padding: 0 1.5rem;
-  max-width: 1540px;
-  margin: 0 auto;
+/* =============================================================================
+   EXECUTIVE APP LAYOUT: SIDEBAR + TOPBAR + MAIN CONTENT AREA
+   ============================================================================= */
+.app-layout {
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+  background: var(--bg-main, #f8fafc);
+  position: relative;
+  overflow-x: hidden;
 }
 
-.executive-header-card {
-  background: rgba(255, 255, 255, 0.98);
+/* --- SIDEBAR CONTAINER --- */
+.app-sidebar {
+  width: 275px;
+  flex-shrink: 0;
+  background: #ffffff;
+  border-right: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-shadow: 4px 0 24px rgba(15, 23, 42, 0.04);
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.app-sidebar::-webkit-scrollbar {
+  width: 5px;
+}
+.app-sidebar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+/* Sidebar Brand Box */
+.sidebar-brand-box {
+  padding: 1.15rem 1.15rem 0.95rem 1.15rem;
+  border-bottom: 1px solid #f1f5f9;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.sidebar-brand-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.sidebar-logo-link {
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+  background: #ffffff;
+  padding: 0.2rem;
+  border-radius: 8px;
+}
+
+.sidebar-brand-logo {
+  height: 40px;
+  max-width: 170px;
+  width: auto;
+  object-fit: contain;
+  display: block;
+}
+
+.sidebar-close-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.sidebar-close-btn:hover {
+  background: #fee2e2;
+  color: #dc2626;
+  border-color: #fca5a5;
+}
+
+.sidebar-brand-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.sidebar-title {
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.01em;
+}
+
+.sidebar-subtitle {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #64748b;
+  line-height: 1.3;
+}
+
+/* Sidebar Month Card */
+.sidebar-month-card {
+  margin: 0.85rem 1.15rem 0.4rem 1.15rem;
+  padding: 0.75rem 0.85rem;
+  background: #fff7ed;
+  border: 1.5px solid #fed7aa;
+  border-radius: 12px;
+  box-shadow: 0 2px 6px rgba(234, 88, 12, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.sidebar-section-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.68rem;
+  font-weight: 800;
+  color: #9a3412;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.sidebar-month-select {
+  width: 100%;
+}
+.sidebar-month-select select {
+  width: 100%;
+}
+
+/* Sidebar Navigation Sections */
+.sidebar-nav-section {
+  padding: 0.85rem 1.15rem 0.4rem 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.sidebar-section-label {
+  font-size: 0.66rem;
+  font-weight: 800;
+  color: #94a3b8;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 0.2rem;
+  padding-left: 0.2rem;
+}
+
+/* View Switcher inside Sidebar */
+.sidebar-view-cluster {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.sidebar-view-cluster .view-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.55rem 0.85rem;
+  border-radius: 10px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #475569;
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  width: 100%;
+  text-align: left;
+}
+
+.sidebar-view-cluster .view-pill:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+  border-color: #cbd5e1;
+}
+
+.sidebar-view-cluster .view-pill.active {
+  background: linear-gradient(135deg, #ea580c 0%, #f97316 100%);
+  color: #ffffff;
+  border-color: #ea580c;
+  box-shadow: 0 4px 14px rgba(234, 88, 12, 0.3);
+}
+
+/* Audit List inside Sidebar */
+.sidebar-audit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.sidebar-audit-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  border-radius: 10px;
+  text-decoration: none;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #334155;
+  background: #ffffff;
+  border: 1px solid #f1f5f9;
+  transition: all 0.15s ease;
+}
+
+.sidebar-audit-item:hover {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  transform: translateX(2px);
+}
+
+.sidebar-audit-left {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.sidebar-icon {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+/* Category Pills in Sidebar */
+.sidebar-category-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.sidebar-cat-pill {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.35rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.sidebar-cat-pill:hover {
+  background: #f8fafc;
+  color: #0f172a;
+  border-color: #cbd5e1;
+}
+
+.sidebar-cat-pill.active {
+  background: #0f172a;
+  color: #ffffff;
+  border-color: #0f172a;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.2);
+}
+
+/* Sidebar Footer */
+.sidebar-bottom-footer {
+  margin-top: auto;
+  padding: 1rem 1.15rem;
+  border-top: 1px solid #f1f5f9;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.sidebar-live-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #16a34a;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  padding: 0.4rem 0.75rem;
+  border-radius: 8px;
+}
+
+.sidebar-logout-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0.55rem 1rem;
+  border-radius: 10px;
+  border: 1.5px solid rgba(239, 68, 68, 0.25);
+  background: rgba(239, 68, 68, 0.05);
+  color: #dc2626;
+  font-weight: 700;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 100%;
+}
+
+.sidebar-logout-button:hover {
+  background: #ef4444;
+  color: #ffffff;
+  border-color: #dc2626;
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.25);
+}
+
+/* --- MAIN WRAPPER & TOPBAR --- */
+.app-main-wrapper {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.app-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 80;
+  background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(226, 232, 240, 0.9);
-  border-radius: 18px;
-  box-shadow: 0 10px 30px -5px rgba(15, 23, 42, 0.08), 0 2px 6px -1px rgba(0, 0, 0, 0.04);
-  transition: all 0.2s ease;
-  overflow: visible;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.04);
+  padding: 0.55rem 1.5rem;
 }
 
-/* Main Tier: Logo, Active Month, and Primary Actions */
-.header-main-row {
+.topbar-inner {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 0.55rem 1.1rem;
-  gap: 0.6rem;
-  flex-wrap: nowrap;
-  overflow: visible;
+  justify-content: space-between;
+  gap: 0.85rem;
+  width: 100%;
 }
 
-/* Official Logo & Portal Identity */
-.brand-cluster {
+.topbar-left {
   display: flex;
-  flex-direction: row;
   align-items: center;
   gap: 0.75rem;
   flex-shrink: 0;
 }
 
-.brand-text-block {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
+.topbar-hamburger-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  border: 1.5px solid #cbd5e1;
+  background: #f8fafc;
+  color: #334155;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.topbar-hamburger-btn:hover {
+  background: #f1f5f9;
+  color: #0f172a;
 }
 
-.brand-title {
-  font-size: 0.82rem;
+.topbar-title-cluster {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.topbar-portal-tag {
+  font-size: 0.68rem;
+  font-weight: 800;
+  color: #ea580c;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  padding: 0.2rem 0.55rem;
+  border-radius: 6px;
+  letter-spacing: 0.04em;
+}
+
+.topbar-portal-title {
+  font-size: 0.88rem;
   font-weight: 800;
   color: #0f172a;
   letter-spacing: -0.01em;
   white-space: nowrap;
 }
 
-.brand-subtitle {
+.topbar-actions-cluster {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
-  font-size: 0.7rem;
-  font-weight: 600;
-  color: #64748b;
-  white-space: nowrap;
+  gap: 0.45rem;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding: 0.1rem 0;
+}
+.topbar-actions-cluster::-webkit-scrollbar {
+  display: none;
 }
 
-/* Vertical divider in the sub-row toolbar */
-.sub-row-divider {
-  width: 1.5px;
-  height: 22px;
-  background: #e2e8f0;
-  flex-shrink: 0;
-  border-radius: 2px;
+/* Mobile Drawer Backdrop */
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 99;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+.sidebar-backdrop.active {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 
@@ -2520,155 +2879,73 @@ html, body {
   display: none;
 }
 
-@media (max-width: 900px) {
-  .navbar-wrapper {
-    padding: 0 0.75rem;
+/* Responsive Breakpoints: Tablet and Mobile Navigation */
+@media (max-width: 1024px) {
+  .app-sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    transform: translateX(-100%);
+    z-index: 1000;
+    width: 290px;
+    max-width: 85vw;
+    box-shadow: 10px 0 40px rgba(0, 0, 0, 0.22);
   }
-  .main-content {
-    padding: 0.75rem;
+
+  .app-sidebar.active {
+    transform: translateX(0);
+  }
+
+  .sidebar-close-btn {
+    display: flex;
+  }
+
+  .topbar-hamburger-btn {
+    display: flex;
+  }
+
+  .app-topbar {
+    padding: 0.5rem 0.85rem;
   }
 }
 
 @media (max-width: 768px) {
-  /* 1. Header: Unstick so it doesn't consume half the mobile screen */
-  .navbar-wrapper {
-    position: relative;
-    top: 0;
-    padding: 0.4rem 0.5rem;
-    margin: 0;
-    max-width: 100%;
-    z-index: 100;
+  .app-topbar {
+    padding: 0.45rem 0.65rem;
   }
 
-  .executive-header-card {
-    border-radius: 12px;
-    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+  .topbar-portal-tag {
+    display: none;
   }
 
-  /* Main Row: Stack elements cleanly */
-  .header-main-row {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0.5rem;
-    padding: 0.6rem 0.75rem;
-  }
-
-  .brand-cluster {
-    width: 100%;
-    justify-content: flex-start;
-    gap: 0.5rem;
-  }
-
-  .univ-brand-logo {
-    height: 32px;
-    max-width: 110px;
-  }
-
-  .brand-title {
-    font-size: 0.76rem;
-    white-space: normal;
-    line-height: 1.2;
-  }
-
-  .brand-subtitle {
-    font-size: 0.64rem;
-  }
-
-  .brand-separator {
-    height: 24px;
-  }
-
-  /* Month Picker & Primary Buttons on Mobile */
-  .month-picker-box {
-    width: 100%;
-    justify-content: space-between;
-    padding: 0.35rem 0.65rem;
-    border-radius: 10px;
-  }
-
-  .month-select-dropdown {
+  .topbar-portal-title {
     font-size: 0.78rem;
-    padding: 0.25rem 1.6rem 0.25rem 0.5rem;
   }
 
-  .header-actions-cluster {
-    width: 100%;
-    display: flex;
-    flex-wrap: wrap;
+  .topbar-actions-cluster {
     gap: 0.35rem;
   }
 
   .header-btn {
-    font-size: 0.72rem;
+    font-size: 0.7rem;
     padding: 0.32rem 0.55rem;
-    flex: 1 1 auto;
-    justify-content: center;
-  }
-
-  .dropdown-wrap {
-    flex: 1 1 auto;
-  }
-
-  .btn-disburse {
-    width: 100%;
   }
 
   .dropdown-menu-box {
     position: fixed;
-    top: 60px;
-    left: 10px;
-    right: 10px;
+    top: 55px;
+    left: 8px;
+    right: 8px;
     width: auto;
     min-width: 0;
-    max-width: calc(100vw - 20px);
+    max-width: calc(100vw - 16px);
     z-index: 1000;
   }
 
-  /* Toolbar: Smooth horizontal scrolling strip for mode switches & actions */
-  .header-toolbar {
-    border-top: 1px solid #e2e8f0;
+  .page-container {
+    padding: 0.5rem 0.6rem 2rem 0.6rem;
   }
-
-  .toolbar-row {
-    display: flex;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    gap: 0.4rem;
-    padding: 0.4rem 0.6rem;
-  }
-
-  .toolbar-row::-webkit-scrollbar {
-    display: none;
-  }
-
-  .view-switch-cluster {
-    flex-shrink: 0;
-  }
-
-  .view-pill {
-    padding: 0.32rem 0.65rem;
-    font-size: 0.72rem;
-    white-space: nowrap;
-  }
-
-  .toolbar-row .header-btn {
-    flex: 0 0 auto;
-    white-space: nowrap;
-  }
-
-  .sub-nav-tabs {
-    margin-left: 0;
-    flex-shrink: 0;
-    display: flex;
-    gap: 0.35rem;
-  }
-
-  .sub-tab-link {
-    white-space: nowrap;
-    font-size: 0.72rem;
-    padding: 0.25rem 0.55rem;
   }
 
   /* 2. Main Content & Hero */
