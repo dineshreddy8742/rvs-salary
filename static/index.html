@@ -151,6 +151,50 @@
               <button class="sidebar-cat-pill" data-sidebar-filter="missing_bank">🏦 Missing Bank</button>
             </div>
           </div>
+        <!-- HIERARCHY 4: TOOLS & EXPORTS -->
+        <div class="sidebar-hierarchy-group">
+          <div class="sidebar-group-header">
+            <span class="group-title">4. TOOLS &amp; EXPORTS</span>
+            <span class="group-pill">Batch</span>
+          </div>
+          <div class="sidebar-audit-list">
+            <a href="javascript:void(0)" class="sidebar-audit-item" onclick="document.getElementById('btn-bulk-slips-modal').click()">
+              <div class="sidebar-audit-left">
+                <span class="sidebar-icon">📝</span>
+                <span>Bulk Leave Slips</span>
+              </div>
+            </a>
+            <a href="javascript:void(0)" class="sidebar-audit-item" onclick="document.getElementById('btn-export').click()">
+              <div class="sidebar-audit-left">
+                <span class="sidebar-icon">📊</span>
+                <span>Export Attendance</span>
+              </div>
+            </a>
+            <a href="javascript:void(0)" class="sidebar-audit-item salary-gated" onclick="document.getElementById('btn-export-salary').click()">
+              <div class="sidebar-audit-left">
+                <span class="sidebar-icon">💵</span>
+                <span>Export Salary Bill</span>
+              </div>
+            </a>
+            <a href="javascript:void(0)" class="sidebar-audit-item salary-gated" onclick="document.getElementById('btn-bulk-adjust-modal').click()">
+              <div class="sidebar-audit-left">
+                <span class="sidebar-icon">⚡</span>
+                <span>Bulk Adjustments</span>
+              </div>
+            </a>
+            <a href="javascript:void(0)" class="sidebar-audit-item" onclick="document.getElementById('btn-bulk-revert-modal').click()">
+              <div class="sidebar-audit-left">
+                <span class="sidebar-icon">↺</span>
+                <span>Revert to Biometric</span>
+              </div>
+            </a>
+            <a href="javascript:void(0)" class="sidebar-audit-item salary-gated" onclick="document.getElementById('btn-variance-modal').click()">
+              <div class="sidebar-audit-left">
+                <span class="sidebar-icon">📈</span>
+                <span>Variance Report</span>
+              </div>
+            </a>
+          </div>
         </div>
 
       </div>
@@ -265,36 +309,58 @@
               </div>
             </div>
 
-            <!-- Operations Actions -->
-            <button class="header-btn btn-bulk-slips" id="btn-bulk-slips-modal" title="Apply Leave / OD slips in bulk">
-              <span class="pulse-bulk-dot"></span>
-              <span>Bulk Slips</span>
-            </button>
-
-            <button class="header-btn btn-export-excel" id="btn-export" title="Download Attendance Excel file">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-              <span>Export Attn</span>
-            </button>
-
-            <button class="header-btn btn-export-salary salary-gated" id="btn-export-salary" title="Download Salary Bill Excel">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
-              <span>Export Sal</span>
-            </button>
-
-            <button class="header-btn btn-bulk-adj salary-gated" id="btn-bulk-adjust-modal" title="Bulk apply bonus, arrears, EPF adjustments">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
-              <span>⚡ Adjust</span>
-            </button>
-
-            <button class="header-btn btn-revert-header" id="btn-bulk-revert-modal" title="Reset all staff to raw biometric data">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
-              <span>↺ Revert</span>
-            </button>
-
-            <button class="header-btn btn-variance salary-gated" id="btn-variance-modal" title="Compare month-over-month salary differences">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
-              <span>📊 Variance</span>
-            </button>
+            <!-- Tools & Operations Dropdown (Neatly grouped to prevent right-side clipping) -->
+            <div class="dropdown-wrap" id="wrap-operations-dropdown">
+              <button class="header-btn btn-operations" id="btn-operations-menu" title="Bulk Tools, Slips, Exports & Variance">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                <span>⚡ Tools &amp; Exports ▼</span>
+              </button>
+              <div class="dropdown-menu-box" id="menu-operations">
+                <a href="javascript:void(0)" class="dropdown-item" id="btn-bulk-slips-modal">
+                  <span class="d-icon">📝</span>
+                  <div>
+                    <strong>Bulk Leave &amp; OD Slips</strong>
+                    <div class="d-sub">Batch apply paper slips from Principal or HR</div>
+                  </div>
+                </a>
+                <a href="javascript:void(0)" class="dropdown-item" id="btn-export">
+                  <span class="d-icon">📊</span>
+                  <div>
+                    <strong>Export Attendance (.xls)</strong>
+                    <div class="d-sub">Download biometric attendance Excel file</div>
+                  </div>
+                </a>
+                <a href="javascript:void(0)" class="dropdown-item salary-gated" id="btn-export-salary">
+                  <span class="d-icon">💵</span>
+                  <div>
+                    <strong>Export Salary Bill (.xlsx)</strong>
+                    <div class="d-sub">Download official bank &amp; salary ledger</div>
+                  </div>
+                </a>
+                <div class="dropdown-divider"></div>
+                <a href="javascript:void(0)" class="dropdown-item salary-gated" id="btn-bulk-adjust-modal">
+                  <span class="d-icon">⚡</span>
+                  <div>
+                    <strong>Bulk Salary Adjustments</strong>
+                    <div class="d-sub">Batch bonus, arrears, EPF adjustments</div>
+                  </div>
+                </a>
+                <a href="javascript:void(0)" class="dropdown-item" id="btn-bulk-revert-modal">
+                  <span class="d-icon">↺</span>
+                  <div>
+                    <strong>Revert to Raw Biometric</strong>
+                    <div class="d-sub">Reset manual overrides back to raw punches</div>
+                  </div>
+                </a>
+                <a href="javascript:void(0)" class="dropdown-item salary-gated" id="btn-variance-modal">
+                  <span class="d-icon">📈</span>
+                  <div>
+                    <strong>Month Variance Report</strong>
+                    <div class="d-sub">Compare changes from previous month</div>
+                  </div>
+                </a>
+              </div>
+            </div>
           </div>
         </div>
       </header>
@@ -302,6 +368,9 @@
   <main class="page-container">
     <!-- Hero Announcement & Header -->
     <section class="hero-section">
+      <div class="hero-brand-emblem-wrap">
+        <img src="rvs-emblem.png" alt="RVS University Emblem" class="hero-emblem-img">
+      </div>
       <div class="hero-badge">
         <span class="badge-tag">RVS PAYROLL</span>
         <span>Attendance + Salary — All staff, all months, one screen</span>

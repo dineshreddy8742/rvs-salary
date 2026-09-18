@@ -594,9 +594,22 @@ function setupEventListeners() {
   if (btnDisburseMenu && menuDisburse) {
     btnDisburseMenu.addEventListener('click', (e) => {
       e.stopPropagation();
+      if (menuOps) menuOps.classList.remove('show');
       menuDisburse.classList.toggle('show');
     });
     document.addEventListener('click', () => menuDisburse.classList.remove('show'));
+  }
+
+  // Tools & Operations Dropdown
+  const btnOpsMenu = document.getElementById('btn-operations-menu');
+  const menuOps = document.getElementById('menu-operations');
+  if (btnOpsMenu && menuOps) {
+    btnOpsMenu.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (menuDisburse) menuDisburse.classList.remove('show');
+      menuOps.classList.toggle('show');
+    });
+    document.addEventListener('click', () => menuOps.classList.remove('show'));
   }
 
   // Export NEFT CSV

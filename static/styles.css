@@ -98,6 +98,7 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  max-height: 100vh;
   position: sticky;
   top: 0;
   z-index: 100;
@@ -115,7 +116,8 @@ body {
 
 /* Sidebar Middle Scrollable Container */
 .sidebar-scrollable-content {
-  flex: 1;
+  flex: 1 1 0;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   display: flex;
@@ -491,11 +493,20 @@ body {
 
 /* --- MAIN WRAPPER & TOPBAR --- */
 .app-main-wrapper {
-  flex: 1;
+  flex: 1 1 0%;
   min-width: 0;
+  width: calc(100% - 275px);
+  max-width: calc(100% - 275px);
   display: flex;
   flex-direction: column;
+  box-sizing: border-box;
+  overflow-x: hidden;
+  transition: max-width 0.28s cubic-bezier(0.16, 1, 0.3, 1), width 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.app-layout.sidebar-collapsed .app-main-wrapper {
   width: 100%;
+  max-width: 100%;
 }
 
 .app-topbar {
@@ -507,21 +518,24 @@ body {
   -webkit-backdrop-filter: blur(16px);
   border-bottom: 1px solid rgba(226, 232, 240, 0.9);
   box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.04);
-  padding: 0.55rem 1.5rem;
+  padding: 0.55rem 1.25rem;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .topbar-inner {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.85rem;
+  gap: 0.75rem;
   width: 100%;
+  box-sizing: border-box;
 }
 
 .topbar-left {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.65rem;
   flex-shrink: 0;
 }
 
@@ -585,18 +599,19 @@ body {
   white-space: nowrap;
 }
 
+@media (max-width: 1380px) {
+  .app-layout:not(.sidebar-collapsed) .topbar-portal-title {
+    display: none;
+  }
+}
+
 .topbar-actions-cluster {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.4rem;
   flex-wrap: nowrap;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
+  flex-shrink: 0;
   padding: 0.1rem 0;
-}
-.topbar-actions-cluster::-webkit-scrollbar {
-  display: none;
 }
 
 /* Mobile Drawer Backdrop */
@@ -971,9 +986,11 @@ body {
 
 /* Page Container */
 .page-container {
-  max-width: 1520px;
-  margin: 0 auto;
-  padding: 0.75rem 1.5rem 2rem 1.5rem;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0.75rem 1.25rem 2rem 1.25rem;
   position: relative;
   z-index: 1;
   display: flex;
@@ -984,11 +1001,35 @@ body {
 /* Hero Section */
 .hero-section {
   text-align: center;
-  padding: 0.75rem 1rem 0.4rem 1rem;
+  padding: 0.6rem 1rem 0.35rem 1rem;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0.4rem;
+}
+
+.hero-brand-emblem-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0.25rem;
+}
+
+.hero-emblem-img {
+  width: 74px;
+  height: 74px;
+  object-fit: contain;
+  background: #ffffff;
+  padding: 4px;
+  border-radius: 50%;
+  border: 2px solid #fed7aa;
+  box-shadow: 0 4px 16px rgba(234, 88, 12, 0.18);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease;
+}
+
+.hero-emblem-img:hover {
+  transform: scale(1.08) rotate(3deg);
+  box-shadow: 0 6px 20px rgba(234, 88, 12, 0.28);
 }
 
 .hero-badge {
@@ -1854,25 +1895,49 @@ input:checked + .slider-circle:before { transform: translateX(16px); }
 .badge-cat-support { background: #fdf4ff; color: #86198f; border: 1px solid #f5d0fe; }
 .badge-cat-mgt { background: #fefce8; color: #854d0e; border: 1px solid #fef08a; }
 
-/* Unified Master 6-Card KPI Grid */
+/* Unified Master 6-Card KPI Grid: Dynamic & Non-Clipping */
 .stats-grid-unified {
+  display: grid !important;
+  grid-template-columns: repeat(6, 1fr) !important;
+  gap: 0.65rem !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* When sidebar is OPEN, available width is ~1000px on standard laptops, so wrap into clean 3x2 */
+.app-layout:not(.sidebar-collapsed) .stats-grid-unified {
+  grid-template-columns: repeat(3, 1fr) !important;
+}
+
+@media (min-width: 1440px) {
+  .app-layout:not(.sidebar-collapsed) .stats-grid-unified {
+    grid-template-columns: repeat(6, 1fr) !important;
+  }
+}
+
+/* When sidebar IS COLLAPSED, full screen width allows 6 cards in 1 row down to 1050px */
+.app-layout.sidebar-collapsed .stats-grid-unified {
   grid-template-columns: repeat(6, 1fr) !important;
 }
 
-@media (max-width: 1200px) {
-  .stats-grid-unified {
+@media (max-width: 1050px) {
+  .app-layout.sidebar-collapsed .stats-grid-unified {
     grid-template-columns: repeat(3, 1fr) !important;
   }
 }
 
 @media (max-width: 768px) {
-  .stats-grid-unified {
+  .stats-grid-unified,
+  .app-layout:not(.sidebar-collapsed) .stats-grid-unified,
+  .app-layout.sidebar-collapsed .stats-grid-unified {
     grid-template-columns: repeat(2, 1fr) !important;
   }
 }
 
 @media (max-width: 480px) {
-  .stats-grid-unified {
+  .stats-grid-unified,
+  .app-layout:not(.sidebar-collapsed) .stats-grid-unified,
+  .app-layout.sidebar-collapsed .stats-grid-unified {
     grid-template-columns: 1fr !important;
   }
 }
@@ -3659,4 +3724,229 @@ html, body {
 }
 #salary-lock-banner .slb-btn:active {
   transform: scale(0.96);
+}
+
+/* =============================================================================
+   SALARY ACCESS CONTROL / 4-DIGIT PIN MODAL
+   ============================================================================= */
+.salary-pin-card {
+  width: 100%;
+  max-width: 320px;
+  background: #ffffff;
+  border-radius: 24px;
+  box-shadow: 0 25px 60px -10px rgba(15, 23, 42, 0.45), 0 0 0 1px rgba(226, 232, 240, 0.8);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  margin: auto;
+  animation: pinPopIn 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes pinPopIn {
+  from { opacity: 0; transform: scale(0.92) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.salary-pin-card.pin-shake {
+  animation: pinShakeAnim 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+@keyframes pinShakeAnim {
+  10%, 90% { transform: translate3d(-2px, 0, 0); }
+  20%, 80% { transform: translate3d(4px, 0, 0); }
+  30%, 50%, 70% { transform: translate3d(-6px, 0, 0); }
+  40%, 60% { transform: translate3d(6px, 0, 0); }
+}
+
+.salary-pin-header {
+  background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 60%, #0284c7 100%);
+  padding: 1.25rem 1.2rem 1.05rem;
+  text-align: center;
+  color: #ffffff;
+  position: relative;
+}
+
+.salary-pin-lock-icon {
+  font-size: 2rem;
+  margin-bottom: 0.25rem;
+  display: inline-block;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.2));
+  transition: transform 0.2s ease;
+}
+
+.salary-pin-title {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #ffffff;
+  margin: 0 0 0.2rem;
+  letter-spacing: -0.01em;
+}
+
+.salary-pin-subtitle {
+  font-size: 0.76rem;
+  color: rgba(255, 255, 255, 0.84);
+  margin: 0;
+  font-weight: 500;
+}
+
+/* 4-Digit PIN Indicator Dots */
+.pin-dots-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 1.1rem 0 0.4rem;
+}
+
+.pin-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #cbd5e1;
+  background: transparent;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.pin-dot.filled {
+  background: #2563eb;
+  border-color: #2563eb;
+  transform: scale(1.18);
+  box-shadow: 0 0 10px rgba(37, 99, 235, 0.55);
+}
+
+.pin-dot.active {
+  border-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.15);
+  transform: scale(1.08);
+}
+
+/* Error message */
+.pin-error-msg {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #ef4444;
+  text-align: center;
+  min-height: 18px;
+  padding: 0 1rem;
+  margin-bottom: 0.2rem;
+}
+
+/* Circular Numpad Grid */
+.pin-numpad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  padding: 0.2rem 1.5rem 1rem;
+  justify-items: center;
+  box-sizing: border-box;
+}
+
+.pin-key {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  border: 1.5px solid #e2e8f0;
+  background: #f8fafc;
+  color: #1e293b;
+  font-family: inherit;
+  font-size: 1.35rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
+  -webkit-user-select: none;
+  outline: none;
+}
+
+.pin-key:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  transform: scale(1.06);
+}
+
+.pin-key:active {
+  background: #e2e8f0;
+  transform: scale(0.95);
+}
+
+.pin-key.pin-key-clear {
+  font-size: 0.95rem;
+  color: #dc2626;
+  background: #fef2f2;
+  border-color: #fee2e2;
+}
+.pin-key.pin-key-clear:hover {
+  background: #fee2e2;
+  border-color: #fca5a5;
+}
+
+.pin-key.pin-key-del {
+  font-size: 1.15rem;
+  color: #64748b;
+  background: #f1f5f9;
+}
+.pin-key.pin-key-del:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+/* Footer links */
+.pin-footer-options {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.7rem 1.4rem 1rem;
+  border-top: 1px solid #f1f5f9;
+  background: #ffffff;
+}
+
+.pin-change-link,
+.pin-cancel-link {
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #64748b;
+  cursor: pointer;
+  padding: 0.3rem 0.55rem;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+
+.pin-change-link:hover {
+  color: #2563eb;
+  background: #eff6ff;
+}
+
+.pin-cancel-link:hover {
+  color: #dc2626;
+  background: #fef2f2;
+}
+
+/* Mobile Responsiveness for PIN Card */
+@media (max-width: 480px) {
+  .salary-pin-card {
+    max-width: 295px;
+    border-radius: 20px;
+  }
+  .salary-pin-header {
+    padding: 1.1rem 1rem 0.9rem;
+  }
+  .pin-key {
+    width: 52px;
+    height: 52px;
+    font-size: 1.2rem;
+  }
+  .pin-numpad {
+    gap: 8px;
+    padding: 0.2rem 1.1rem 0.9rem;
+  }
+  .pin-footer-options {
+    padding: 0.6rem 1.1rem 0.9rem;
+  }
 }
