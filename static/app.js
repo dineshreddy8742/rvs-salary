@@ -219,29 +219,52 @@ function setupEventListeners() {
     });
   }
 
-  // Mobile Sidebar Drawer Toggle & Backdrop
+  // Dynamic Sidebar Drawer / Collapse Toggle & Backdrop
+  const appLayout = document.querySelector('.app-layout');
   const sidebar = document.getElementById('app-sidebar');
   const sidebarBackdrop = document.getElementById('sidebar-backdrop');
   const btnToggleSidebar = document.getElementById('btn-toggle-sidebar');
+  const btnCollapseSidebar = document.getElementById('btn-collapse-sidebar');
   const btnCloseSidebar = document.getElementById('btn-close-sidebar');
 
-  if (btnToggleSidebar && sidebar) {
-    btnToggleSidebar.addEventListener('click', () => {
-      sidebar.classList.toggle('active');
+  function toggleSidebar() {
+    if (window.innerWidth > 1024) {
+      // Desktop: Toggle collapsed state for full-width table view
+      if (appLayout) {
+        appLayout.classList.toggle('sidebar-collapsed');
+        const isCollapsed = appLayout.classList.contains('sidebar-collapsed');
+        localStorage.setItem('rvs_sidebar_collapsed', isCollapsed ? '1' : '0');
+        if (btnToggleSidebar) btnToggleSidebar.classList.toggle('active', isCollapsed);
+      }
+    } else {
+      // Mobile / Tablet: Toggle off-canvas drawer
+      if (sidebar) sidebar.classList.toggle('active');
       if (sidebarBackdrop) sidebarBackdrop.classList.toggle('active');
-    });
+    }
   }
-  if (btnCloseSidebar && sidebar) {
-    btnCloseSidebar.addEventListener('click', () => {
-      sidebar.classList.remove('active');
+
+  function collapseSidebar() {
+    if (window.innerWidth > 1024) {
+      if (appLayout) {
+        appLayout.classList.add('sidebar-collapsed');
+        localStorage.setItem('rvs_sidebar_collapsed', '1');
+        if (btnToggleSidebar) btnToggleSidebar.classList.add('active');
+      }
+    } else {
+      if (sidebar) sidebar.classList.remove('active');
       if (sidebarBackdrop) sidebarBackdrop.classList.remove('active');
-    });
+    }
   }
-  if (sidebarBackdrop && sidebar) {
-    sidebarBackdrop.addEventListener('click', () => {
-      sidebar.classList.remove('active');
-      sidebarBackdrop.classList.remove('active');
-    });
+
+  if (btnToggleSidebar) btnToggleSidebar.addEventListener('click', toggleSidebar);
+  if (btnCollapseSidebar) btnCollapseSidebar.addEventListener('click', collapseSidebar);
+  if (btnCloseSidebar) btnCloseSidebar.addEventListener('click', collapseSidebar);
+  if (sidebarBackdrop) sidebarBackdrop.addEventListener('click', collapseSidebar);
+
+  // Restore saved desktop sidebar preference
+  if (window.innerWidth > 1024 && localStorage.getItem('rvs_sidebar_collapsed') === '1') {
+    if (appLayout) appLayout.classList.add('sidebar-collapsed');
+    if (btnToggleSidebar) btnToggleSidebar.classList.add('active');
   }
 
   // Sidebar Quick Category Filter Buttons
@@ -896,15 +919,23 @@ function renderUnifiedKPIs(attStats, salStats) {
 
   const elBus = document.getElementById('count-bus');
   if (elBus) elBus.textContent = busCount;
+  const sideBus = document.getElementById('side-count-bus');
+  if (sideBus) sideBus.textContent = busCount;
 
   const elMess = document.getElementById('count-mess');
   if (elMess) elMess.textContent = messCount;
+  const sideMess = document.getElementById('side-count-mess');
+  if (sideMess) sideMess.textContent = messCount;
 
   const elHostel = document.getElementById('count-hostel');
   if (elHostel) elHostel.textContent = hostelCount;
+  const sideHostel = document.getElementById('side-count-hostel');
+  if (sideHostel) sideHostel.textContent = hostelCount;
 
   const elDedPill = document.getElementById('count-ded');
   if (elDedPill) elDedPill.textContent = dedCount;
+  const sideDed = document.getElementById('side-count-ded');
+  if (sideDed) sideDed.textContent = dedCount;
 }
 
 // Mask or unmask salary KPI cards based on showSalaryColumns
