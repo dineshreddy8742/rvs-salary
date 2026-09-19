@@ -67,6 +67,10 @@
             <polyline points="6 9 12 15 18 9"></polyline>
           </svg>
         </div>
+        <button class="sidebar-delete-month-btn" id="btn-open-delete-modal-side" title="Delete or remove an old month dataset">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+          <span>Delete / Remove Data</span>
+        </button>
       </div>
 
       <!-- Scrollable Hierarchy Nav Container -->
@@ -357,6 +361,14 @@
                   <div>
                     <strong>Month Variance Report</strong>
                     <div class="d-sub">Compare changes from previous month</div>
+                  </div>
+                </a>
+                <div class="dropdown-divider"></div>
+                <a href="javascript:void(0)" class="dropdown-item" id="btn-menu-delete-month" style="color: #dc2626;">
+                  <span class="d-icon">🗑️</span>
+                  <div>
+                    <strong style="color: #dc2626;">Delete Old Month Data</strong>
+                    <div class="d-sub">Select and permanently remove an old month's records</div>
                   </div>
                 </a>
               </div>
@@ -1223,6 +1235,61 @@
         <button class="btn-secondary-pill" id="btn-cancel-bulk-revert">Cancel</button>
         <button class="btn-navy-pill" style="background:#ea580c; border-color:#c2410c;" id="btn-apply-bulk-revert">
           ↺ Revert to Original Biometrics
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: DELETE OLD DATA / REMOVE MONTH DATASET -->
+  <div class="modal-overlay" id="modal-delete-data">
+    <div class="modal-window" style="max-width: 520px;">
+      <div class="modal-header-bar">
+        <div>
+          <div class="modal-header-pill" style="background:#fee2e2; color:#b91c1c;">Danger Zone</div>
+          <h2 class="modal-emp-name">🗑️ Delete Old Month / Biometric Data</h2>
+          <p class="modal-emp-meta">Select an uploaded month dataset and permanently remove its records</p>
+        </div>
+        <button class="modal-close-btn" id="btn-close-delete-data">&times;</button>
+      </div>
+
+      <div class="modal-content-area">
+        <div class="bulk-instructions-box" style="background:#fff1f2; border: 1.5px solid #fecdd3; color:#9f1239; border-radius: 12px; padding: 0.9rem 1.1rem;">
+          <strong style="display:flex; align-items:center; gap:6px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            Permanent Deletion Warning:
+          </strong>
+          <ul style="margin: 0.4rem 0 0 1.2rem; padding: 0; font-size: 0.78rem; line-height: 1.45;">
+            <li>All attendance logs, punches, and day statuses for this month will be removed.</li>
+            <li>All calculated salary records, deductions, and pay days will be purged.</li>
+            <li>Staff profiles and bank account numbers are preserved.</li>
+          </ul>
+        </div>
+
+        <form id="form-delete-month" class="add-staff-form" style="margin-top: 1rem;" onsubmit="return false;">
+          <div class="form-field">
+            <label style="font-weight: 700; color: #1e293b;">Select Month / Excel Dataset to Delete: *</label>
+            <select id="delete-month-select" class="form-select" style="font-size: 0.9rem; font-weight: 700; color: #0f172a; padding: 0.55rem 0.85rem; border-radius: 10px; border: 1.5px solid #cbd5e1;">
+            </select>
+          </div>
+
+          <div id="delete-month-summary-badge" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 0.75rem 1rem; font-size: 0.8rem; color: #475569; display: flex; align-items: center; justify-content: space-between;">
+            <span>Selected Month: <strong id="del-badge-name" style="color: #0f172a;">--</strong></span>
+            <span class="pill-badge" id="del-badge-records" style="background: #e2e8f0; font-weight: 700; padding: 2px 8px; border-radius: 9999px;">0 records</span>
+          </div>
+
+          <div class="form-field" style="margin-top: 1rem;">
+            <label style="font-size: 0.8rem; font-weight: 700; color: #b91c1c;">
+              To confirm deletion, type <span style="background: #fee2e2; padding: 1px 6px; border-radius: 4px; color: #b91c1c; font-family: monospace;">DELETE</span> below: *
+            </label>
+            <input type="text" id="delete-confirm-input" placeholder="Type DELETE to enable button" autocomplete="off" style="border-color: #fca5a5; font-size: 0.9rem; font-weight: 700; letter-spacing: 1px;">
+          </div>
+        </form>
+      </div>
+
+      <div class="modal-footer-bar" style="display: flex; justify-content: space-between; align-items: center;">
+        <button class="btn-secondary-pill" id="btn-cancel-delete-data">Cancel</button>
+        <button class="btn-danger-pill" id="btn-execute-delete-data" disabled style="background: #dc2626; border-color: #b91c1c; color: white; opacity: 0.5; cursor: not-allowed; padding: 0.5rem 1.25rem; border-radius: 9999px; font-weight: 700; font-size: 0.8rem;">
+          🗑️ Delete This Month's Data
         </button>
       </div>
     </div>

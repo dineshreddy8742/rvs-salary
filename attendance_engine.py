@@ -11,6 +11,41 @@ STANDARD_DEPARTMENT_ORDER = [
     'Transport', 'Attender', 'Garden Staff', 'Security & Water Staff'
 ]
 
+# Canonical mapping for department normalization to eliminate duplicate/fragmented departments
+DEPARTMENT_CANONICAL_MAP = {
+    'ADMIN': 'Administration',
+    'ADMINISTRATION': 'Administration',
+    'SECURITY': 'Security & Water Staff',
+    'SECURITY & WATER STAFF': 'Security & Water Staff',
+    'SECURITY AND WATER STAFF': 'Security & Water Staff',
+    'TRANSPORT': 'Transport',
+    'MECH': 'ME',
+    'MECHANICAL': 'ME',
+    'EXAM SECTION': 'Exam Section',
+    'EXAM': 'Exam Section',
+    'ELECTRIATIONS': 'Electriations',
+    'ELECTRICIAN': 'Electriations',
+    'ELECTRICIANS': 'Electriations',
+    'HOUSKEEPING': 'Attender',
+    'HOUSE KEEPING': 'Attender',
+    'HOUSEKEEPING': 'Attender',
+    'ATTENDER': 'Attender',
+    'ATTENDERS': 'Attender',
+    'SBF-SLH': 'SLH',
+    'SLH': 'SLH',
+    'GARDEN': 'Garden Staff',
+    'GARDEN STAFF': 'Garden Staff',
+    'MANAGEMENT': 'Management Staff',
+    'MANAGEMENT STAFF': 'Management Staff',
+}
+
+def normalize_dept(dept_name: str) -> str:
+    """Normalize raw department string to official institutional department name."""
+    if not dept_name:
+        return 'General'
+    cleaned = str(dept_name).strip()
+    return DEPARTMENT_CANONICAL_MAP.get(cleaned.upper(), cleaned)
+
 # Standard holidays by department
 LOW_HOLIDAY_DEPTS = {'garden staff', 'security & water staff', 'security', 'slh'}
 
@@ -41,7 +76,7 @@ class AttendanceEngine:
                 val1 = str(r[1]) if pd.notna(r[1]) else ''
                 val2 = str(r[2]) if pd.notna(r[2]) else ''
                 if 'Department:' in val1:
-                    curr_dept = val2.strip()
+                    curr_dept = normalize_dept(val2.strip())
                     if curr_dept not in depts_found:
                         depts_found.append(curr_dept)
                 elif pd.to_numeric(r[0], errors='coerce') is not None and pd.notna(pd.to_numeric(r[0], errors='coerce')):
@@ -131,11 +166,12 @@ class AttendanceEngine:
             
             # Detect Department header
             if 'Department:' in col1:
-                curr_dept = str(row[3]).strip() if pd.notna(row[3]) else str(row[2]).strip()
+                raw_d = str(row[3]).strip() if pd.notna(row[3]) else str(row[2]).strip()
+                curr_dept = normalize_dept(raw_d)
                 i += 1
                 continue
             elif 'Department:' in col0:
-                curr_dept = str(row[1]).strip()
+                curr_dept = normalize_dept(str(row[1]).strip())
                 i += 1
                 continue
 
@@ -203,7 +239,7 @@ class AttendanceEngine:
 
                 # Use reference metadata if available
                 meta = self.reference_metadata.get(emp_code, {})
-                final_dept = meta.get('dept', curr_dept)
+                final_dept = normalize_dept(meta.get('dept', curr_dept))
                 final_name = meta.get('name', emp_name if emp_name else f"Employee {emp_code}")
                 final_desig = meta.get('designation', 'Staff')
 

@@ -173,6 +173,30 @@ def get_months():
         'months': months
     })
 
+@app.route('/api/month/info', methods=['GET'])
+def get_month_info():
+    """Return metadata (record count, punch logs) for a specific month."""
+    month_name = (request.args.get('month') or '').strip()
+    if not month_name:
+        return jsonify({'status': 'error', 'message': 'Missing month parameter'}), 400
+    info = database.get_month_summary_info(month_name)
+    return jsonify({'status': 'success', 'info': info})
+
+@app.route('/api/month/delete', methods=['POST'])
+def delete_month():
+    """Delete all attendance, salary, and punch records for a designated month."""
+    data = request.json or {}
+    month_name = (data.get('month_name') or '').strip()
+    if not month_name:
+        return jsonify({'status': 'error', 'message': 'Please specify the month name to delete.'}), 400
+
+    available_months = database.get_available_months()
+    if month_name not in available_months:
+        return jsonify({'status': 'error', 'message': f'Month "{month_name}" not found in database.'}), 404
+
+    res = database.delete_month_data(month_name)
+    return jsonify(res)
+
 @app.route('/api/data', methods=['GET'])
 def get_data():
     """Return attendance records for a specific month."""

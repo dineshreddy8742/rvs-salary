@@ -7,6 +7,41 @@ import payroll_engine
 
 DB_FILE = "rvs_attendance.db"
 
+# Canonical mapping for department normalization to eliminate duplicate/fragmented departments
+DEPARTMENT_CANONICAL_MAP = {
+    'ADMIN': 'Administration',
+    'ADMINISTRATION': 'Administration',
+    'SECURITY': 'Security & Water Staff',
+    'SECURITY & WATER STAFF': 'Security & Water Staff',
+    'SECURITY AND WATER STAFF': 'Security & Water Staff',
+    'TRANSPORT': 'Transport',
+    'MECH': 'ME',
+    'MECHANICAL': 'ME',
+    'EXAM SECTION': 'Exam Section',
+    'EXAM': 'Exam Section',
+    'ELECTRIATIONS': 'Electriations',
+    'ELECTRICIAN': 'Electriations',
+    'ELECTRICIANS': 'Electriations',
+    'HOUSKEEPING': 'Attender',
+    'HOUSE KEEPING': 'Attender',
+    'HOUSEKEEPING': 'Attender',
+    'ATTENDER': 'Attender',
+    'ATTENDERS': 'Attender',
+    'SBF-SLH': 'SLH',
+    'SLH': 'SLH',
+    'GARDEN': 'Garden Staff',
+    'GARDEN STAFF': 'Garden Staff',
+    'MANAGEMENT': 'Management Staff',
+    'MANAGEMENT STAFF': 'Management Staff',
+}
+
+def normalize_dept(dept_name: str) -> str:
+    """Normalize raw department string to official institutional department name."""
+    if not dept_name:
+        return 'General'
+    cleaned = str(dept_name).strip()
+    return DEPARTMENT_CANONICAL_MAP.get(cleaned.upper(), cleaned)
+
 def get_db():
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
@@ -149,6 +184,37 @@ def has_monthly_records() -> bool:
     conn.close()
     return cnt > 0
 
+def delete_month_data(month_year: str) -> dict:
+    """Delete all monthly records and daily logs for the specified month."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) as cnt FROM monthly_records WHERE month_year = ?", (month_year,))
+    rec_count = cursor.fetchone()['cnt']
+    cursor.execute("DELETE FROM monthly_records WHERE month_year = ?", (month_year,))
+    cursor.execute("DELETE FROM daily_logs WHERE month_year = ?", (month_year,))
+    conn.commit()
+    conn.close()
+    return {
+        'status': 'success',
+        'message': f'Successfully deleted {rec_count} records for {month_year}',
+        'deleted_count': rec_count
+    }
+
+def get_month_summary_info(month_year: str) -> dict:
+    """Return record count and punch log count for a given month."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) as cnt FROM monthly_records WHERE month_year = ?", (month_year,))
+    rec_count = cursor.fetchone()['cnt']
+    cursor.execute("SELECT COUNT(*) as cnt FROM daily_logs WHERE month_year = ?", (month_year,))
+    log_count = cursor.fetchone()['cnt']
+    conn.close()
+    return {
+        'month_year': month_year,
+        'records_count': rec_count,
+        'logs_count': log_count
+    }
+
 def seed_from_engine(engine, month_year: str = "August -2026", overwrite: bool = False):
     """Populate database from an AttendanceEngine instance."""
     conn = get_db()
@@ -183,7 +249,7 @@ def seed_from_engine(engine, month_year: str = "August -2026", overwrite: bool =
         cursor.execute("""
         INSERT OR REPLACE INTO employees (emp_code, name, designation, department, annual_cl_quota, annual_od_quota, attendance_policy, is_manual)
         VALUES (?, ?, ?, ?, 12.0, 15.0, ?, 0)
-        """, (emp_code, emp['name'], emp['designation'], emp['department'], policy))
+        """, (emp_code, emp['name'], emp['designation'], normalize_dept(emp['department']), policy))
 
         summary = engine.calculate_employee_summary(emp)
         
@@ -532,7 +598,7 @@ def create_or_update_manual_employee(emp_data: dict, current_month: str = "Augus
     emp_code = str(emp_data['emp_code']).strip()
     name = str(emp_data['name']).strip()
     desig = str(emp_data.get('designation', 'Staff')).strip()
-    dept = str(emp_data.get('department', 'Administration')).strip()
+    dept = normalize_dept(str(emp_data.get('department', 'Administration')).strip())
     policy = str(emp_data.get('attendance_policy', 'exempt_full')).strip()
     quota = float(emp_data.get('annual_cl_quota', 12.0))
 

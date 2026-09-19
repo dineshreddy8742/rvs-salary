@@ -87,8 +87,46 @@ let currentMonth = 'August -2026';
 let activePortfolioEmpCode = null;
 let currentViewMode = 'attendance'; // 'attendance' or 'salary'
 let currentDashboardMode = 'unified'; // 'unified', 'attendance', or 'salary'
-let showSalaryColumns = false; // Principal Instruction: Salary columns hidden by default
 let unifiedRecords = [];
+
+// === OFFICIAL RVS INSTITUTIONAL DEPARTMENT ORDER ===
+const OFFICIAL_DEPT_ORDER = [
+  'Management Staff',
+  'Administration',
+  'General',
+  'CE',
+  'EEE',
+  'ME',
+  'ECE',
+  'CSE',
+  'CSM',
+  'CSD',
+  'CAI',
+  'IT',
+  'MCA',
+  'MBA',
+  'HAS',
+  'PD',
+  'Accounts',
+  'Media',
+  'Exam Section',
+  'Library',
+  'Maintenance',
+  'TAP',
+  'Electriations',
+  'SLH',
+  'Admissions',
+  'Transport',
+  'Attender',
+  'Garden Staff',
+  'Security & Water Staff'
+];
+
+function getDeptOrderIndex(dept) {
+  const d = String(dept || '').trim();
+  const idx = OFFICIAL_DEPT_ORDER.indexOf(d);
+  return idx !== -1 ? idx : 999;
+}
 
 // === PIN LOCK SYSTEM ===
 const SALARY_PIN_KEY = 'rvs_salary_pin';
@@ -635,6 +673,38 @@ function setupEventListeners() {
     document.addEventListener('click', () => menuOps.classList.remove('show'));
   }
 
+  // Delete Month Modal Events
+  const deleteModal = document.getElementById('modal-delete-data');
+  const btnOpenDeleteSide = document.getElementById('btn-open-delete-modal-side');
+  if (btnOpenDeleteSide) btnOpenDeleteSide.addEventListener('click', openDeleteMonthModal);
+  const btnMenuDeleteMonth = document.getElementById('btn-menu-delete-month');
+  if (btnMenuDeleteMonth) btnMenuDeleteMonth.addEventListener('click', openDeleteMonthModal);
+  const btnCloseDelete = document.getElementById('btn-close-delete-data');
+  if (btnCloseDelete) btnCloseDelete.addEventListener('click', () => deleteModal.classList.remove('active'));
+  const btnCancelDelete = document.getElementById('btn-cancel-delete-data');
+  if (btnCancelDelete) btnCancelDelete.addEventListener('click', () => deleteModal.classList.remove('active'));
+  const btnExecuteDelete = document.getElementById('btn-execute-delete-data');
+  if (btnExecuteDelete) btnExecuteDelete.addEventListener('click', executeDeleteMonth);
+
+  const deleteConfirmInput = document.getElementById('delete-confirm-input');
+  if (deleteConfirmInput) {
+    deleteConfirmInput.addEventListener('input', (e) => {
+      const match = e.target.value.trim().toUpperCase() === 'DELETE';
+      if (btnExecuteDelete) {
+        btnExecuteDelete.disabled = !match;
+        btnExecuteDelete.style.opacity = match ? '1' : '0.45';
+        btnExecuteDelete.style.cursor = match ? 'pointer' : 'not-allowed';
+      }
+    });
+  }
+
+  const deleteMonthSelect = document.getElementById('delete-month-select');
+  if (deleteMonthSelect) {
+    deleteMonthSelect.addEventListener('change', (e) => {
+      updateDeleteMonthBadge(e.target.value);
+    });
+  }
+
   // Export NEFT CSV
   const itemExportNeft = document.getElementById('item-export-neft');
   if (itemExportNeft) {
@@ -1061,9 +1131,16 @@ function updateSalaryKPIMask() {
 
 function populateDepartmentSelect(depts) {
   const select = document.getElementById('dept-select');
+  if (!select) return;
   const currentVal = select.value;
   select.innerHTML = '<option value="all">All Departments</option>';
-  depts.forEach(d => {
+  const sortedDepts = [...depts].sort((a, b) => {
+    const idxA = getDeptOrderIndex(a);
+    const idxB = getDeptOrderIndex(b);
+    if (idxA !== idxB) return idxA - idxB;
+    return String(a || '').localeCompare(String(b || ''));
+  });
+  sortedDepts.forEach(d => {
     const opt = document.createElement('option');
     opt.value = d;
     opt.textContent = d;
@@ -1506,6 +1583,14 @@ function renderTable() {
         return (a.name || '').localeCompare(b.name || '');
       case 'code_asc':
       default: {
+        const deptIndexA = getDeptOrderIndex(a.department);
+        const deptIndexB = getDeptOrderIndex(b.department);
+        if (deptIndexA !== deptIndexB) {
+          return deptIndexA - deptIndexB;
+        }
+        if (a.department !== b.department) {
+          return String(a.department || '').localeCompare(String(b.department || ''));
+        }
         const numA = parseInt(String(a.emp_code).replace(/\D/g, '')) || 0;
         const numB = parseInt(String(b.emp_code).replace(/\D/g, '')) || 0;
         return numA !== numB ? numA - numB : String(a.emp_code).localeCompare(String(b.emp_code));
@@ -1524,12 +1609,25 @@ function renderTable() {
   let sNo = 1;
   const showDeptHeader = (currentSort === 'code_asc' && currentDept === 'all');
 
+  // Pre-calculate count of staff per department in the filtered list
+  const deptCounts = {};
+  filtered.forEach(e => {
+    deptCounts[e.department] = (deptCounts[e.department] || 0) + 1;
+  });
+
   filtered.forEach(emp => {
     if (showDeptHeader && emp.department !== lastDept) {
       lastDept = emp.department;
+      const count = deptCounts[lastDept] || 0;
       const deptRow = document.createElement('tr');
       deptRow.className = 'dept-section-row';
-      deptRow.innerHTML = `<td colspan="${totalCols}" style="background:#f8fafc; font-weight:800; color:#1e3a8a; padding: 6px 12px; border-top: 1px solid #e2e8f0;">DEPARTMENT: ${lastDept}</td>`;
+      deptRow.innerHTML = `
+        <td colspan="${totalCols}" style="background: #f1f5f9; font-weight: 800; color: #1e3a8a; padding: 8px 14px; border-top: 2px solid #cbd5e1; border-bottom: 1px solid #e2e8f0; font-size: 0.85rem; letter-spacing: 0.5px;">
+          🏛️ DEPARTMENT: ${lastDept} 
+          <span style="font-size: 0.72rem; font-weight: 700; background: white; color: #475569; padding: 2px 8px; border-radius: 9999px; margin-left: 8px; border: 1px solid #cbd5e1;">
+            ${count} Staff
+          </span>
+        </td>`;
       tbody.appendChild(deptRow);
     }
 
@@ -2049,7 +2147,12 @@ async function revertToOriginal(empCode) {
 function openBulkRevertModal() {
   const deptSelect = document.getElementById('bulk-revert-dept');
   if (deptSelect) {
-    const depts = Array.from(new Set(unifiedRecords.map(e => e.department))).sort();
+    const depts = Array.from(new Set(unifiedRecords.map(e => e.department))).sort((a, b) => {
+      const idxA = getDeptOrderIndex(a);
+      const idxB = getDeptOrderIndex(b);
+      if (idxA !== idxB) return idxA - idxB;
+      return String(a || '').localeCompare(String(b || ''));
+    });
     deptSelect.innerHTML = '<option value="all">All Departments</option>';
     depts.forEach(d => {
       const opt = document.createElement('option');
@@ -2647,7 +2750,12 @@ async function saveEmployeePackage(e) {
 function openBulkAdjustModal() {
   const deptSelect = document.getElementById('bulk-adj-dept');
   if (deptSelect) {
-    const depts = Array.from(new Set(allSalaryRecords.map(e => e.department))).sort();
+    const depts = Array.from(new Set(allSalaryRecords.map(e => e.department))).sort((a, b) => {
+      const idxA = getDeptOrderIndex(a);
+      const idxB = getDeptOrderIndex(b);
+      if (idxA !== idxB) return idxA - idxB;
+      return String(a || '').localeCompare(String(b || ''));
+    });
     deptSelect.innerHTML = '<option value="all">All Departments</option>';
     depts.forEach(d => {
       const opt = document.createElement('option');
@@ -3173,5 +3281,106 @@ async function openCashDenominationsModal() {
     document.getElementById('printable-cash-content').innerHTML = html;
   } catch (err) {
     alert('Network error loading cash denominations');
+  }
+}
+
+// =============================================================================
+// DELETE OLD DATA / MONTH DATASET HANDLERS
+// =============================================================================
+async function openDeleteMonthModal() {
+  const modal = document.getElementById('modal-delete-data');
+  if (!modal) return;
+
+  const select = document.getElementById('delete-month-select');
+  const confirmInput = document.getElementById('delete-confirm-input');
+  const executeBtn = document.getElementById('btn-execute-delete-data');
+
+  if (confirmInput) confirmInput.value = '';
+  if (executeBtn) {
+    executeBtn.disabled = true;
+    executeBtn.style.opacity = '0.45';
+    executeBtn.style.cursor = 'not-allowed';
+  }
+
+  try {
+    const res = await fetch('/api/months');
+    const data = await res.json();
+    const months = data.months || [];
+
+    if (select) {
+      select.innerHTML = '';
+      months.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m;
+        opt.textContent = m;
+        if (m === currentMonth) opt.selected = true;
+        select.appendChild(opt);
+      });
+      if (months.length > 0) {
+        updateDeleteMonthBadge(select.value || months[0]);
+      }
+    }
+    modal.classList.add('active');
+  } catch (err) {
+    console.error('Error opening delete modal:', err);
+    alert('Failed to load month list: ' + err.message);
+  }
+}
+
+async function updateDeleteMonthBadge(monthName) {
+  const badgeName = document.getElementById('del-badge-name');
+  const badgeRecords = document.getElementById('del-badge-records');
+  if (badgeName) badgeName.textContent = monthName;
+
+  try {
+    const res = await fetch(`/api/month/info?month=${encodeURIComponent(monthName)}`);
+    const data = await res.json();
+    if (data.status === 'success' && data.info) {
+      if (badgeRecords) badgeRecords.textContent = `${data.info.records_count} employees · ${data.info.logs_count} punch logs`;
+    }
+  } catch (e) {
+    if (badgeRecords) badgeRecords.textContent = 'Active dataset';
+  }
+}
+
+async function executeDeleteMonth() {
+  const select = document.getElementById('delete-month-select');
+  const targetMonth = select ? select.value : '';
+  if (!targetMonth) {
+    alert('Please select a month to delete.');
+    return;
+  }
+
+  const confirmMsg = `Are you ABSOLUTELY sure you want to permanently delete all attendance logs and salary records for "${targetMonth}"?\n\nThis cannot be undone!`;
+  if (!confirm(confirmMsg)) return;
+
+  showToast(`⏳ Deleting records for ${targetMonth}...`);
+  try {
+    const res = await fetch('/api/month/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ month_name: targetMonth })
+    });
+    const data = await res.json();
+
+    if (res.ok && data.status === 'success') {
+      showToast(`✅ Successfully deleted ${targetMonth}!`);
+      document.getElementById('modal-delete-data').classList.remove('active');
+
+      // Reload months
+      await loadMonths();
+      // If current month was deleted, switch to first available
+      const selectMonth = document.getElementById('month-select');
+      if (selectMonth && selectMonth.options.length > 0) {
+        currentMonth = selectMonth.options[0].value;
+        selectMonth.value = currentMonth;
+      }
+      await loadData();
+    } else {
+      alert('Deletion failed: ' + (data.message || 'Unknown error'));
+    }
+  } catch (err) {
+    console.error('Delete error:', err);
+    alert('Error deleting month: ' + err.message);
   }
 }
