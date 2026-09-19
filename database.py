@@ -167,10 +167,10 @@ def init_db():
     conn.close()
 
 def get_available_months() -> List[str]:
-    """Return all distinct month_years stored in database."""
+    """Return all distinct month_years stored in database, prioritizing August -2026."""
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT DISTINCT month_year FROM monthly_records ORDER BY id ASC")
+    cursor.execute("SELECT DISTINCT month_year FROM monthly_records ORDER BY CASE WHEN month_year LIKE 'August%2026%' THEN 0 ELSE 1 END, id DESC")
     rows = cursor.fetchall()
     conn.close()
     return [r['month_year'] for r in rows]
@@ -1151,14 +1151,69 @@ def populate_month_salaries_if_empty(month_year: str):
     apply_principal_rules_to_db(month_year)
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT emp_code, total_pay_days, net_salary FROM monthly_records WHERE month_year = ?", (month_year,))
-    rows = cursor.fetchall()
-    conn.close()
+    cursor.execute("""
+    SELECT m.emp_code, m.total_pay_days, m.base_salary, m.arrears,
+           m.epf_deduction, m.it_deduction, m.bus_deduction, m.mess_deduction,
+           m.hostel_eb_deduction, m.other_deductions, m.pt_deduction, m.wf_deduction,
+           p.base_salary as prof_base, p.category as prof_category, p.epf_amount as prof_epf,
+           p.default_bus as prof_bus, p.default_mess as prof_mess, p.default_hostel_eb as prof_hostel,
+           p.default_arrears as prof_arrears,
+           e.name, e.department
+    FROM monthly_records m
+    LEFT JOIN salary_profiles p ON m.emp_code = p.emp_code
+    JOIN employees e ON m.emp_code = e.emp_code
+    WHERE m.month_year = ? AND m.net_salary IS NULL
+    """, (month_year,))
+    missing = cursor.fetchall()
+    if not missing:
+        conn.close()
+        return
 
     m_days = payroll_engine.get_days_in_month_str(month_year)
-    for r in rows:
-        if r['net_salary'] is None:
-            recalculate_monthly_salary(r['emp_code'], month_year, float(r['total_pay_days']), m_days)
+    update_data = []
+
+    for r in missing:
+        ec = r['emp_code']
+        prof = {
+            'emp_code': ec,
+            'name': r['name'],
+            'category': r['prof_category'] or ('Teaching' if r['department'] in ('CE','EEE','ME','ECE','CSE','CSM','CSD','CAI','IT','MCA','MBA','HAS') else 'Non-Teaching'),
+            'base_salary': float(r['prof_base'] or 35000.0),
+            'default_arrears': float(r['prof_arrears'] or 0.0),
+            'epf_amount': float(r['prof_epf'] or 0.0)
+        }
+        pay_days = float(r['total_pay_days'] or 0.0)
+        overrides = {
+            'base_salary': r['base_salary'] if r['base_salary'] is not None else prof.get('base_salary'),
+            'arrears': r['arrears'] or 0.0,
+            'epf_deduction': r['epf_deduction'] if r['epf_deduction'] is not None else prof.get('epf_amount', 0.0),
+            'it_deduction': r['it_deduction'] or 0.0,
+            'bus_deduction': r['bus_deduction'] if r['bus_deduction'] is not None else float(r['prof_bus'] or 0.0),
+            'mess_deduction': r['mess_deduction'] if r['mess_deduction'] is not None else float(r['prof_mess'] or 0.0),
+            'hostel_eb_deduction': r['hostel_eb_deduction'] if r['hostel_eb_deduction'] is not None else float(r['prof_hostel'] or 0.0),
+            'other_deductions': r['other_deductions'] or 0.0,
+            'pt_deduction': r['pt_deduction'],
+            'wf_deduction': r['wf_deduction']
+        }
+        res = payroll_engine.calculate_salary_for_profile(prof, m_days, pay_days, overrides)
+        update_data.append((
+            res['base_salary'], res['earned_basic'], res['da'], res['hra'], res['arrears'],
+            res['gross_salary'], res['pt'], res['wf'], res['epf'],
+            res['it'], res['bus_deduction'], res['mess_deduction'], res['hostel_eb_deduction'],
+            res['other_deductions'], res['total_deductions'], res['net_salary'],
+            ec, month_year
+        ))
+
+    cursor.executemany("""
+    UPDATE monthly_records
+    SET base_salary = ?, earned_basic = ?, earned_da = ?, earned_hra = ?, arrears = ?,
+        gross_salary = ?, pt_deduction = ?, wf_deduction = ?, epf_deduction = ?,
+        it_deduction = ?, bus_deduction = ?, mess_deduction = ?, hostel_eb_deduction = ?,
+        other_deductions = ?, total_deductions = ?, net_salary = ?
+    WHERE emp_code = ? AND month_year = ?
+    """, update_data)
+    conn.commit()
+    conn.close()
 
 def get_month_salary_records(month_year: str, active_only: bool = True, reference_codes: Optional[set] = None) -> dict:
     """Retrieve full payroll ledger with financial KPI totals for the active month."""

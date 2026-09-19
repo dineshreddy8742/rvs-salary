@@ -888,8 +888,12 @@ async function loadMonths() {
         if (m === currentMonth) opt.selected = true;
         select.appendChild(opt);
       });
-      if (!data.months.includes(currentMonth)) {
+      if (data.months.includes('August -2026')) {
+        currentMonth = 'August -2026';
+        select.value = 'August -2026';
+      } else if (!data.months.includes(currentMonth)) {
         currentMonth = data.months[0];
+        select.value = data.months[0];
       }
     }
     loadData();
@@ -908,15 +912,22 @@ async function loadData() {
     ]);
 
     const dataAtt = await resAtt.json();
-    const dataSal = await resSal.json();
+    let dataSal = {};
+    try {
+      dataSal = await resSal.json();
+    } catch (e) {
+      console.warn('Salary response parse notice:', e);
+    }
 
-    if (dataAtt.status === 'success' && dataSal.status === 'success') {
+    if (dataAtt && dataAtt.status === 'success') {
       allEmployees = dataAtt.employees || [];
-      allSalaryRecords = dataSal.records || [];
-      buildUnifiedRecords(dataAtt.stats, dataSal.stats);
-      populateDepartmentSelect(dataAtt.departments);
-      if (dataSal.categories) populateCategorySelect(dataSal.categories);
+      allSalaryRecords = (dataSal && dataSal.records) || [];
+      buildUnifiedRecords(dataAtt.stats || {}, (dataSal && dataSal.stats) || {});
+      populateDepartmentSelect(dataAtt.departments || []);
+      if (dataSal && dataSal.categories) populateCategorySelect(dataSal.categories);
       renderTable();
+    } else {
+      showToast('No attendance records found for this month');
     }
   } catch (err) {
     console.error('Error fetching unified data:', err);
@@ -1005,16 +1016,16 @@ function buildUnifiedRecords(attStats, salStats) {
 function renderUnifiedKPIs(attStats, salStats) {
   const f = (n) => '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
 
-  const totalStaff = attStats.total_staff || unifiedRecords.length;
+  const totalStaff = (attStats && attStats.total_staff) || unifiedRecords.length;
   const elStaff = document.getElementById('stat-total-staff');
   if (elStaff) elStaff.textContent = totalStaff;
 
   // Store raw salary values globally so we can mask/unmask without re-fetching
   window._kpiSalaryData = {
-    budget:  salStats.total_payroll_budget,
-    gross:   salStats.total_gross_disbursed,
-    ded:     salStats.total_all_deductions,
-    net:     salStats.total_net_disbursed
+    budget:  salStats ? (salStats.total_payroll_budget || 0) : 0,
+    gross:   salStats ? (salStats.total_gross_disbursed || 0) : 0,
+    ded:     salStats ? (salStats.total_all_deductions || 0) : 0,
+    net:     salStats ? (salStats.total_net_disbursed || 0) : 0
   };
 
   // Apply mask based on current lock state
