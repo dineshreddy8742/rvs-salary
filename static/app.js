@@ -85,9 +85,9 @@ let currentSort = 'code_asc';
 let activeOnly = true;
 let currentMonth = 'August -2026';
 let activePortfolioEmpCode = null;
-let currentViewMode = 'attendance'; // 'attendance' or 'salary'
 let currentDashboardMode = 'unified'; // 'unified', 'attendance', or 'salary'
 let unifiedRecords = [];
+let showSalaryColumns = false;
 
 // === OFFICIAL RVS INSTITUTIONAL DEPARTMENT ORDER ===
 const OFFICIAL_DEPT_ORDER = [
