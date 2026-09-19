@@ -326,34 +326,44 @@ class AttendanceEngine:
                 st_upper = 'PRESENT'
 
             # Principal Overrides for Presence
+            is_full_override = False
             if in_t or out_t: # Has some punch
                 if is_transport:
-                    # Transport: no time limit, any punch is full day
+                    # Transport: no time limit, both in and out punches is full day
                     if in_t and out_t:
                         st_upper = 'PRESENT'
+                        is_full_override = True
                 elif code == '536' and in_h != -1:
                     # CSE Bala Subramanyam: before 12:10 = full day
                     if in_h < 12 or (in_h == 12 and in_m <= 10):
                         st_upper = 'PRESENT'
+                        is_full_override = True
                 elif code == '109' and in_h != -1:
                     # Civil M. Lilaakar: before 11:00 = full day
                     if in_h < 11:
                         st_upper = 'PRESENT'
+                        is_full_override = True
                 elif is_electrician:
                     # Electrician: in 8:30, out 16:30 -> full day
                     if in_h != -1 and out_h != -1:
                         if (in_h < 8 or (in_h == 8 and in_m <= 35)) and (out_h >= 16 and (out_h > 16 or out_m >= 30)):
                             st_upper = 'PRESENT'
+                            is_full_override = True
                 elif 'attender' in dept_lower_str:
                     # Attenders: in 8:35, out 17:30
                     if in_h != -1 and out_h != -1:
                         if (in_h < 8 or (in_h == 8 and in_m <= 35)) and (out_h >= 17 and (out_h > 17 or out_m >= 30)):
                             st_upper = 'PRESENT'
+                            is_full_override = True
                 elif 'garden' in dept_lower_str:
                     # Garden staff: in 8:35, out 17:10
                     if in_h != -1 and out_h != -1:
                         if (in_h < 8 or (in_h == 8 and in_m <= 35)) and (out_h >= 17 and (out_h > 17 or out_m >= 10)):
                             st_upper = 'PRESENT'
+                            is_full_override = True
+
+            if is_full_override:
+                st = 'Present'
 
             # Standard late check
             target_in_h, target_in_m = 9, 25
@@ -386,7 +396,7 @@ class AttendanceEngine:
             elif 'OD' in st_upper or 'ON DUTY' in st_upper:
                 od_count += 1.0
             elif 'PRESENT' in st_upper:
-                if '1/2' in st or 'HALF' in st_upper:
+                if ('1/2' in st or 'HALF' in st_upper) and not is_full_override:
                     present_count += 0.5
                     half_days.append(f"{d_num}(1/2)")
                 elif 'HOLIDAY' in st_upper:
@@ -407,9 +417,41 @@ class AttendanceEngine:
         if raw_leaves > 0 and cl_count == 0:
             cl_count = raw_leaves
 
-        # Admission dept: 6 days a week, Sunday punches offset absences
-        if is_admission and (present_count + holiday >= 26):
-            absent_days = []
+        # Admission dept: 6 days a week, Sunday punches offset absences, 2nd Saturday week has 5 working days
+        if is_admission:
+            import datetime
+            weeks = {}
+            for day in emp['days']:
+                d_num = day['day']
+                try:
+                    dt = datetime.date(2026, 8, d_num)
+                    w_start = dt - datetime.timedelta(days=dt.weekday())
+                    w_key = str(w_start)
+                except Exception:
+                    w_key = f"w_{d_num // 7}"
+                if w_key not in weeks:
+                    weeks[w_key] = []
+                weeks[w_key].append(day)
+
+            total_shortfall = 0.0
+            for w_key, w_days in weeks.items():
+                has_2nd_sat = any(d['day'] == 8 for d in w_days)
+                req = 5.0 if has_2nd_sat else min(float(len(w_days)), 6.0)
+                w_worked = 0.0
+                for d in w_days:
+                    d_in = d.get('in_time')
+                    d_out = d.get('out_time')
+                    d_st = (d.get('override_status') or d.get('status') or '').upper()
+                    if d_in or d_out or 'PRESENT' in d_st or 'CL' in d_st or 'LEAVE' in d_st or 'OD' in d_st:
+                        w_worked += 1.0
+                shortfall = max(0.0, req - w_worked)
+                total_shortfall += shortfall
+
+            if total_shortfall == 0.0:
+                absent_days = []
+            else:
+                absent_days = absent_days[:int(total_shortfall)]
+
 
         # Apply manual overrides (Option 1 / Option 3)
         if emp.get('manual_cl_override') is not None:

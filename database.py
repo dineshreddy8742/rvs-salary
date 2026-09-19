@@ -436,14 +436,127 @@ def apply_principal_rules_to_db(month_year: str = "August -2026"):
         WHERE emp_code = '1203' AND month_year = ?
         """, (bio_days, holidays, m_days, month_year))
 
-    # 4. Transport Dept: remove late punch penalties
-    transport_ids = ['625', '26', '27', '626', '627', '648', '1198', '628', '622', '6621', '606', '623', '603', '653', '605', '6623', '607', '6633', '610', '613']
-    for tid in transport_ids:
+    # 4. 109 (Civil M. Leelakar) - bio timing before 11 am = full day present (31 days)
+    cursor.execute("SELECT COUNT(*) as cnt FROM monthly_records WHERE emp_code = '109' AND month_year = ?", (month_year,))
+    if cursor.fetchone()['cnt'] > 0:
         cursor.execute("""
         UPDATE monthly_records 
-        SET late_punches_json = '[]'
-        WHERE emp_code = ? AND month_year = ?
-        """, (tid, month_year))
+        SET biometric_days = ?, holiday = ?, total_pay_days = ?, remarks = 'Full Attendance (Principal Override - Bio before 11am)', needs_review = 0, absent_days_json = '[]', missed_punches_json = '[]', late_punches_json = '[]'
+        WHERE emp_code = '109' AND month_year = ?
+        """, (bio_days, holidays, m_days, month_year))
+
+    # 5. Transport Dept: remove late punch penalties & credit full days for in+out punches
+    transport_ids = ['625', '26', '27', '626', '627', '648', '1198', '628', '622', '6621', '606', '623', '603', '653', '605', '6623', '607', '6633', '610', '613']
+    for tid in transport_ids:
+        cursor.execute("SELECT * FROM daily_logs WHERE emp_code = ? AND month_year = ? ORDER BY day_num", (tid, month_year))
+        tdays = cursor.fetchall()
+        if tdays:
+            in_out_count = sum(1.0 for d in tdays if (d['in_time'] and d['out_time']))
+            t_pay_days = min(m_days, in_out_count + holidays)
+            cursor.execute("""
+            UPDATE monthly_records
+            SET biometric_days = ?, holiday = ?, total_pay_days = ?, late_punches_json = '[]'
+            WHERE emp_code = ? AND month_year = ?
+            """, (in_out_count, holidays, t_pay_days, tid, month_year))
+        else:
+            cursor.execute("UPDATE monthly_records SET late_punches_json = '[]' WHERE emp_code = ? AND month_year = ?", (tid, month_year))
+
+    # 6. Admission Dept: 6 days/week, 5 on 2nd Sat week, Sunday punches offset weekday leaves
+    admission_ids = ['2005', '2006', '6001', '1040', '1017', '2011', '6000', '2010', '2007', '2013', '2514', '2512', '2511', '2503', '2502', '2505', '2051', '2508', '6004', '6005']
+    import datetime
+    for aid in admission_ids:
+        cursor.execute("SELECT * FROM daily_logs WHERE emp_code = ? AND month_year = ? ORDER BY day_num", (aid, month_year))
+        adays = cursor.fetchall()
+        if adays:
+            weeks = {}
+            for d in adays:
+                d_num = d['day_num']
+                try:
+                    dt = datetime.date(2026, 8, d_num)
+                    w_start = dt - datetime.timedelta(days=dt.weekday())
+                    w_key = str(w_start)
+                except Exception:
+                    w_key = f"w_{d_num // 7}"
+                if w_key not in weeks:
+                    weeks[w_key] = []
+                weeks[w_key].append(d)
+
+            total_shortfall = 0.0
+            for w_key, w_days in weeks.items():
+                has_2nd_sat = any(d['day_num'] == 8 for d in w_days)
+                req = 5.0 if has_2nd_sat else min(float(len(w_days)), 6.0)
+                w_worked = 0.0
+                for d in w_days:
+                    in_t = d['in_time']
+                    out_t = d['out_time']
+                    st = (d['override_status'] or d['status'] or '').upper()
+                    if in_t or out_t or 'PRESENT' in st or 'CL' in st or 'LEAVE' in st or 'OD' in st:
+                        w_worked += 1.0
+                shortfall = max(0.0, req - w_worked)
+                total_shortfall += shortfall
+
+            a_pay_days = max(0.0, m_days - total_shortfall)
+            a_bio_days = max(0.0, a_pay_days - holidays)
+            cursor.execute("""
+            UPDATE monthly_records
+            SET biometric_days = ?, holiday = ?, total_pay_days = ?
+            WHERE emp_code = ? AND month_year = ?
+            """, (a_bio_days, holidays, a_pay_days, aid, month_year))
+
+    # Recalculate salary for any staff whose total_pay_days was updated by principal rules
+    all_overridden = list(NON_BIOMETRIC_STAFF.keys()) + ['1053', '1203', '109'] + transport_ids + admission_ids
+    for u_id in all_overridden:
+        cursor.execute("""
+        SELECT m.emp_code, m.total_pay_days, m.base_salary, m.arrears,
+               m.epf_deduction, m.it_deduction, m.bus_deduction, m.mess_deduction,
+               m.hostel_eb_deduction, m.other_deductions, m.pt_deduction, m.wf_deduction,
+               p.base_salary as prof_base, p.category as prof_category, p.epf_amount as prof_epf,
+               p.default_bus as prof_bus, p.default_mess as prof_mess, p.default_hostel_eb as prof_hostel,
+               p.default_arrears as prof_arrears,
+               e.name, e.department
+        FROM monthly_records m
+        LEFT JOIN salary_profiles p ON m.emp_code = p.emp_code
+        JOIN employees e ON m.emp_code = e.emp_code
+        WHERE m.emp_code = ? AND m.month_year = ?
+        """, (u_id, month_year))
+        r = cursor.fetchone()
+        if r:
+            prof = {
+                'emp_code': u_id,
+                'name': r['name'],
+                'category': r['prof_category'] or ('Teaching' if r['department'] in ('CE','EEE','ME','ECE','CSE','CSM','CSD','CAI','IT','MCA','MBA','HAS') else 'Non-Teaching'),
+                'base_salary': float(r['prof_base'] or 35000.0),
+                'default_arrears': float(r['prof_arrears'] or 0.0),
+                'epf_amount': float(r['prof_epf'] or 0.0)
+            }
+            pay_days = float(r['total_pay_days'] or 0.0)
+            overrides = {
+                'base_salary': r['base_salary'] if r['base_salary'] is not None else prof.get('base_salary'),
+                'arrears': r['arrears'] or 0.0,
+                'epf_deduction': r['epf_deduction'] if r['epf_deduction'] is not None else prof.get('epf_amount', 0.0),
+                'it_deduction': r['it_deduction'] or 0.0,
+                'bus_deduction': r['bus_deduction'] if r['bus_deduction'] is not None else float(r['prof_bus'] or 0.0),
+                'mess_deduction': r['mess_deduction'] if r['mess_deduction'] is not None else float(r['prof_mess'] or 0.0),
+                'hostel_eb_deduction': r['hostel_eb_deduction'] if r['hostel_eb_deduction'] is not None else float(r['prof_hostel'] or 0.0),
+                'other_deductions': r['other_deductions'] or 0.0,
+                'pt_deduction': r['pt_deduction'],
+                'wf_deduction': r['wf_deduction']
+            }
+            res = payroll_engine.calculate_salary_for_profile(prof, m_days, pay_days, overrides)
+            cursor.execute("""
+            UPDATE monthly_records
+            SET base_salary = ?, earned_basic = ?, earned_da = ?, earned_hra = ?, arrears = ?,
+                gross_salary = ?, pt_deduction = ?, wf_deduction = ?, epf_deduction = ?,
+                it_deduction = ?, bus_deduction = ?, mess_deduction = ?, hostel_eb_deduction = ?,
+                other_deductions = ?, total_deductions = ?, net_salary = ?
+            WHERE emp_code = ? AND month_year = ?
+            """, (
+                res['base_salary'], res['earned_basic'], res['da'], res['hra'], res['arrears'],
+                res['gross_salary'], res['pt'], res['wf'], res['epf'],
+                res['it'], res['bus_deduction'], res['mess_deduction'], res['hostel_eb_deduction'],
+                res['other_deductions'], res['total_deductions'], res['net_salary'],
+                u_id, month_year
+            ))
 
     conn.commit()
     conn.close()
