@@ -1033,8 +1033,12 @@ function renderUnifiedKPIs(attStats, salStats) {
 
   const elDays = document.getElementById('stat-total-pay-days');
   if (elDays) {
-    const payDays = attStats.total_pay_days || unifiedRecords.reduce((acc, r) => acc + (r.total_pay_days || 0), 0);
-    elDays.textContent = `${Math.round(payDays)} Days`;
+    const monthDays = (unifiedRecords.length > 0 && unifiedRecords[0].month_days) ? unifiedRecords[0].month_days : 31;
+    elDays.textContent = `${monthDays} Days`;
+  }
+  const elSubDays = document.getElementById('stat-sub-month-days');
+  if (elSubDays) {
+    elSubDays.textContent = `${currentMonth || 'August -2026'}`;
   }
 
   const navReview = document.getElementById('nav-review-count');
