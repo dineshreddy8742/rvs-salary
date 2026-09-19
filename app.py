@@ -431,14 +431,24 @@ def upload_file():
     
     save_path = None
     try:
+        import time
+        import gc
         from werkzeug.utils import secure_filename
-        filename = secure_filename(f.filename) or 'biometric_input.xls'
-        save_path = os.path.join(tempfile.gettempdir(), f"rvs_upload_{filename}")
+
+        orig_ext = os.path.splitext(f.filename)[1].lower()
+        if orig_ext not in ['.xls', '.xlsx']:
+            orig_ext = '.xls'
+        safe_base = secure_filename(os.path.splitext(f.filename)[0]) or 'biometric_input'
+        filename = f"rvs_upload_{int(time.time())}_{safe_base}{orig_ext}"
+        save_path = os.path.join(tempfile.gettempdir(), filename)
         f.save(save_path)
 
         ref_file = REF_FILE if os.path.exists(REF_FILE) else None
         engine = AttendanceEngine(save_path, ref_file)
         database.seed_from_engine(engine, month_name, overwrite=True)
+
+        del engine
+        gc.collect()
 
         return jsonify({
             'status': 'success',

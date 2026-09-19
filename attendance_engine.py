@@ -31,7 +31,9 @@ class AttendanceEngine:
     def _load_reference_metadata(self, filepath: str):
         """Extract designations and department order from reference output.xls if available."""
         try:
-            df = pd.read_excel(filepath, sheet_name='New', header=None)
+            with pd.ExcelFile(filepath) as xl:
+                target_sheet = 'New' if 'New' in xl.sheet_names else xl.sheet_names[0]
+                df = xl.parse(target_sheet, header=None)
             curr_dept = 'General'
             depts_found = []
             for i in range(len(df)):
@@ -66,18 +68,21 @@ class AttendanceEngine:
             print(f"Warning loading reference metadata: {e}")
 
     def load_raw_biometric(self, filepath: str):
-        """Parse all sheets from the raw biometric report."""
-        xl = pd.ExcelFile(filepath)
+        """Parse all sheets from the raw biometric report using low-memory xl.parse."""
+        import gc
         parsed_emps = {}
 
         # Sheet7 usually has the consolidated academic data; other sheets have hostel/security
-        # We process all sheets, keeping the latest/best record per employee
-        for sheet_name in xl.sheet_names:
-            try:
-                df = pd.read_excel(filepath, sheet_name=sheet_name, header=None)
-                self._parse_sheet(df, parsed_emps, sheet_name)
-            except Exception as e:
-                print(f"Error parsing sheet {sheet_name}: {e}")
+        # We process all sheets with xl.parse to avoid re-reading the entire file into memory per sheet
+        with pd.ExcelFile(filepath) as xl:
+            for sheet_name in xl.sheet_names:
+                try:
+                    df = xl.parse(sheet_name, header=None)
+                    self._parse_sheet(df, parsed_emps, sheet_name)
+                    del df
+                    gc.collect()
+                except Exception as e:
+                    print(f"Error parsing sheet {sheet_name}: {e}")
 
         # Inject VIPs & reference employees who have no biometric records per Principal instructions
         if self.reference_metadata:

@@ -504,19 +504,23 @@
         </select>
       </div>
 
-      <!-- Quick Filter Pills -->
-      <div class="filter-tabs">
-        <button class="tab-pill active" data-filter="all">All Staff</button>
-        <button class="tab-pill" data-filter="teaching">🎓 Teaching</button>
-        <button class="tab-pill" data-filter="non-teaching">👔 Non-Teaching</button>
-        <button class="tab-pill" data-filter="support">🧹 Support</button>
-        <button class="tab-pill" data-filter="bus" id="tab-pill-bus" title="Staff with Bus / Transport deduction">🚌 Bus Fee <span class="pill-count" id="count-bus">0</span></button>
-        <button class="tab-pill" data-filter="mess" id="tab-pill-mess" title="Staff with Mess / Food deduction">🍽️ Mess Fee <span class="pill-count" id="count-mess">0</span></button>
-        <button class="tab-pill" data-filter="hostel" id="tab-pill-hostel" title="Staff with Hostel / EB deduction">🏠 Hostel / EB <span class="pill-count" id="count-hostel">0</span></button>
-        <button class="tab-pill" data-filter="deductions" id="tab-pill-ded" title="Staff with any active deductions">📉 Has Deductions <span class="pill-count" id="count-ded">0</span></button>
-        <button class="tab-pill" data-filter="review">⚠️ Has LOP</button>
-        <button class="tab-pill" data-filter="vip">👑 Full Pay</button>
-        <button class="tab-pill tab-missing-bank" id="tab-missing-bank" data-filter="missing_bank">🏦 No Bank Details</button>
+      <!-- Filter Selector -->
+      <div class="select-field" id="quick-filter-box">
+        <label for="filter-select">Filter:</label>
+        <select id="filter-select">
+          <option value="all" id="opt-all">👥 All Staff</option>
+          <option value="teaching" id="opt-teaching">🎓 Teaching</option>
+          <option value="non-teaching" id="opt-non-teaching">👔 Non-Teaching</option>
+          <option value="support" id="opt-support">🧹 Support</option>
+          <option value="bus" id="opt-bus">🚌 Bus Fee (0)</option>
+          <option value="mess" id="opt-mess">🍽️ Mess Fee (0)</option>
+          <option value="hostel" id="opt-hostel">🏠 Hostel / EB (0)</option>
+          <option value="deductions" id="opt-ded">📉 Has Deductions (0)</option>
+          <option value="review" id="opt-review">⚠️ Has LOP</option>
+          <option value="vip" id="opt-vip">👑 Full Pay</option>
+          <option value="missing_bank" id="opt-missing-bank">🏦 No Bank Details</option>
+        </select>
+        <button id="btn-clear-filter" class="filter-clear-btn" title="Reset filter to All Staff" style="display: none;">✕</button>
       </div>
 
       <!-- Active Payroll Toggle -->

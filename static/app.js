@@ -169,14 +169,29 @@ function setupEventListeners() {
     });
   }
 
-  // Filter tabs
+  // Filter Select Dropdown
+  const filterSelect = document.getElementById('filter-select');
+  if (filterSelect) {
+    filterSelect.addEventListener('change', (e) => {
+      setFilterPill(e.target.value);
+    });
+  }
+
+  // Filter Clear Button
+  const btnClearFilter = document.getElementById('btn-clear-filter');
+  if (btnClearFilter) {
+    btnClearFilter.addEventListener('click', () => {
+      setFilterPill('all');
+    });
+  }
+
+  // Filter tabs (if any remain)
   document.querySelectorAll('.filter-tabs .tab-pill').forEach(btn => {
     btn.addEventListener('click', (e) => {
       const pill = e.currentTarget;
       document.querySelectorAll('.filter-tabs .tab-pill').forEach(b => b.classList.remove('active'));
       pill.classList.add('active');
-      currentFilter = pill.dataset.filter;
-      renderTable();
+      setFilterPill(pill.dataset.filter);
     });
   });
 
@@ -326,15 +341,23 @@ function setupEventListeners() {
     try {
       const res = await fetch('/api/upload', { method: 'POST', body: formData });
       let data = null;
+      let rawText = '';
       try {
-        data = await res.json();
+        const text = await res.text();
+        rawText = text;
+        data = JSON.parse(text);
       } catch (jsonErr) {
         if (res.status === 401) {
           alert('Session expired. Please log in again.');
           window.location.href = '/login';
           return;
         }
-        throw new Error(`Server returned HTTP ${res.status}: ${res.statusText || 'Upload failed'}`);
+        console.error('Server non-JSON response:', rawText);
+        throw new Error(
+          res.status === 500
+            ? 'Server memory/timeout error (HTTP 500). Please check your connection and retry.'
+            : `Server returned HTTP ${res.status}: ${res.statusText || 'Upload failed'}`
+        );
       }
 
       if (res.ok && data && data.status === 'success') {
@@ -724,9 +747,24 @@ function switchDashboardMode(mode) {
 }
 
 function setFilterPill(filterName) {
-  document.querySelectorAll('.filter-tabs .tab-pill').forEach(b => b.classList.remove('active'));
-  const target = document.querySelector(`.filter-tabs [data-filter="${filterName}"]`);
-  if (target) target.classList.add('active');
+  const filterSelect = document.getElementById('filter-select');
+  const btnClearFilter = document.getElementById('btn-clear-filter');
+
+  if (filterSelect) {
+    filterSelect.value = filterName;
+    if (filterName !== 'all') {
+      filterSelect.classList.add('filter-active');
+      if (btnClearFilter) btnClearFilter.style.display = 'inline-flex';
+    } else {
+      filterSelect.classList.remove('filter-active');
+      if (btnClearFilter) btnClearFilter.style.display = 'none';
+    }
+  }
+
+  document.querySelectorAll('.filter-tabs .tab-pill').forEach(b => {
+    if (b.dataset.filter === filterName) b.classList.add('active');
+    else b.classList.remove('active');
+  });
 
   // Keep sidebar category pills synchronized
   document.querySelectorAll('.sidebar-cat-pill').forEach(b => {
@@ -924,12 +962,43 @@ function renderUnifiedKPIs(attStats, salStats) {
   const navVip = document.getElementById('nav-vip-count');
   if (navVip) navVip.textContent = attStats.vip_count || 0;
 
-  // Filter Pill Counter Badges
+  // Filter Counter Badges & Dropdown Options
   const busCount = unifiedRecords.filter(r => (Number(r.bus_deduction) || 0) > 0).length;
   const messCount = unifiedRecords.filter(r => (Number(r.mess_deduction) || 0) > 0).length;
   const hostelCount = unifiedRecords.filter(r => (Number(r.hostel_eb_deduction) || 0) > 0).length;
   const dedCount = unifiedRecords.filter(r => (Number(r.total_deductions) || 0) > 0).length;
+  const teachCount = unifiedRecords.filter(r => r.category === 'Teaching').length;
+  const nonTeachCount = unifiedRecords.filter(r => r.category === 'Non-Teaching').length;
+  const suppCount = unifiedRecords.filter(r => ['Transport', 'Attender', 'Garden Staff', 'Security'].includes(r.category)).length;
+  const lopCount = unifiedRecords.filter(r => r.needs_review || (Number(r.lop_days) || 0) > 0).length;
+  const vipCount = unifiedRecords.filter(r => r.is_vip || r.attendance_policy !== 'standard').length;
+  const noBankCount = unifiedRecords.filter(r => !r.account_no || r.account_no.trim() === '' || r.account_no === 'Pending').length;
 
+  // Update Dropdown Options with Live Counts
+  const optAll = document.getElementById('opt-all');
+  if (optAll) optAll.textContent = `👥 All Staff (${unifiedRecords.length})`;
+  const optTeaching = document.getElementById('opt-teaching');
+  if (optTeaching) optTeaching.textContent = `🎓 Teaching (${teachCount})`;
+  const optNonTeaching = document.getElementById('opt-non-teaching');
+  if (optNonTeaching) optNonTeaching.textContent = `👔 Non-Teaching (${nonTeachCount})`;
+  const optSupport = document.getElementById('opt-support');
+  if (optSupport) optSupport.textContent = `🧹 Support (${suppCount})`;
+  const optBus = document.getElementById('opt-bus');
+  if (optBus) optBus.textContent = `🚌 Bus Fee (${busCount})`;
+  const optMess = document.getElementById('opt-mess');
+  if (optMess) optMess.textContent = `🍽️ Mess Fee (${messCount})`;
+  const optHostel = document.getElementById('opt-hostel');
+  if (optHostel) optHostel.textContent = `🏠 Hostel / EB (${hostelCount})`;
+  const optDed = document.getElementById('opt-ded');
+  if (optDed) optDed.textContent = `📉 Has Deductions (${dedCount})`;
+  const optReview = document.getElementById('opt-review');
+  if (optReview) optReview.textContent = `⚠️ Has LOP (${lopCount})`;
+  const optVip = document.getElementById('opt-vip');
+  if (optVip) optVip.textContent = `👑 Full Pay (${vipCount})`;
+  const optMissingBank = document.getElementById('opt-missing-bank');
+  if (optMissingBank) optMissingBank.textContent = `🏦 No Bank Details (${noBankCount})`;
+
+  // Sidebar badges
   const elBus = document.getElementById('count-bus');
   if (elBus) elBus.textContent = busCount;
   const sideBus = document.getElementById('side-count-bus');
