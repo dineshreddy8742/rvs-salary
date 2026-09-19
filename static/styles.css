@@ -86,7 +86,6 @@ body {
   width: 100%;
   background: var(--bg-main, #f8fafc);
   position: relative;
-  overflow-x: hidden;
 }
 
 /* --- SIDEBAR CONTAINER --- */
@@ -99,17 +98,19 @@ body {
   flex-direction: column;
   height: 100vh;
   max-height: 100vh;
-  position: sticky;
+  position: fixed;
   top: 0;
+  left: 0;
+  bottom: 0;
   z-index: 100;
   overflow: hidden;
   box-shadow: 4px 0 24px rgba(15, 23, 42, 0.04);
-  transition: margin-left 0.28s cubic-bezier(0.16, 1, 0.3, 1), transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease;
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease;
 }
 
 /* Dynamic Collapse on Desktop (Non-Sticky full-width data mode) */
 .app-layout.sidebar-collapsed .app-sidebar {
-  margin-left: -275px;
+  transform: translateX(-275px);
   opacity: 0;
   pointer-events: none;
 }
@@ -521,16 +522,18 @@ body {
   min-width: 0;
   width: calc(100% - 275px);
   max-width: calc(100% - 275px);
+  margin-left: 275px;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
   overflow-x: hidden;
-  transition: max-width 0.28s cubic-bezier(0.16, 1, 0.3, 1), width 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: max-width 0.28s cubic-bezier(0.16, 1, 0.3, 1), width 0.28s cubic-bezier(0.16, 1, 0.3, 1), margin-left 0.28s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .app-layout.sidebar-collapsed .app-main-wrapper {
   width: 100%;
   max-width: 100%;
+  margin-left: 0;
 }
 
 .app-topbar {
@@ -1407,7 +1410,7 @@ input:checked + .slider-circle:before { transform: translateX(16px); }
 
 .table-wrapper {
   overflow-x: auto;
-  max-height: 65vh;
+  position: relative;
 }
 
 .payroll-table {
@@ -3149,6 +3152,12 @@ html, body {
     width: 290px;
     max-width: 85vw;
     box-shadow: 10px 0 40px rgba(0, 0, 0, 0.22);
+  }
+
+  .app-main-wrapper {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-left: 0 !important;
   }
 
   .app-sidebar.active {
