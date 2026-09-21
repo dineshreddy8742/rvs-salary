@@ -2559,14 +2559,6 @@ function renderRemarksBadges(emp) {
   }
 
   const badges = [];
-        i = j + 1;
-      } else {
-        parts.push(sorted[i]);
-        i++;
-      }
-    }
-    return parts.join(', ');
-  };
 
   // 1. ABSENT DAYS (Red Badge)
   let absStr = '';
