@@ -50,18 +50,71 @@ def normalize_dept(dept_name: str) -> str:
 LOW_HOLIDAY_DEPTS = {'garden staff', 'security & water staff', 'security', 'slh'}
 
 class AttendanceEngine:
-    def __init__(self, raw_filepath: str, output_filepath: Optional[str] = None):
+    def __init__(self, raw_filepath: str, output_filepath: Optional[str] = None, month_year: Optional[str] = None):
+        import calendar
         self.raw_filepath = raw_filepath
         self.output_filepath = output_filepath
+        self.target_month_year = month_year
+        self.detected_month_year = None
+        self.year = 2026
+        self.month = 8
+        self.num_days = 31
+        self.sundays = {2, 9, 16, 23, 30}
+        self.festival_holidays = {26}
+        self.all_holidays = self.sundays.union(self.festival_holidays)
         self.employees: Dict[str, Dict[str, Any]] = {}
         self.department_order: List[str] = list(STANDARD_DEPARTMENT_ORDER)
         self.reference_metadata: Dict[str, Dict[str, str]] = {}
         
+        if month_year:
+            self._set_month_calendar(month_year)
+
         # Load reference metadata (Designations, standard Depts) if output.xls exists
         if output_filepath and os.path.exists(output_filepath):
             self._load_reference_metadata(output_filepath)
             
         self.load_raw_biometric(raw_filepath)
+
+    def _set_month_calendar(self, month_year_str: str):
+        """Configure month, year, days, and holidays from a month string like 'July 2026'."""
+        import calendar
+        import datetime
+        MONTH_MAP = {
+            'jan': 1, 'january': 1, '01': 1, '1': 1,
+            'feb': 2, 'february': 2, '02': 2, '2': 2,
+            'mar': 3, 'march': 3, '03': 3, '3': 3,
+            'apr': 4, 'april': 4, '04': 4, '4': 4,
+            'may': 5, '05': 5, '5': 5,
+            'jun': 6, 'june': 6, '06': 6, '6': 6,
+            'jul': 7, 'july': 7, '07': 7, '7': 7,
+            'aug': 8, 'august': 8, '08': 8, '8': 8,
+            'sep': 9, 'september': 9, '09': 9, '9': 9,
+            'oct': 10, 'october': 10, '10': 10,
+            'nov': 11, 'november': 11, '11': 11,
+            'dec': 12, 'december': 12, '12': 12
+        }
+        cleaned = re.sub(r'[\-_]+', ' ', month_year_str).strip()
+        parts = cleaned.split()
+        m_val, y_val = None, 2026
+        for p in parts:
+            p_l = p.lower()
+            if p_l in MONTH_MAP:
+                m_val = MONTH_MAP[p_l]
+            elif p.isdigit() and len(p) == 4:
+                y_val = int(p)
+        
+        if m_val:
+            self.month = m_val
+            self.year = y_val
+            self.num_days = calendar.monthrange(self.year, self.month)[1]
+            self.sundays = {d for d in range(1, self.num_days + 1) if datetime.date(self.year, self.month, d).weekday() == 6}
+            if self.month == 8:
+                self.festival_holidays = {26}
+            else:
+                self.festival_holidays = set()
+            self.all_holidays = self.sundays.union(self.festival_holidays)
+            m_name = calendar.month_name[self.month]
+            self.detected_month_year = f"{m_name} {self.year}"
 
     def _load_reference_metadata(self, filepath: str):
         """Extract designations and department order from reference output.xls if available."""
@@ -107,10 +160,9 @@ class AttendanceEngine:
     def load_raw_biometric(self, filepath: str):
         """Parse all sheets from the raw biometric report using low-memory xl.parse."""
         import gc
+        import calendar
         parsed_emps = {}
 
-        # Sheet7 usually has the consolidated academic data; other sheets have hostel/security
-        # We process all sheets with xl.parse to avoid re-reading the entire file into memory per sheet
         with pd.ExcelFile(filepath) as xl:
             for sheet_name in xl.sheet_names:
                 try:
@@ -123,6 +175,9 @@ class AttendanceEngine:
 
         # Inject VIPs & reference employees who have no biometric records per Principal instructions
         if self.reference_metadata:
+            m_abbr = calendar.month_abbr[self.month]
+            hol_count = float(len(self.all_holidays))
+            bio_count = float(max(0, self.num_days - len(self.all_holidays)))
             for ec, meta in self.reference_metadata.items():
                 if ec not in parsed_emps:
                     parsed_emps[ec] = {
@@ -130,11 +185,11 @@ class AttendanceEngine:
                         'name': meta['name'],
                         'designation': meta.get('designation', 'Staff'),
                         'department': meta.get('dept', 'General'),
-                        'raw_summary': 'Total Duration=00:00 Present=25.0 Absent=0.0 Leaves=0.0 Holiday=6.0',
+                        'raw_summary': f'Total Duration=00:00 Present={bio_count} Absent=0.0 Leaves=0.0 Holiday={hol_count}',
                         'days': [
                             {
                                 'day': d,
-                                'date': f"{d:02d}-Aug-2026",
+                                'date': f"{d:02d}-{m_abbr}-{self.year}",
                                 'in_time': '09:00',
                                 'out_time': '17:00',
                                 'shift': 'GS',
@@ -142,13 +197,13 @@ class AttendanceEngine:
                                 'status': 'Present',
                                 'remarks': '',
                                 'override_status': None
-                            } for d in range(1, 32)
+                            } for d in range(1, self.num_days + 1)
                         ],
                         'sheet': 'VIP_Reference',
                         'manual_cl_override': None,
                         'manual_od_override': None,
-                        'manual_holiday_override': 6.0,
-                        'manual_biometric_override': 25.0,
+                        'manual_holiday_override': hol_count,
+                        'manual_biometric_override': bio_count,
                         'manual_remarks_override': 'Full Month (Principal Override)'
                     }
 
@@ -237,7 +292,10 @@ class AttendanceEngine:
 
                     # Daily record row (check for date-like string)
                     date_val = sub_row[date_col] if len(sub_row) > date_col and pd.notna(sub_row[date_col]) else (sub_col1 if pd.notna(sub_row[1]) else sub_col0)
-                    if re.search(r'\d{1,2}-[A-Za-z]{3}-\d{4}', str(date_val)):
+                    m_date = re.search(r'(\d{1,2})[-/]([A-Za-z]{3}|\d{1,2})[-/](\d{4})', str(date_val))
+                    if m_date:
+                        if not self.target_month_year and not self.detected_month_year:
+                            self._set_month_calendar(f"{m_date.group(2)} {m_date.group(3)}")
                         in_time = str(sub_row[in_time_col]).strip() if len(sub_row) > in_time_col and pd.notna(sub_row[in_time_col]) else ''
                         out_time = str(sub_row[out_time_col]).strip() if len(sub_row) > out_time_col and pd.notna(sub_row[out_time_col]) else ''
                         duration = str(sub_row[duration_col]).strip() if len(sub_row) > duration_col and pd.notna(sub_row[duration_col]) else ''
@@ -246,7 +304,7 @@ class AttendanceEngine:
                         # Replace 189 char with 1/2
                         status = status.replace(chr(189), '1/2')
 
-                        day_num = int(str(date_val).split('-')[0])
+                        day_num = int(m_date.group(1))
                         daily_records.append({
                             'day': day_num,
                             'date': str(date_val).strip(),
@@ -293,14 +351,18 @@ class AttendanceEngine:
         desig_lower = str(emp.get('designation', '')).lower()
         name_lower = str(emp.get('name', '')).lower()
 
-        # 1. Base Holiday allocation: 2 for security/garden/slh, 6 for regular academic
+        # 1. Base Holiday allocation: 2 for security/garden/slh, default for regular academic
+        default_holidays = float(len(self.all_holidays))
+        default_biometric = float(max(0, self.num_days - len(self.all_holidays)))
+        full_pay_days = float(self.num_days)
+
         if emp.get('manual_holiday_override') is not None:
             holiday = float(emp['manual_holiday_override'])
         else:
             if any(k in dept_lower for k in LOW_HOLIDAY_DEPTS):
-                holiday = 2.0
+                holiday = min(2.0, default_holidays)
             else:
-                holiday = 6.0
+                holiday = default_holidays
 
         # Special Principal VIP Full Pay overrides (Exempt from biometric machine per Principal Rules)
         full_pay_ids = {'101', '707', '1015', '1019', '1021', '4001', '1030', '900', '1060', '1210', 'SHAJAHAN', 'SHIVA_DRIVER'}
@@ -310,19 +372,16 @@ class AttendanceEngine:
                            ('siva' in name_lower and ('driver' in desig_lower or 'driver' in dept_lower or 'transport' in dept_lower)))
 
         if is_vip_full_pay:
-            holiday = 6.0
-            biometric_days = 25.0
-            total_pay_days = 31.0
             return {
                 'emp_code': code,
                 'name': emp['name'],
                 'designation': emp['designation'],
                 'department': dept,
-                'biometric_days': biometric_days,
-                'holiday': holiday,
+                'biometric_days': default_biometric,
+                'holiday': default_holidays,
                 'availed_leaves': None,
                 'sv_od': None,
-                'total_pay_days': total_pay_days,
+                'total_pay_days': full_pay_days,
                 'remarks': '',
                 'needs_review': False,
                 'missed_out_punches': [],
@@ -349,11 +408,11 @@ class AttendanceEngine:
                 'name': emp['name'],
                 'designation': emp['designation'],
                 'department': dept,
-                'biometric_days': 25.0,
-                'holiday': 6.0,
+                'biometric_days': default_biometric,
+                'holiday': default_holidays,
                 'availed_leaves': None,
                 'sv_od': None,
-                'total_pay_days': 31.0,
+                'total_pay_days': full_pay_days,
                 'remarks': '',
                 'needs_review': False,
                 'missed_out_punches': [],
@@ -368,11 +427,11 @@ class AttendanceEngine:
                 'name': emp['name'],
                 'designation': emp['designation'],
                 'department': dept,
-                'biometric_days': 25.0,
-                'holiday': 6.0,
+                'biometric_days': default_biometric,
+                'holiday': default_holidays,
                 'availed_leaves': None,
                 'sv_od': None,
-                'total_pay_days': 31.0,
+                'total_pay_days': full_pay_days,
                 'remarks': '',
                 'needs_review': False,
                 'missed_out_punches': [],
@@ -399,7 +458,7 @@ class AttendanceEngine:
         # Check DOJ from remarks if employee joined midway through month
         doj_day = None
         if emp.get('manual_remarks_override'):
-            m_doj = re.search(r'(?:DOJ:?\s*|^\()(\d{1,2})[\.\-]08[\.\-]2026', emp['manual_remarks_override'])
+            m_doj = re.search(r'(?:DOJ:?\s*|^\()(\d{1,2})[\.\-]\d{2}[\.\-]\d{4}', emp['manual_remarks_override'])
             if m_doj:
                 doj_day = int(m_doj.group(1))
 
@@ -414,9 +473,9 @@ class AttendanceEngine:
         elif 'attender' in dept_lower or 'garden' in dept_lower or is_electrician:
             target_in_h, target_in_m = 8, 35
 
-        sundays = {2, 9, 16, 23, 30}
-        festival_holidays = {26} # 26-Aug holiday
-        all_holidays = sundays.union(festival_holidays)
+        sundays = self.sundays
+        festival_holidays = self.festival_holidays
+        all_holidays = self.all_holidays
 
         absent_days = []
         missed_out_punches = []
@@ -424,7 +483,9 @@ class AttendanceEngine:
         half_days = []
         cl_count = 0.0
         od_count = 0.0
-        aug15_attended = False
+        aug15_attended = True
+        if self.month == 8:
+            aug15_attended = False
 
         for day in days:
             d_num = day['day']
@@ -437,8 +498,8 @@ class AttendanceEngine:
             if doj_day and d_num < doj_day:
                 continue
 
-            # 15-Aug (Independence Day Flag Hoisting)
-            if d_num == 15:
+            # 15-Aug (Independence Day Flag Hoisting) - only check in August
+            if self.month == 8 and d_num == 15:
                 if in_t or out_t or 'PRESENT' in st_upper:
                     aug15_attended = True
                 continue
@@ -479,12 +540,12 @@ class AttendanceEngine:
                     if is_electrician and in_t and out_t:
                         ip = in_t.split(':')
                         op = out_t.split(':')
-                        if int(ip[0]) <= 8 and (int(op[0]) > 16 or (int(op[0]) == 16 and int(op[1]) >= 30)):
+                        if (int(ip[0]) < 8 or (int(ip[0]) == 8 and int(ip[1]) <= 35)) and (int(op[0]) >= 16 and int(op[1]) >= 30):
                             pass
                         else:
-                            missed_out_punches.append(d_num)
+                            missed_out_punches.append(f"{d_num}(0.5)")
                     else:
-                        missed_out_punches.append(d_num)
+                        missed_out_punches.append(f"{d_num}(0.5)")
             elif 'ABSENT' in st_upper:
                 # Principal Overrides
                 if code == '109' and in_t:
@@ -521,7 +582,7 @@ class AttendanceEngine:
             for day in days:
                 d_num = day['day']
                 try:
-                    dt = datetime.date(2026, 8, d_num)
+                    dt = datetime.date(self.year, self.month, d_num)
                     w_start = dt - datetime.timedelta(days=dt.weekday())
                     w_key = str(w_start)
                 except Exception:
@@ -577,13 +638,13 @@ class AttendanceEngine:
         # Calculate Total Pay Days
         if doj_day:
             # Prorated from DOJ
-            working_days_in_period = 31 - doj_day + 1
+            working_days_in_period = self.num_days - doj_day + 1
             total_pay_days = max(0.0, float(working_days_in_period) - total_deductions)
-            holiday = max(0.0, min(holiday, round(holiday * working_days_in_period / 31.0)))
+            holiday = max(0.0, min(holiday, round(holiday * working_days_in_period / float(self.num_days))))
         else:
-            total_pay_days = max(0.0, 31.0 - total_deductions)
+            total_pay_days = max(0.0, float(self.num_days) - total_deductions)
 
-        total_pay_days = min(31.0, total_pay_days)
+        total_pay_days = min(float(self.num_days), total_pay_days)
 
         # Biometric Days: consistent with total pay days
         if emp.get('manual_biometric_override') is not None:

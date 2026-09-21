@@ -38,9 +38,16 @@ DEPARTMENT_CANONICAL_MAP = {
 def normalize_dept(dept_name: str) -> str:
     """Normalize raw department string to official institutional department name."""
     if not dept_name:
-        return 'General'
-    cleaned = str(dept_name).strip()
-    return DEPARTMENT_CANONICAL_MAP.get(cleaned.upper(), cleaned)
+        return "General"
+    cleaned = re.sub(r'[\s\-_]+', ' ', str(dept_name)).strip().upper()
+    return DEPARTMENT_CANONICAL_MAP.get(cleaned, str(dept_name).strip())
+
+def normalize_month_year(month_year: str) -> str:
+    """Normalize any month string (e.g. 'August -2026', 'August 2026', 'July-2026') to canonical 'Month Year'."""
+    if not month_year:
+        return "August 2026"
+    m = re.sub(r'[\-_]+', ' ', str(month_year)).strip()
+    return re.sub(r'\s+', ' ', m)
 
 def get_db():
     conn = sqlite3.connect(DB_FILE)
@@ -167,13 +174,30 @@ def init_db():
     conn.close()
 
 def get_available_months() -> List[str]:
-    """Return all distinct month_years stored in database, prioritizing August -2026."""
+    """Return all distinct month_years stored in database, normalized and sorted chronologically."""
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT DISTINCT month_year FROM monthly_records ORDER BY CASE WHEN month_year LIKE 'August%2026%' THEN 0 ELSE 1 END, id DESC")
+    cursor.execute("SELECT DISTINCT month_year FROM monthly_records")
     rows = cursor.fetchall()
     conn.close()
-    return [r['month_year'] for r in rows]
+    
+    unique_months = list(dict.fromkeys(normalize_month_year(r['month_year']) for r in rows if r['month_year']))
+    
+    import calendar
+    def month_sort_key(m_str):
+        parts = m_str.split()
+        year = 2026
+        month = 8
+        for p in parts:
+            if p.isdigit() and len(p) == 4:
+                year = int(p)
+            for m_idx in range(1, 13):
+                if calendar.month_name[m_idx].lower() == p.lower() or calendar.month_abbr[m_idx].lower() == p.lower():
+                    month = m_idx
+        return (year, month)
+
+    unique_months.sort(key=month_sort_key, reverse=True)
+    return unique_months
 
 def has_monthly_records() -> bool:
     """Check if monthly_records table has any rows."""
@@ -186,6 +210,7 @@ def has_monthly_records() -> bool:
 
 def delete_month_data(month_year: str) -> dict:
     """Delete all monthly records and daily logs for the specified month."""
+    month_year = normalize_month_year(month_year)
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) as cnt FROM monthly_records WHERE month_year = ?", (month_year,))
@@ -202,6 +227,7 @@ def delete_month_data(month_year: str) -> dict:
 
 def get_month_summary_info(month_year: str) -> dict:
     """Return record count and punch log count for a given month."""
+    month_year = normalize_month_year(month_year)
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) as cnt FROM monthly_records WHERE month_year = ?", (month_year,))
@@ -215,8 +241,9 @@ def get_month_summary_info(month_year: str) -> dict:
         'logs_count': log_count
     }
 
-def seed_from_engine(engine, month_year: str = "August -2026", overwrite: bool = False):
+def seed_from_engine(engine, month_year: str = "August 2026", overwrite: bool = False):
     """Populate database from an AttendanceEngine instance."""
+    month_year = normalize_month_year(month_year)
     conn = get_db()
     cursor = conn.cursor()
 
@@ -234,6 +261,19 @@ def seed_from_engine(engine, month_year: str = "August -2026", overwrite: bool =
 
     print(f"Seeding database for {month_year}...")
     vip_full_pay_codes = {'101', '707', '900', '1060', '1015', '1019', '1021', '4001', '1030', 'SHAJAHAN', 'SHIVA_DRIVER'}
+
+    m_days = float(payroll_engine.get_days_in_month_str(month_year) or 31)
+    import calendar
+    import datetime
+    y, m = 2026, 8
+    for p in month_year.split():
+        if p.isdigit() and len(p) == 4: y = int(p)
+        for m_idx in range(1, 13):
+            if calendar.month_name[m_idx].lower() == p.lower(): m = m_idx
+    sundays = {d for d in range(1, int(m_days) + 1) if datetime.date(y, m, d).weekday() == 6}
+    fest_hol = {26} if m == 8 else set()
+    holidays = float(len(sundays.union(fest_hol)))
+    bio_days = max(0.0, m_days - holidays)
 
     for emp_code, emp in engine.employees.items():
         name_l = str(emp.get('name', '')).lower()
@@ -253,19 +293,19 @@ def seed_from_engine(engine, month_year: str = "August -2026", overwrite: bool =
 
         summary = engine.calculate_employee_summary(emp)
         
-        # If policy is exempt_full, give 31 full days
+        # If policy is exempt_full, give full month pay days
         if policy == 'exempt_full':
-            total_days = 31.0
-            bio_days = 25.0
-            holidays = 6.0
+            total_days = m_days
+            bio_days_emp = bio_days
+            holidays_emp = holidays
             leaves = None
             od = None
             remarks = "Full Attendance (Exempt / Principal)"
             needs_review = 0
         else:
             total_days = summary['total_pay_days']
-            bio_days = summary['biometric_days']
-            holidays = summary['holiday']
+            bio_days_emp = summary['biometric_days']
+            holidays_emp = summary['holiday']
             leaves = summary['availed_leaves']
             od = summary['sv_od']
             remarks = summary['remarks']
@@ -276,7 +316,7 @@ def seed_from_engine(engine, month_year: str = "August -2026", overwrite: bool =
         (emp_code, month_year, biometric_days, holiday, availed_leaves, sv_od, total_pay_days, remarks, needs_review, missed_punches_json, absent_days_json, late_punches_json)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            emp_code, month_year, bio_days, holidays, leaves, od, total_days, remarks, needs_review,
+            emp_code, month_year, bio_days_emp, holidays_emp, leaves, od, total_days, remarks, needs_review,
             json.dumps(summary.get('missed_out_punches', [])),
             json.dumps(summary.get('absent_days', [])),
             json.dumps(summary.get('late_punches', []))
@@ -307,20 +347,20 @@ def seed_from_engine(engine, month_year: str = "August -2026", overwrite: bool =
                 cursor.execute("""
                 INSERT OR REPLACE INTO monthly_records 
                 (emp_code, month_year, biometric_days, holiday, availed_leaves, sv_od, total_pay_days, remarks, needs_review)
-                VALUES (?, ?, 25.0, 6.0, NULL, NULL, 31.0, ?, 0)
-                """, (ec, month_year, "Full Attendance (VIP / Principal)" if is_principal else "Reference Staff"))
+                VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, 0)
+                """, (ec, month_year, bio_days, holidays, m_days, "Full Attendance (VIP / Principal)" if is_principal else "Reference Staff"))
 
     conn.commit()
     conn.close()
     print(f"Database seeded successfully for {month_year}.")
     apply_principal_rules_to_db(month_year)
 
-def apply_principal_rules_to_db(month_year: str = "August -2026"):
+def apply_principal_rules_to_db(month_year: str = "August 2026"):
     """
     Enforce Principal Sir's 21 attendance rules directly on database records:
-    - 101, 707, 900, 1060, 1015, 1019, 1021, 4001, 1030, Shajahan, Siva driver: 31 full days.
-    - 1053: >=12 days -> 31 full days.
-    - 1203: >=14 days -> 31 full days.
+    - 101, 707, 900, 1060, 1015, 1019, 1021, 4001, 1030, Shajahan, Siva driver: full days.
+    - 1053: >=12 days -> full days.
+    - 1203: >=14 days -> full days.
     - 536: CSE Bala Subramanyam before 12:10 = full day.
     - 109: Civil M. Lilaakar before 11:00 am = full day.
     - Transport IDs: no late penalties, no out punch counted as present.
@@ -328,11 +368,21 @@ def apply_principal_rules_to_db(month_year: str = "August -2026"):
     - Attenders / Garden: 8:35 in threshold.
     - Admission: 6 days/week, Sunday work offsets absent.
     """
+    month_year = normalize_month_year(month_year)
     conn = get_db()
     cursor = conn.cursor()
 
     m_days = float(payroll_engine.get_days_in_month_str(month_year) or 31)
-    holidays = 6.0
+    import calendar
+    import datetime
+    y, m = 2026, 8
+    for p in month_year.split():
+        if p.isdigit() and len(p) == 4: y = int(p)
+        for m_idx in range(1, 13):
+            if calendar.month_name[m_idx].lower() == p.lower(): m = m_idx
+    sundays = {d for d in range(1, int(m_days) + 1) if datetime.date(y, m, d).weekday() == 6}
+    fest_hol = {26} if m == 8 else set()
+    holidays = float(len(sundays.union(fest_hol)))
     bio_days = max(0.0, m_days - holidays)
 
     # Known VIP / Exempt staff who may not exist in raw biometric machines
@@ -617,6 +667,7 @@ def apply_principal_rules_to_db(month_year: str = "August -2026"):
 
 def get_month_records(month_year: str, active_only: bool = True, reference_codes: Optional[set] = None) -> List[dict]:
     """Retrieve all employee summaries for a specific month."""
+    month_year = normalize_month_year(month_year)
     # Ensure all VIPs and non-biometric staff are guaranteed present with full pay for this month
     apply_principal_rules_to_db(month_year)
 
@@ -654,9 +705,10 @@ def get_month_records(month_year: str, active_only: bool = True, reference_codes
     conn.close()
 
     results = []
+    is_august = 'august' in month_year.lower()
     for r in rows:
         ec = r['emp_code']
-        if active_only and reference_codes and ec not in reference_codes and not r['is_manual']:
+        if active_only and is_august and reference_codes and ec not in reference_codes and not r['is_manual']:
             continue
 
         lm = leave_map.get(str(ec), {'cl_days': [], 'od_days': []})
@@ -1370,6 +1422,7 @@ def populate_month_salaries_if_empty(month_year: str):
 
 def get_month_salary_records(month_year: str, active_only: bool = True, reference_codes: Optional[set] = None) -> dict:
     """Retrieve full payroll ledger with financial KPI totals for the active month."""
+    month_year = normalize_month_year(month_year)
     populate_month_salaries_if_empty(month_year)
 
     conn = get_db()
@@ -1406,9 +1459,10 @@ def get_month_salary_records(month_year: str, active_only: bool = True, referenc
     tot_ded = 0.0
     tot_net = 0.0
 
+    is_august = 'august' in month_year.lower()
     for r in rows:
         ec = r['emp_code']
-        if active_only and reference_codes and ec not in reference_codes and not r['is_manual']:
+        if active_only and is_august and reference_codes and ec not in reference_codes and not r['is_manual']:
             continue
 
         base_sal = float(r['base_salary'] or 0.0)

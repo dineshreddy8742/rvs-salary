@@ -83,7 +83,7 @@ let currentDept = 'all';
 let currentCategory = 'all';
 let currentSort = 'code_asc';
 let activeOnly = true;
-let currentMonth = 'August -2026';
+let currentMonth = 'August 2026';
 let activePortfolioEmpCode = null;
 let currentDashboardMode = 'unified'; // 'unified', 'attendance', or 'salary'
 let unifiedRecords = [];
@@ -365,17 +365,11 @@ function setupEventListeners() {
     const file = e.target.files[0];
     if (!file) return;
 
-    const monthPrompt = prompt('Enter the Month & Year for this biometric file:', currentMonth);
-    if (!monthPrompt) {
-      fileInput.value = '';
-      return;
-    }
-
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('month_name', monthPrompt);
+    formData.append('month_name', 'auto');
 
-    showToast(`⏳ Uploading & Analyzing ${file.name} for ${monthPrompt}... Please wait.`);
+    showToast(`⏳ Uploading & Analyzing ${file.name}... Auto-detecting month & calculating attendance...`);
     try {
       const res = await fetch('/api/upload', { method: 'POST', body: formData });
       let data = null;
@@ -399,9 +393,12 @@ function setupEventListeners() {
       }
 
       if (res.ok && data && data.status === 'success') {
-        showToast('✅ File analyzed and saved to database successfully!');
-        currentMonth = monthPrompt;
+        currentMonth = data.month_name || currentMonth;
+        showToast(`✅ Successfully loaded ${data.total_staff || ''} staff for ${currentMonth}!`);
         await loadMonths();
+        const select = document.getElementById('month-select');
+        if (select) select.value = currentMonth;
+        await loadData();
       } else {
         alert('Upload Error: ' + ((data && data.message) || res.statusText || 'Failed to process file'));
       }
@@ -850,10 +847,12 @@ async function loadMonths() {
         if (m === currentMonth) opt.selected = true;
         select.appendChild(opt);
       });
-      if (data.months.includes('August -2026')) {
-        currentMonth = 'August -2026';
-        select.value = 'August -2026';
-      } else if (!data.months.includes(currentMonth)) {
+      if (currentMonth && data.months.includes(currentMonth)) {
+        select.value = currentMonth;
+      } else if (data.months.includes('August 2026')) {
+        currentMonth = 'August 2026';
+        select.value = 'August 2026';
+      } else {
         currentMonth = data.months[0];
         select.value = data.months[0];
       }
@@ -1012,7 +1011,7 @@ function renderUnifiedKPIs(attStats, salStats) {
   }
   const elSubDays = document.getElementById('stat-sub-month-days');
   if (elSubDays) {
-    elSubDays.textContent = `${currentMonth || 'August -2026'}`;
+    elSubDays.textContent = `${currentMonth || 'August 2026'}`;
   }
 
   const navReview = document.getElementById('nav-review-count');

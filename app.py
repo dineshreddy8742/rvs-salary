@@ -144,10 +144,10 @@ if not os.path.exists(REF_FILE) and os.path.exists('database'):
 if not database.has_monthly_records():
     if os.path.exists(RAW_FILE):
         engine = AttendanceEngine(RAW_FILE, REF_FILE if os.path.exists(REF_FILE) else None)
-        database.seed_from_engine(engine, "August -2026")
+        database.seed_from_engine(engine, "August 2026")
 
 try:
-    database.apply_principal_rules_to_db("August -2026")
+    database.apply_principal_rules_to_db("August 2026")
 except Exception as e:
     print("Notice on applying principal rules:", e)
 
@@ -211,7 +211,7 @@ def delete_month():
 @app.route('/api/data', methods=['GET'])
 def get_data():
     """Return attendance records for a specific month."""
-    month_year = request.args.get('month', 'August -2026')
+    month_year = request.args.get('month', 'August 2026')
     active_only = request.args.get('active_only', 'true').lower() == 'true'
 
     records = database.get_month_records(month_year, active_only=active_only, reference_codes=REFERENCE_CODES)
@@ -256,7 +256,7 @@ def get_portfolio(emp_code):
 @app.route('/api/employee/<emp_code>/daily', methods=['GET'])
 def get_employee_daily(emp_code):
     """Fetch 31-day punch logs for calendar modal."""
-    month_year = request.args.get('month', 'August -2026')
+    month_year = request.args.get('month', 'August 2026')
     days = database.get_employee_daily_logs(emp_code, month_year)
     pf = database.get_employee_portfolio(emp_code)
     
@@ -275,7 +275,7 @@ def add_manual_employee():
     if not emp_code or not name:
         return jsonify({'status': 'error', 'message': 'emp_code and name are required'}), 400
 
-    month_year = data.get('month_year', 'August -2026')
+    month_year = data.get('month_year', 'August 2026')
     try:
         portfolio = database.create_or_update_manual_employee(data, current_month=month_year)
         return jsonify({
@@ -292,7 +292,7 @@ def set_policy():
     data = request.json or {}
     emp_code = data.get('emp_code')
     policy = data.get('policy')
-    month_year = data.get('month_year', 'August -2026')
+    month_year = data.get('month_year', 'August 2026')
 
     if not emp_code or not policy:
         return jsonify({'status': 'error', 'message': 'emp_code and policy required'}), 400
@@ -312,7 +312,7 @@ def grant_full_attendance():
     """1-Click button to grant 31 full pay days to an employee."""
     data = request.json or {}
     emp_code = data.get('emp_code')
-    month_year = data.get('month_year', 'August -2026')
+    month_year = data.get('month_year', 'August 2026')
 
     if not emp_code:
         return jsonify({'status': 'error', 'message': 'emp_code required'}), 400
@@ -332,7 +332,7 @@ def revert_to_original():
     """1-Click button to revert an employee back to original raw biometric punches & standard salary."""
     data = request.json or {}
     emp_code = data.get('emp_code')
-    month_year = data.get('month_year', 'August -2026')
+    month_year = data.get('month_year', 'August 2026')
 
     if not emp_code:
         return jsonify({'status': 'error', 'message': 'emp_code required'}), 400
@@ -351,7 +351,7 @@ def revert_to_original():
 def bulk_revert():
     """Bulk revert multiple employees back to raw biometric calculation."""
     data = request.json or {}
-    month_year = data.get('month_year', 'August -2026')
+    month_year = data.get('month_year', 'August 2026')
     scope = data.get('scope', 'all')
     department = data.get('department')
     category = data.get('category')
@@ -369,7 +369,7 @@ def update_employee():
     emp_code = data.get('emp_code')
     field = data.get('field')
     value = data.get('value')
-    month_year = data.get('month_year', 'August -2026')
+    month_year = data.get('month_year', 'August 2026')
 
     if not emp_code or not field:
         return jsonify({'status': 'error', 'message': 'emp_code and field required'}), 400
@@ -391,7 +391,7 @@ def regularize_day():
     emp_code = data.get('emp_code')
     day_num = data.get('day_num')
     action = data.get('action')
-    month_year = data.get('month_year', 'August -2026')
+    month_year = data.get('month_year', 'August 2026')
 
     if not emp_code or not day_num or not action:
         return jsonify({'status': 'error', 'message': 'emp_code, day_num, and action required'}), 400
@@ -413,7 +413,7 @@ def bulk_slips():
     """Option 3: Apply multiple leave or OD slips in batch."""
     data = request.json or {}
     text_paste = data.get('text', '')
-    month_year = data.get('month_year', 'August -2026')
+    month_year = data.get('month_year', 'August 2026')
 
     applied_count = 0
     if text_paste:
@@ -462,7 +462,7 @@ def upload_file():
     if not f or not f.filename:
         return jsonify({'status': 'error', 'message': 'Empty or invalid file'}), 400
 
-    month_name = (request.form.get('month_name') or 'August -2026').strip()
+    user_month = (request.form.get('month_name') or '').strip()
     
     save_path = None
     try:
@@ -479,15 +479,19 @@ def upload_file():
         f.save(save_path)
 
         ref_file = REF_FILE if os.path.exists(REF_FILE) else None
-        engine = AttendanceEngine(save_path, ref_file)
-        database.seed_from_engine(engine, month_name, overwrite=True)
+        engine = AttendanceEngine(save_path, ref_file, month_year=user_month if user_month and user_month.lower() != 'auto' else None)
+        final_month = database.normalize_month_year(engine.detected_month_year or user_month or 'August 2026')
+        database.seed_from_engine(engine, final_month, overwrite=True)
+        total_emps = len(engine.employees)
 
         del engine
         gc.collect()
 
         return jsonify({
             'status': 'success',
-            'message': f'Successfully loaded and analyzed {f.filename} for {month_name}'
+            'month_name': final_month,
+            'total_staff': total_emps,
+            'message': f'Successfully loaded and analyzed {total_emps} staff from {f.filename} for {final_month}'
         })
     except Exception as e:
         print(f"Error parsing uploaded file: {e}")
@@ -507,7 +511,7 @@ def upload_file():
 @app.route('/api/export', methods=['GET'])
 def export_file():
     """Generate and download finalized output.xls for chosen month."""
-    month_year = request.args.get('month', 'August -2026')
+    month_year = request.args.get('month', 'August 2026')
     active_only = request.args.get('active_only', 'true').lower() == 'true'
 
     records = database.get_month_records(month_year, active_only=active_only, reference_codes=REFERENCE_CODES)
@@ -528,7 +532,7 @@ def export_file():
 @app.route('/api/salary/data', methods=['GET'])
 def get_salary_data():
     """Return comprehensive salary ledger and financial KPI stats for active month."""
-    month_year = request.args.get('month', 'August -2026')
+    month_year = request.args.get('month', 'August 2026')
     active_only = request.args.get('active_only', 'true').lower() == 'true'
 
     salary_data = database.get_month_salary_records(month_year, active_only=active_only, reference_codes=REFERENCE_CODES)
@@ -541,7 +545,7 @@ def update_salary_monthly():
     emp_code = data.get('emp_code')
     field = data.get('field')
     value = data.get('value')
-    month_year = data.get('month_year', 'August -2026')
+    month_year = data.get('month_year', 'August 2026')
 
     if not emp_code or not field:
         return jsonify({'status': 'error', 'message': 'emp_code and field required'}), 400
@@ -560,7 +564,7 @@ def update_salary_profile():
     """Update employee master salary package, category, or bank credentials."""
     data = request.json or {}
     emp_code = data.get('emp_code')
-    month_year = data.get('month_year', 'August -2026')
+    month_year = data.get('month_year', 'August 2026')
 
     if not emp_code:
         return jsonify({'status': 'error', 'message': 'emp_code is required'}), 400
@@ -595,7 +599,7 @@ def update_employee_unified_all():
     """Unified 360-degree update: profile, attendance, salary overrides, deductions, and bank info."""
     data = request.json or {}
     emp_code = data.get('emp_code')
-    month_year = data.get('month_year', 'August -2026')
+    month_year = data.get('month_year', 'August 2026')
 
     if not emp_code:
         return jsonify({'status': 'error', 'message': 'emp_code is required'}), 400
@@ -611,7 +615,7 @@ def update_employee_unified_all():
 def bulk_salary_adjust():
     """Batch adjustment across category or department."""
     data = request.json or {}
-    month_year = data.get('month_year', 'August -2026')
+    month_year = data.get('month_year', 'August 2026')
     category = data.get('category')
     department = data.get('department')
     field = data.get('field', 'arrears')
@@ -627,7 +631,7 @@ def bulk_salary_adjust():
 @app.route('/api/salary/variance', methods=['GET'])
 def get_salary_variance_report():
     """Month-over-month variance analysis."""
-    curr_month = request.args.get('curr_month', 'August -2026')
+    curr_month = request.args.get('curr_month', 'August 2026')
     prev_month = request.args.get('prev_month', 'July 2026')
     active_only = request.args.get('active_only', 'true').lower() == 'true'
 
@@ -641,7 +645,7 @@ def get_salary_variance_report():
 def get_slip_data():
     """Return comprehensive data for printing/downloading formal institutional pay slip."""
     emp_code = request.args.get('emp_code')
-    month_year = request.args.get('month', 'August -2026')
+    month_year = request.args.get('month', 'August 2026')
 
     if not emp_code:
         return jsonify({'status': 'error', 'message': 'emp_code required'}), 400
@@ -672,7 +676,7 @@ def get_slip_data():
 @app.route('/api/salary/export', methods=['GET'])
 def export_salary_file():
     """Generate and stream the audit-grade Institutional Salary Bill (.xlsx)."""
-    month_year = request.args.get('month', 'August -2026')
+    month_year = request.args.get('month', 'August 2026')
     active_only = request.args.get('active_only', 'true').lower() == 'true'
 
     data = database.get_month_salary_records(month_year, active_only=active_only, reference_codes=REFERENCE_CODES)
@@ -690,7 +694,7 @@ def export_salary_file():
 @app.route('/api/salary/export-neft', methods=['GET'])
 def export_neft_file():
     """Stream corporate banking upload file (.csv) with Account, Net Amount, Name, IFSC, Narration."""
-    month_year = request.args.get('month', 'August -2026')
+    month_year = request.args.get('month', 'August 2026')
     active_only = request.args.get('active_only', 'true').lower() == 'true'
     bank_filter = request.args.get('bank', 'ALL')
 
@@ -711,7 +715,7 @@ def export_neft_file():
 @app.route('/api/salary/export-slips-zip', methods=['GET'])
 def export_slips_zip():
     """Stream a ZIP archive containing individual PDF payslips for all staff."""
-    month_year = request.args.get('month', 'August -2026')
+    month_year = request.args.get('month', 'August 2026')
     active_only = request.args.get('active_only', 'true').lower() == 'true'
 
     data = database.get_month_salary_records(month_year, active_only=active_only, reference_codes=REFERENCE_CODES)
@@ -729,7 +733,7 @@ def export_slips_zip():
 @app.route('/api/salary/export-slips-pdf', methods=['GET'])
 def export_slips_pdf():
     """Stream a single merged multi-page PDF containing all payslips."""
-    month_year = request.args.get('month', 'August -2026')
+    month_year = request.args.get('month', 'August 2026')
     active_only = request.args.get('active_only', 'true').lower() == 'true'
 
     data = database.get_month_salary_records(month_year, active_only=active_only, reference_codes=REFERENCE_CODES)
@@ -747,7 +751,7 @@ def export_slips_pdf():
 @app.route('/api/salary/executive-summary', methods=['GET'])
 def get_executive_summary():
     """Return JSON department-wise, category-wise, and statutory remittance summary."""
-    month_year = request.args.get('month', 'August -2026')
+    month_year = request.args.get('month', 'August 2026')
     active_only = request.args.get('active_only', 'true').lower() == 'true'
 
     data = database.get_month_salary_records(month_year, active_only=active_only, reference_codes=REFERENCE_CODES)
@@ -759,7 +763,7 @@ def get_executive_summary():
 @app.route('/api/salary/cash-denominations', methods=['GET'])
 def get_cash_denominations():
     """Return JSON currency note calculation for attenders and support staff."""
-    month_year = request.args.get('month', 'August -2026')
+    month_year = request.args.get('month', 'August 2026')
     active_only = request.args.get('active_only', 'true').lower() == 'true'
 
     data = database.get_month_salary_records(month_year, active_only=active_only, reference_codes=REFERENCE_CODES)
