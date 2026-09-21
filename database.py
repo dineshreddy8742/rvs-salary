@@ -1,11 +1,30 @@
-import sqlite3
-import json
 import os
 import re
+import json
 from typing import Dict, List, Any, Optional
 import payroll_engine
 
 DB_FILE = "rvs_attendance.db"
+
+# Turso cloud SQLite support
+# When TURSO_DATABASE_URL is set (on Render), use cloud DB so uploads persist
+# When not set (local dev), use local SQLite file
+TURSO_DATABASE_URL = os.environ.get('TURSO_DATABASE_URL', '')
+TURSO_AUTH_TOKEN = os.environ.get('TURSO_AUTH_TOKEN', '')
+
+if TURSO_DATABASE_URL:
+    try:
+        import libsql_experimental as sqlite3
+        _USE_TURSO = True
+        print(f"[DB] Using Turso cloud SQLite: {TURSO_DATABASE_URL}")
+    except ImportError:
+        import sqlite3
+        _USE_TURSO = False
+        print("[DB] libsql_experimental not installed, falling back to local SQLite")
+else:
+    import sqlite3
+    _USE_TURSO = False
+    print(f"[DB] Using local SQLite: {DB_FILE}")
 
 # Canonical mapping for department normalization to eliminate duplicate/fragmented departments
 DEPARTMENT_CANONICAL_MAP = {
@@ -50,7 +69,14 @@ def normalize_month_year(month_year: str) -> str:
     return re.sub(r'\s+', ' ', m)
 
 def get_db():
-    conn = sqlite3.connect(DB_FILE)
+    """Get database connection — Turso cloud if configured, else local SQLite."""
+    if _USE_TURSO:
+        conn = sqlite3.connect(
+            database=TURSO_DATABASE_URL,
+            auth_token=TURSO_AUTH_TOKEN
+        )
+    else:
+        conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
     return conn
 
