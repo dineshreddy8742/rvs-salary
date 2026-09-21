@@ -11,6 +11,8 @@ venv/
 ENV/
 
 # IDE / Editor settings
+# rvs_attendance.db is intentionally tracked and pushed to GitHub
+# so that Render deployments include the full payroll database
 .vscode/
 .idea/
 *.swp
