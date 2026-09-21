@@ -932,8 +932,18 @@ function buildUnifiedRecords(attStats, salStats) {
                       ? Number(sal.net_salary)
                       : Math.max(0, grossSalary - totalDed);
 
-    const cl = Number(att.availed_leaves !== undefined ? att.availed_leaves : (att.cl_days || 0));
-    const od = Number(att.sv_od !== undefined ? att.sv_od : (att.od_days || 0));
+    let cl = Number(att.availed_leaves !== undefined && att.availed_leaves !== null ? att.availed_leaves : (att.cl_days || 0));
+    const clList = Array.isArray(att.cl_days_list) ? att.cl_days_list : [];
+    if (cl === 0 && clList.length > 0) {
+      cl = clList.length;
+    }
+
+    let od = Number(att.sv_od !== undefined && att.sv_od !== null ? att.sv_od : (att.od_days || 0));
+    const odList = Array.isArray(att.od_days_list) ? att.od_days_list : [];
+    if (od === 0 && odList.length > 0) {
+      od = odList.length;
+    }
+
     const present = Number(att.biometric_present_days !== undefined ? att.biometric_present_days : (att.present_days || payDays));
     const lopDays = Math.max(0, Math.round((monthDays - payDays) * 10) / 10);
 
@@ -2443,6 +2453,36 @@ function renderOdDaysBadge(emp) {
   return `<span style="font-size:0.7rem; font-weight:800; color:#0f766e; background:#f0fdfa; border:1px solid #99f6e4; padding:1px 5px; border-radius:4px; margin-top:2px; white-space:nowrap; cursor:default;" title="Approved OD on: ${titleStr}">[ Day ${daysStr} ]</span>`;
 }
 
+// Helper to format ranges nicely (e.g. [1, 3 to 8, 10 to 14])
+function formatRanges(nums) {
+  if (!nums || nums.length === 0) return '';
+  const cleanNums = nums
+    .map(n => {
+      if (typeof n === 'number') return isNaN(n) ? null : n;
+      const parsed = parseInt(String(n).replace(/\D/g, ''), 10);
+      return isNaN(parsed) ? null : parsed;
+    })
+    .filter(n => n !== null && n > 0);
+
+  if (cleanNums.length === 0) return '';
+  const sorted = [...new Set(cleanNums)].sort((a,b) => a - b);
+  if (sorted.length <= 3) return sorted.join(', ');
+  const parts = [];
+  let i = 0;
+  while (i < sorted.length) {
+    let j = i;
+    while (j + 1 < sorted.length && sorted[j+1] === sorted[j] + 1) j++;
+    if (j - i >= 2) {
+      parts.push(`${sorted[i]} to ${sorted[j]}`);
+      i = j + 1;
+    } else {
+      parts.push(sorted[i]);
+      i++;
+    }
+  }
+  return parts.join(', ');
+}
+
 // Helper to render LOP cell with exact breakdown of why user has loss of pay
 function renderLopCell(emp) {
   if (emp.lop_days <= 0) {
@@ -2472,13 +2512,16 @@ function renderLopCell(emp) {
 
   const lines = [];
   if (absDays.length > 0) {
-    lines.push(`<span style="color:#b91c1c; font-size:0.72rem; font-weight:700; background:#fef2f2; padding:1px 5px; border-radius:3px; border:1px solid #fecaca;">❌ Full: [Day ${absDays.join(', ')}]</span>`);
+    const absFmt = formatRanges(absDays);
+    lines.push(`<span style="color:#b91c1c; font-size:0.72rem; font-weight:700; background:#fef2f2; padding:1px 5px; border-radius:3px; border:1px solid #fecaca;">❌ Full: [Day ${absFmt}]</span>`);
   }
   if (halfMatches.length > 0) {
-    lines.push(`<span style="color:#0369a1; font-size:0.72rem; font-weight:700; background:#f0f9ff; padding:1px 5px; border-radius:3px; border:1px solid #bae6fd;">🌓 Half: [Day ${halfMatches.join(', ')}]</span>`);
+    const halfFmt = formatRanges(halfMatches);
+    lines.push(`<span style="color:#0369a1; font-size:0.72rem; font-weight:700; background:#f0f9ff; padding:1px 5px; border-radius:3px; border:1px solid #bae6fd;">🌓 Half: [Day ${halfFmt}]</span>`);
   }
   if (misDays.length > 0) {
-    lines.push(`<span style="color:#92400e; font-size:0.72rem; font-weight:700; background:#fffbeb; padding:1px 5px; border-radius:3px; border:1px solid #fde68a;">⚠️ No Out: [Day ${misDays.join(', ')}]</span>`);
+    const misFmt = formatRanges(misDays);
+    lines.push(`<span style="color:#92400e; font-size:0.72rem; font-weight:700; background:#fffbeb; padding:1px 5px; border-radius:3px; border:1px solid #fde68a;">⚠️ No Out: [Day ${misFmt}]</span>`);
   }
 
   return `
@@ -2516,28 +2559,6 @@ function renderRemarksBadges(emp) {
   }
 
   const badges = [];
-
-  // Helper to format ranges nicely
-  const formatRanges = (nums) => {
-    if (!nums || nums.length === 0) return '';
-    const cleanNums = nums
-      .map(n => {
-        if (typeof n === 'number') return isNaN(n) ? null : n;
-        const parsed = parseInt(String(n).replace(/\D/g, ''), 10);
-        return isNaN(parsed) ? null : parsed;
-      })
-      .filter(n => n !== null && n > 0);
-
-    if (cleanNums.length === 0) return '';
-    const sorted = [...new Set(cleanNums)].sort((a,b) => a - b);
-    if (sorted.length <= 3) return sorted.join(', ');
-    const parts = [];
-    let i = 0;
-    while (i < sorted.length) {
-      let j = i;
-      while (j + 1 < sorted.length && sorted[j+1] === sorted[j] + 1) j++;
-      if (j - i >= 2) {
-        parts.push(`${sorted[i]} to ${sorted[j]}`);
         i = j + 1;
       } else {
         parts.push(sorted[i]);

@@ -350,8 +350,34 @@ def apply_principal_rules_to_db(month_year: str = "August -2026"):
         'SHIVA_DRIVER': {'name': 'Shiva', 'dept': 'Transport', 'desig': 'Principal Diver'},
     }
 
+    # Pre-calculate availed leaves and OD for VIPs if they exist in daily_logs
+    cursor.execute("""
+    SELECT emp_code,
+           SUM(CASE 
+               WHEN (status LIKE '%1/2CL%' OR status LIKE '%HALF%CL%' OR override_status LIKE '%1/2CL%' OR override_status LIKE '%HALF%CL%') THEN 0.5
+               WHEN (status LIKE '%CL%' OR status LIKE '%LEAVE%' OR override_status LIKE '%CL%' OR override_status LIKE '%LEAVE%') THEN 1.0
+               ELSE 0.0 END) as cl_cnt,
+           SUM(CASE 
+               WHEN (status LIKE '%OD%' OR status LIKE '%DUTY%' OR override_status LIKE '%OD%' OR override_status LIKE '%DUTY%') THEN 1.0
+               ELSE 0.0 END) as od_cnt
+    FROM daily_logs
+    WHERE month_year = ?
+    GROUP BY emp_code
+    """, (month_year,))
+    vip_leave_map = {}
+    for r in cursor.fetchall():
+        vip_leave_map[str(r['emp_code'])] = {
+            'cl': float(r['cl_cnt'] or 0.0),
+            'od': float(r['od_cnt'] or 0.0)
+        }
+
     # 1. Ensure all designated VIP staff exist in employees table & monthly_records for this month
     for vc, meta in NON_BIOMETRIC_STAFF.items():
+        v_cl = vip_leave_map.get(str(vc), {}).get('cl')
+        v_od = vip_leave_map.get(str(vc), {}).get('od')
+        v_cl = v_cl if (v_cl is not None and v_cl > 0) else None
+        v_od = v_od if (v_od is not None and v_od > 0) else None
+
         # Ensure employee row exists
         cursor.execute("SELECT COUNT(*) as cnt FROM employees WHERE emp_code = ?", (vc,))
         if cursor.fetchone()['cnt'] == 0:
@@ -368,14 +394,14 @@ def apply_principal_rules_to_db(month_year: str = "August -2026"):
             cursor.execute("""
             INSERT INTO monthly_records 
             (emp_code, month_year, biometric_days, holiday, availed_leaves, sv_od, total_pay_days, remarks, needs_review, absent_days_json, missed_punches_json, late_punches_json)
-            VALUES (?, ?, ?, ?, NULL, NULL, ?, 'Full Attendance (Principal Override)', 0, '[]', '[]', '[]')
-            """, (vc, month_year, bio_days, holidays, m_days))
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'Full Attendance (Principal Override)', 0, '[]', '[]', '[]')
+            """, (vc, month_year, bio_days, holidays, v_cl, v_od, m_days))
         else:
             cursor.execute("""
             UPDATE monthly_records 
-            SET biometric_days = ?, holiday = ?, total_pay_days = ?, remarks = 'Full Attendance (Principal Override)', needs_review = 0, absent_days_json = '[]', missed_punches_json = '[]', late_punches_json = '[]'
+            SET biometric_days = ?, holiday = ?, availed_leaves = COALESCE(?, availed_leaves), sv_od = COALESCE(?, sv_od), total_pay_days = ?, remarks = 'Full Attendance (Principal Override)', needs_review = 0, absent_days_json = '[]', missed_punches_json = '[]', late_punches_json = '[]'
             WHERE emp_code = ? AND month_year = ?
-            """, (bio_days, holidays, m_days, vc, month_year))
+            """, (bio_days, holidays, v_cl, v_od, m_days, vc, month_year))
 
     # Name-based checks for other VIPs in database
     cursor.execute("SELECT emp_code, name, designation, department FROM employees")
@@ -387,7 +413,7 @@ def apply_principal_rules_to_db(month_year: str = "August -2026"):
         deptl = (e['department'] or '').lower()
         
         if (any(k in nl for k in ['mohan babu', 'gunasekaran', 'gunaskaran', 'veveka', 'adhikari', 'hari krishna', 'visal kumar', 'shajahan']) or 
-            ('siva' in nl and ('driver' in dl or 'transport' in deptl))):
+            (ec == 'SHIVA_DRIVER' or 'principal diver' in dl or 'principal driver' in dl)):
             cursor.execute("UPDATE employees SET attendance_policy = 'exempt_full' WHERE emp_code = ?", (ec,))
             cursor.execute("SELECT COUNT(*) as cnt FROM monthly_records WHERE emp_code = ? AND month_year = ?", (ec, month_year))
             if cursor.fetchone()['cnt'] == 0:
@@ -402,6 +428,9 @@ def apply_principal_rules_to_db(month_year: str = "August -2026"):
                 SET biometric_days = ?, holiday = ?, total_pay_days = ?, remarks = 'Full Attendance (Principal Override)', needs_review = 0, absent_days_json = '[]', missed_punches_json = '[]', late_punches_json = '[]'
                 WHERE emp_code = ? AND month_year = ?
                 """, (bio_days, holidays, m_days, ec, month_year))
+
+    # Ensure regular bus drivers with 'Siva' in their name are standard policy, not VIP
+    cursor.execute("UPDATE employees SET attendance_policy = 'standard' WHERE emp_code IN ('603', '610', '6623')")
 
     # Also ensure any other employee marked as 'exempt_full' gets full pay for this month
     cursor.execute("SELECT emp_code FROM employees WHERE attendance_policy = 'exempt_full'")
@@ -447,11 +476,35 @@ def apply_principal_rules_to_db(month_year: str = "August -2026"):
         if tdays:
             in_out_count = sum(1.0 for d in tdays if (d['in_time'] and d['out_time']))
             t_pay_days = min(m_days, in_out_count + holidays)
+
+            sundays = {2, 9, 16, 23, 30}
+            t_absent = []
+            t_half = []
+            for d in tdays:
+                d_num = d['day_num']
+                if d_num in sundays:
+                    continue
+                in_t = d['in_time']
+                out_t = d['out_time']
+                st = (d['override_status'] or d['status'] or '').upper()
+                if not in_t and not out_t and 'HOLIDAY' not in st:
+                    t_absent.append(d_num)
+                elif '1/2' in st or 'HALF' in st:
+                    t_half.append(f"{d_num}(1/2)")
+
+            rem_parts = []
+            if t_absent:
+                abs_str = ','.join(str(x) for x in t_absent)
+                rem_parts.append(f"ab-{abs_str}")
+            if t_half:
+                rem_parts.extend(t_half)
+            t_rem = ', '.join(rem_parts)
+
             cursor.execute("""
             UPDATE monthly_records
-            SET biometric_days = ?, holiday = ?, total_pay_days = ?, late_punches_json = '[]'
+            SET biometric_days = ?, holiday = ?, total_pay_days = ?, remarks = ?, absent_days_json = ?, late_punches_json = '[]'
             WHERE emp_code = ? AND month_year = ?
-            """, (in_out_count, holidays, t_pay_days, tid, month_year))
+            """, (in_out_count, holidays, t_pay_days, t_rem, json.dumps(t_absent), tid, month_year))
         else:
             cursor.execute("UPDATE monthly_records SET late_punches_json = '[]' WHERE emp_code = ? AND month_year = ?", (tid, month_year))
 
@@ -608,6 +661,14 @@ def get_month_records(month_year: str, active_only: bool = True, reference_codes
 
         lm = leave_map.get(str(ec), {'cl_days': [], 'od_days': []})
 
+        cl_val = r['availed_leaves']
+        if (cl_val is None or cl_val == 0.0) and lm['cl_days']:
+            cl_val = float(len(lm['cl_days']))
+
+        od_val = r['sv_od']
+        if (od_val is None or od_val == 0.0) and lm['od_days']:
+            od_val = float(len(lm['od_days']))
+
         results.append({
             'emp_code': ec,
             'name': r['name'],
@@ -617,8 +678,8 @@ def get_month_records(month_year: str, active_only: bool = True, reference_codes
             'is_manual': bool(r['is_manual']),
             'biometric_days': r['biometric_days'],
             'holiday': r['holiday'],
-            'availed_leaves': r['availed_leaves'],
-            'sv_od': r['sv_od'],
+            'availed_leaves': cl_val,
+            'sv_od': od_val,
             'total_pay_days': r['total_pay_days'],
             'remarks': r['remarks'] or '',
             'needs_review': bool(r['needs_review']),
