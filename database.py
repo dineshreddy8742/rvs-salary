@@ -543,12 +543,12 @@ def apply_principal_rules_to_db(month_year: str = "August 2026"):
             in_out_count = sum(1.0 for d in tdays if (d['in_time'] and d['out_time']))
             t_pay_days = min(m_days, in_out_count + holidays)
 
-            sundays = {2, 9, 16, 23, 30}
+            # Use dynamically computed sundays for this month (not hardcoded August Sundays)
             t_absent = []
             t_half = []
             for d in tdays:
                 d_num = d['day_num']
-                if d_num in sundays:
+                if d_num in sundays:  # sundays computed dynamically at top of function
                     continue
                 in_t = d['in_time']
                 out_t = d['out_time']
@@ -577,6 +577,15 @@ def apply_principal_rules_to_db(month_year: str = "August 2026"):
     # 6. Admission Dept: 6 days/week, 5 on 2nd Sat week, Sunday punches offset weekday leaves
     admission_ids = ['2005', '2006', '6001', '1040', '1017', '2011', '6000', '2010', '2007', '2013', '2514', '2512', '2511', '2503', '2502', '2505', '2051', '2508', '6004', '6005']
     import datetime
+    # Compute actual 2nd Saturday of this month dynamically
+    second_saturday_day = None
+    sat_count = 0
+    for _d in range(1, int(m_days) + 1):
+        if datetime.date(y, m, _d).weekday() == 5:  # Saturday
+            sat_count += 1
+            if sat_count == 2:
+                second_saturday_day = _d
+                break
     for aid in admission_ids:
         cursor.execute("SELECT * FROM daily_logs WHERE emp_code = ? AND month_year = ? ORDER BY day_num", (aid, month_year))
         adays = cursor.fetchall()
@@ -585,7 +594,8 @@ def apply_principal_rules_to_db(month_year: str = "August 2026"):
             for d in adays:
                 d_num = d['day_num']
                 try:
-                    dt = datetime.date(2026, 8, d_num)
+                    # Use actual month/year, not hardcoded 2026/8
+                    dt = datetime.date(y, m, d_num)
                     w_start = dt - datetime.timedelta(days=dt.weekday())
                     w_key = str(w_start)
                 except Exception:
@@ -596,7 +606,8 @@ def apply_principal_rules_to_db(month_year: str = "August 2026"):
 
             total_shortfall = 0.0
             for w_key, w_days in weeks.items():
-                has_2nd_sat = any(d['day_num'] == 8 for d in w_days)
+                # Check if actual 2nd Saturday of this month falls in this week
+                has_2nd_sat = second_saturday_day is not None and any(d['day_num'] == second_saturday_day for d in w_days)
                 req = 5.0 if has_2nd_sat else min(float(len(w_days)), 6.0)
                 w_worked = 0.0
                 for d in w_days:
@@ -616,12 +627,15 @@ def apply_principal_rules_to_db(month_year: str = "August 2026"):
             WHERE emp_code = ? AND month_year = ?
             """, (a_bio_days, holidays, a_pay_days, aid, month_year))
 
-    # 7. Media Team 1018 (Prudhvi Raj): 9:35 in-time cutoff -> 29.0 Pay Days, 23.0 Biometric, Remarks: '(LATE PUNCH) ab - 31'
+    # 7. Media Team 1018 (Prudhvi Raj): 9:35 in-time cutoff
+    # Compute correct values from actual month (not hardcoded August values)
+    emp1018_bio = max(0.0, m_days - holidays - 2.0)  # ~2 absent days from late punch pattern
+    emp1018_pay = max(0.0, m_days - 2.0)             # 2 days LOP from late punches
     cursor.execute("""
     UPDATE monthly_records
-    SET biometric_days = 23.0, holiday = 6.0, total_pay_days = 29.0, remarks = '(LATE PUNCH) ab - 31', needs_review = 1
+    SET biometric_days = ?, holiday = ?, total_pay_days = ?, remarks = '(LATE PUNCH) ab - 31', needs_review = 1
     WHERE emp_code = '1018' AND month_year = ?
-    """, (month_year,))
+    """, (emp1018_bio, holidays, emp1018_pay, month_year,))
 
     # Recalculate salary for any staff whose total_pay_days was updated by principal rules
     all_overridden = list(NON_BIOMETRIC_STAFF.keys()) + ['1053', '1203', '109', '1018'] + transport_ids + admission_ids

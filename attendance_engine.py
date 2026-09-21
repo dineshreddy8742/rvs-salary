@@ -402,7 +402,7 @@ class AttendanceEngine:
         days = emp.get('days', [])
         present_punches = sum(1 for d in days if d.get('in_time') or d.get('out_time') or 'present' in str(d.get('status', '')).lower())
 
-        if code == '1053' and present_punches >= 10:
+        if code == '1053' and present_punches >= 12:  # DB threshold: >=12 biometric days -> full pay
             return {
                 'emp_code': code,
                 'name': emp['name'],
@@ -421,7 +421,7 @@ class AttendanceEngine:
                 'days': days
             }
 
-        if code == '1203' and present_punches >= 12:
+        if code == '1203' and present_punches >= 14:  # DB threshold: >=14 biometric days -> full pay
             return {
                 'emp_code': code,
                 'name': emp['name'],
