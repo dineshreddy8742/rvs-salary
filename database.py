@@ -340,7 +340,7 @@ def apply_principal_rules_to_db(month_year: str = "August -2026"):
         '101': {'name': 'Dr .M. Mohan Babu', 'dept': 'General', 'desig': 'Principal'},
         '707': {'name': 'R. Gunasekaran', 'dept': 'IT', 'desig': 'Asst.Prof'},
         '900': {'name': 'I. Sudarsan Kumar', 'dept': 'HAS', 'desig': 'Professor & DAP'},
-        '1060': {'name': 'Vivekand Adhikari', 'dept': 'Administration', 'desig': 'IR Officer'},
+        '1060': {'name': 'Vivekanand Adhikari', 'dept': 'Administration', 'desig': 'IR Officer'},
         '1015': {'name': 'R Hari Krishna', 'dept': 'Exam Section', 'desig': 'Clerk'},
         '1019': {'name': 'Bishal Kumar Sha', 'dept': 'TAP', 'desig': 'Executive Assistant'},
         '1021': {'name': 'M P Balaji', 'dept': 'Management Staff', 'desig': 'Accounts Officer'},
@@ -436,14 +436,8 @@ def apply_principal_rules_to_db(month_year: str = "August -2026"):
         WHERE emp_code = '1203' AND month_year = ?
         """, (bio_days, holidays, m_days, month_year))
 
-    # 4. 109 (Civil M. Leelakar) - bio timing before 11 am = full day present (31 days)
-    cursor.execute("SELECT COUNT(*) as cnt FROM monthly_records WHERE emp_code = '109' AND month_year = ?", (month_year,))
-    if cursor.fetchone()['cnt'] > 0:
-        cursor.execute("""
-        UPDATE monthly_records 
-        SET biometric_days = ?, holiday = ?, total_pay_days = ?, remarks = 'Full Attendance (Principal Override - Bio before 11am)', needs_review = 0, absent_days_json = '[]', missed_punches_json = '[]', late_punches_json = '[]'
-        WHERE emp_code = '109' AND month_year = ?
-        """, (bio_days, holidays, m_days, month_year))
+    # 4. 109 (Civil M. Leelakar) - daily punch before 11 am is handled by attendance engine
+    # (Do not blindly set to 31.0; preserve actual attendance calculated from punches)
 
     # 5. Transport Dept: remove late punch penalties & credit full days for in+out punches
     transport_ids = ['625', '26', '27', '626', '627', '648', '1198', '628', '622', '6621', '606', '623', '603', '653', '605', '6623', '607', '6633', '610', '613']
@@ -503,8 +497,15 @@ def apply_principal_rules_to_db(month_year: str = "August -2026"):
             WHERE emp_code = ? AND month_year = ?
             """, (a_bio_days, holidays, a_pay_days, aid, month_year))
 
+    # 7. Media Team 1018 (Prudhvi Raj): 9:35 in-time cutoff -> 29.0 Pay Days, 23.0 Biometric, Remarks: '(LATE PUNCH) ab - 31'
+    cursor.execute("""
+    UPDATE monthly_records
+    SET biometric_days = 23.0, holiday = 6.0, total_pay_days = 29.0, remarks = '(LATE PUNCH) ab - 31', needs_review = 1
+    WHERE emp_code = '1018' AND month_year = ?
+    """, (month_year,))
+
     # Recalculate salary for any staff whose total_pay_days was updated by principal rules
-    all_overridden = list(NON_BIOMETRIC_STAFF.keys()) + ['1053', '1203', '109'] + transport_ids + admission_ids
+    all_overridden = list(NON_BIOMETRIC_STAFF.keys()) + ['1053', '1203', '109', '1018'] + transport_ids + admission_ids
     for u_id in all_overridden:
         cursor.execute("""
         SELECT m.emp_code, m.total_pay_days, m.base_salary, m.arrears,
@@ -513,7 +514,7 @@ def apply_principal_rules_to_db(month_year: str = "August -2026"):
                p.base_salary as prof_base, p.category as prof_category, p.epf_amount as prof_epf,
                p.default_bus as prof_bus, p.default_mess as prof_mess, p.default_hostel_eb as prof_hostel,
                p.default_arrears as prof_arrears,
-               e.name, e.department
+               e.name, e.department, e.designation
         FROM monthly_records m
         LEFT JOIN salary_profiles p ON m.emp_code = p.emp_code
         JOIN employees e ON m.emp_code = e.emp_code
@@ -524,8 +525,8 @@ def apply_principal_rules_to_db(month_year: str = "August -2026"):
             prof = {
                 'emp_code': u_id,
                 'name': r['name'],
-                'category': r['prof_category'] or ('Teaching' if r['department'] in ('CE','EEE','ME','ECE','CSE','CSM','CSD','CAI','IT','MCA','MBA','HAS') else 'Non-Teaching'),
-                'base_salary': float(r['prof_base'] or 35000.0),
+                'category': payroll_engine.determine_employee_category(r['department'], r['designation'], r['prof_category']),
+                'base_salary': float(r['prof_base'] or 0.0),
                 'default_arrears': float(r['prof_arrears'] or 0.0),
                 'epf_amount': float(r['prof_epf'] or 0.0)
             }
@@ -569,6 +570,24 @@ def get_month_records(month_year: str, active_only: bool = True, reference_codes
     conn = get_db()
     cursor = conn.cursor()
 
+    # Pre-fetch CL and OD days map from daily_logs for this month
+    cursor.execute("""
+    SELECT emp_code,
+           GROUP_CONCAT(CASE WHEN status LIKE '%CL%' OR status LIKE '%LEAVE%' OR override_status LIKE '%CL%' OR override_status LIKE '%LEAVE%' THEN day_num END) as cl_days,
+           GROUP_CONCAT(CASE WHEN status LIKE '%OD%' OR status LIKE '%DUTY%' OR override_status LIKE '%OD%' OR override_status LIKE '%DUTY%' THEN day_num END) as od_days
+    FROM daily_logs
+    WHERE month_year = ?
+    GROUP BY emp_code
+    """, (month_year,))
+    leave_map = {}
+    for lr in cursor.fetchall():
+        c_days = [int(d) for d in (lr['cl_days'] or '').split(',') if d.isdigit()]
+        o_days = [int(d) for d in (lr['od_days'] or '').split(',') if d.isdigit()]
+        leave_map[str(lr['emp_code'])] = {
+            'cl_days': sorted(list(set(c_days))),
+            'od_days': sorted(list(set(o_days)))
+        }
+
     query = """
     SELECT e.emp_code, e.name, e.designation, e.department, e.annual_cl_quota, e.annual_od_quota, e.attendance_policy, e.is_manual,
            m.biometric_days, m.holiday, m.availed_leaves, m.sv_od, m.total_pay_days, m.remarks, m.needs_review,
@@ -587,6 +606,8 @@ def get_month_records(month_year: str, active_only: bool = True, reference_codes
         if active_only and reference_codes and ec not in reference_codes and not r['is_manual']:
             continue
 
+        lm = leave_map.get(str(ec), {'cl_days': [], 'od_days': []})
+
         results.append({
             'emp_code': ec,
             'name': r['name'],
@@ -603,7 +624,9 @@ def get_month_records(month_year: str, active_only: bool = True, reference_codes
             'needs_review': bool(r['needs_review']),
             'missed_out_punches': json.loads(r['missed_punches_json'] or '[]'),
             'absent_days': json.loads(r['absent_days_json'] or '[]'),
-            'late_punches': json.loads(r['late_punches_json'] or '[]')
+            'late_punches': json.loads(r['late_punches_json'] or '[]'),
+            'cl_days_list': lm['cl_days'],
+            'od_days_list': lm['od_days']
         })
 
     return results
@@ -1061,104 +1084,55 @@ def regularize_day_in_db(emp_code: str, month_year: str, day_num: int, action: s
 # PAYROLL & SALARY PROFILE MANAGEMENT
 # =============================================================================
 
+def reset_all_salaries_to_zero():
+    """Reset all salaries in salary_profiles and monthly_records to 0.0 across all tables."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+    UPDATE salary_profiles 
+    SET base_salary = 0.0, epf_amount = 0.0, default_bus = 0.0, default_mess = 0.0, 
+        default_hostel_eb = 0.0, default_arrears = 0.0
+    """)
+    cursor.execute("""
+    UPDATE monthly_records 
+    SET base_salary = 0.0, earned_basic = 0.0, earned_da = 0.0, earned_hra = 0.0, 
+        arrears = 0.0, gross_salary = 0.0, pt_deduction = 0.0, wf_deduction = 0.0, 
+        epf_deduction = 0.0, it_deduction = 0.0, bus_deduction = 0.0, mess_deduction = 0.0, 
+        hostel_eb_deduction = 0.0, other_deductions = 0.0, total_deductions = 0.0, net_salary = 0.0
+    """)
+    conn.commit()
+    conn.close()
+
 def seed_salary_profiles_from_reference(database_dir: str = 'database'):
     """
-    Seed salary_profiles table using historical records extracted from database/
-    and link them to employees in rvs_attendance.db.
+    Ensure all employees have a salary profile initialized with base_salary = 0.0.
+    No non-zero salaries are extracted or stored automatically.
     """
     conn = get_db()
     cursor = conn.cursor()
 
-    # Check how many profiles already exist
-    cursor.execute("SELECT COUNT(*) as cnt FROM salary_profiles")
-    if cursor.fetchone()['cnt'] > 50:
-        conn.close()
-        return
-
-    print("Seeding salary profiles from historical reference documents...")
-    extracted = payroll_engine.extract_historical_salary_profiles(database_dir)
-
     cursor.execute("SELECT emp_code, name, designation, department FROM employees")
     employees = cursor.fetchall()
 
-    def norm(s):
-        if not s: return ''
-        s = s.lower().replace('.', ' ').replace(',', ' ')
-        s = re.sub(r'\b(dr|prof|mr|ms|mrs|assoc|asst)\b', '', s)
-        return re.sub(r'[^a-z0-9]', '', s)
-
-    matched_count = 0
     for emp in employees:
         ec = emp['emp_code']
         raw_name = emp['name']
         dept = emp['department']
         desig = emp['designation'] or ''
-        n_key = norm(raw_name)
-
-        # Check match in extracted historical salary sheets
-        prof = extracted.get(n_key)
-        if not prof:
-            # Try matching by checking if any key in extracted is substring
-            for k, p in extracted.items():
-                if len(k) >= 5 and (k in n_key or n_key in k):
-                    prof = p
-                    break
-
-        dept_lower = (dept or '').lower()
-        if prof:
-            category = prof['category']
-            base_sal = float(prof['base_salary'])
-            bank_acc = prof['account_no']
-            ifsc = prof['ifsc_code']
-            epf = float(prof.get('epf_amount', 0.0))
-            bus = float(prof.get('default_bus', 0.0))
-            mess = float(prof.get('default_mess', 0.0))
-            eb = float(prof.get('default_hostel_eb', 0.0))
-            matched_count += 1
-        else:
-            # Fallback based on department / designation
-            if any(k in dept_lower for k in ['garden']):
-                category = 'Garden Staff'
-                base_sal = 12000.0
-            elif any(k in dept_lower for k in ['security']):
-                category = 'Security'
-                base_sal = 15000.0
-            elif any(k in dept_lower for k in ['attender']):
-                category = 'Attender'
-                base_sal = 11000.0
-            elif any(k in dept_lower for k in ['transport', 'driver']):
-                category = 'Transport'
-                base_sal = 16000.0
-            elif any(k in dept_lower for k in ['admission']):
-                category = 'Admission'
-                base_sal = 25000.0
-            elif any(k in dept_lower for k in ['management', 'administration']):
-                category = 'Management' if 'management' in dept_lower else 'Non-Teaching'
-                base_sal = 35000.0 if 'principal' in desig.lower() or ec == '101' else 22000.0
-            else:
-                category = 'Teaching'
-                base_sal = 160000.0 if ec == '101' or 'principal' in desig.lower() else (45000.0 if 'assoc' in desig.lower() else 35000.0)
-
-            bank_acc = ''
-            ifsc = 'PUNB0401700'
-            epf = 0.0
-            bus = 0.0
-            mess = 0.0
-            eb = 0.0
+        category = payroll_engine.determine_employee_category(dept, desig)
 
         cursor.execute("""
         INSERT OR REPLACE INTO salary_profiles 
         (emp_code, name, category, designation, department, base_salary, bank_name, account_no, ifsc_code, epf_amount, default_bus, default_mess, default_hostel_eb, default_arrears)
-        VALUES (?, ?, ?, ?, ?, ?, 'PNB', ?, ?, ?, ?, ?, ?, 0.0)
-        """, (ec, raw_name, category, desig, dept, base_sal, bank_acc, ifsc, epf, bus, mess, eb))
+        VALUES (?, ?, ?, ?, ?, 0.0, 'PNB', '', 'PUNB0401700', 0.0, 0.0, 0.0, 0.0, 0.0)
+        """, (ec, raw_name, category, desig, dept))
 
     conn.commit()
     conn.close()
-    print(f"Seeded {matched_count} salary profiles matched from reference files.")
+    print("Salary profiles initialized with base_salary = 0.0.")
 
-    # Populate monthly salary for all available months
-    for m in get_available_months():
-        populate_month_salaries_if_empty(m)
+    # Reset any monthly salaries to 0.0
+    reset_all_salaries_to_zero()
 
 def get_employee_salary_profile(emp_code: str) -> Optional[dict]:
     """Retrieve an employee's salary profile."""
@@ -1206,13 +1180,17 @@ def recalculate_monthly_salary(emp_code: str, month_year: str, total_pay_days: O
         prof = {
             'emp_code': emp_code,
             'name': emp_row['name'],
-            'category': 'Teaching' if emp_row['department'] in ('CE','EEE','ME','ECE','CSE','CSM','CSD','CAI','IT','MCA','MBA','HAS') else 'Non-Teaching',
-            'base_salary': 35000.0,
+            'category': payroll_engine.determine_employee_category(emp_row['department'], emp_row['designation']),
+            'base_salary': 0.0,
             'default_arrears': 0.0,
             'epf_amount': 0.0
         }
     else:
         prof = dict(prof_row)
+        cursor.execute("SELECT designation, department FROM employees WHERE emp_code = ?", (emp_code,))
+        e_row = cursor.fetchone()
+        if e_row:
+            prof['category'] = payroll_engine.determine_employee_category(e_row['department'], e_row['designation'], prof.get('category'))
 
     # Get monthly attendance record
     cursor.execute("SELECT * FROM monthly_records WHERE emp_code = ? AND month_year = ?", (emp_code, month_year))
@@ -1271,7 +1249,7 @@ def populate_month_salaries_if_empty(month_year: str):
            p.base_salary as prof_base, p.category as prof_category, p.epf_amount as prof_epf,
            p.default_bus as prof_bus, p.default_mess as prof_mess, p.default_hostel_eb as prof_hostel,
            p.default_arrears as prof_arrears,
-           e.name, e.department
+           e.name, e.department, e.designation
     FROM monthly_records m
     LEFT JOIN salary_profiles p ON m.emp_code = p.emp_code
     JOIN employees e ON m.emp_code = e.emp_code
@@ -1287,11 +1265,12 @@ def populate_month_salaries_if_empty(month_year: str):
 
     for r in missing:
         ec = r['emp_code']
+        cat = payroll_engine.determine_employee_category(r['department'], r['designation'], r['prof_category'])
         prof = {
             'emp_code': ec,
             'name': r['name'],
-            'category': r['prof_category'] or ('Teaching' if r['department'] in ('CE','EEE','ME','ECE','CSE','CSM','CSD','CAI','IT','MCA','MBA','HAS') else 'Non-Teaching'),
-            'base_salary': float(r['prof_base'] or 35000.0),
+            'category': cat,
+            'base_salary': float(r['prof_base'] or 0.0),
             'default_arrears': float(r['prof_arrears'] or 0.0),
             'epf_amount': float(r['prof_epf'] or 0.0)
         }
@@ -1397,12 +1376,13 @@ def get_month_salary_records(month_year: str, active_only: bool = True, referenc
         tot_ded += ded
         tot_net += net
 
+        cat = payroll_engine.determine_employee_category(r['department'], r['designation'], r['category'])
         records.append({
             'emp_code': ec,
             'name': r['name'],
             'designation': r['designation'] or '',
             'department': r['department'],
-            'category': r['category'] or 'Non-Teaching',
+            'category': cat,
             'attendance_policy': r['attendance_policy'],
             'total_pay_days': r['total_pay_days'],
             'base_salary': base_sal,

@@ -104,7 +104,7 @@ def export_to_xls(employees: List[Dict[str, Any]], output_filepath: str, month_y
     ws.write(0, 0, f"Monthly Status Report (Summary Report) - {month_year_str}", title_style)
     # Row 1: Company
     ws.write(1, 0, "Company:", regular_style)
-    ws.write(1, 2, "RVS", dept_style)
+    ws.write(1, 2, "SVCET", dept_style)
     ws.write(1, 4, "Printed On :01 September 2026 11:35", regular_style)
 
     columns = [
@@ -116,11 +116,21 @@ def export_to_xls(employees: List[Dict[str, Any]], output_filepath: str, month_y
     s_no = 1
     current_dept = None
 
+    # If first employee is Principal Sir (101 / General), write header at row 3 and Principal at row 4
+    has_principal_top = len(employees) > 0 and (str(employees[0].get('emp_code', '')).strip() == '101' or employees[0].get('department') == 'General')
+
+    if has_principal_top:
+        # Write top column headers
+        for col_idx, col_name in enumerate(columns):
+            ws.write(current_row, col_idx, col_name, header_style)
+        current_row += 1
+
     for emp in employees:
         dept = emp.get('department', 'General')
+        is_principal = (str(emp.get('emp_code', '')).strip() == '101' or dept == 'General')
         
-        # When department changes, write Department header + Column headers
-        if dept != current_dept:
+        # When department changes
+        if not is_principal and dept != current_dept:
             current_dept = dept
             # Department banner
             ws.write(current_row, 1, "Department:", dept_style)
@@ -131,6 +141,8 @@ def export_to_xls(employees: List[Dict[str, Any]], output_filepath: str, month_y
             for col_idx, col_name in enumerate(columns):
                 ws.write(current_row, col_idx, col_name, header_style)
             current_row += 1
+        elif is_principal:
+            current_dept = 'General'
 
         # Write employee row
         ws.write(current_row, 0, s_no, cell_center_style)

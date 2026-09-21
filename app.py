@@ -127,7 +127,18 @@ if os.path.exists('database'):
         print("Notice on seeding salary profiles:", e)
 
 RAW_FILE = 'raw input from biometric.xls'
+if not os.path.exists(RAW_FILE) and os.path.exists('database'):
+    for f in os.listdir('database'):
+        if 'raw input' in f.lower() or 'daily attendance' in f.lower():
+            RAW_FILE = os.path.join('database', f)
+            break
+
 REF_FILE = 'output.xls'
+if not os.path.exists(REF_FILE) and os.path.exists('database'):
+    for f in os.listdir('database'):
+        if 'output' in f.lower():
+            REF_FILE = os.path.join('database', f)
+            break
 
 # Seed database if empty
 if not database.has_monthly_records():
@@ -159,8 +170,8 @@ if os.path.exists(REF_FILE):
                     else:
                         raw_ec = f"REF_{int(val0)}"
                 REFERENCE_CODES.add(raw_ec)
-        # Always keep VIPs active
-        REFERENCE_CODES.update({'101', '707', '900', '1060', '1015', '1019', '1021', '4001', '1030', 'SHAJAHAN', 'SHIVA_DRIVER'})
+        # Always keep VIPs and disambiguated codes active
+        REFERENCE_CODES.update({'101', '707', '900', '1060', '1015', '1019', '1021', '4001', '1030', 'SHAJAHAN', 'SHIVA_DRIVER', '214_ELEC'})
     except Exception as e:
         print("Error reading reference codes:", e)
 

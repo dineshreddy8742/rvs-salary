@@ -36,6 +36,39 @@ def calculate_wf(category: str, gross_salary: float) -> float:
         return 75.0
     return 30.0
 
+# Academic / Teaching Departments
+TEACHING_DEPTS = {'CE', 'EEE', 'ME', 'ECE', 'CSE', 'CSM', 'CSD', 'CAI', 'IT', 'MCA', 'MBA', 'HAS', 'PD'}
+NON_TEACH_DESIG_KEYWORDS = ['lab', 'tech', 'operator', 'assistant', 'programmer', 'attender', 'helper', 'mechanic', 'clerk', 'admin']
+
+def determine_employee_category(dept: str, desig: str = '', current_cat: Optional[str] = None) -> str:
+    """
+    Canonically determine Teaching vs Non-Teaching category based on department & designation.
+    Non-academic departments can NEVER be Teaching.
+    """
+    dept_str = (dept or '').strip()
+    dept_lower = dept_str.lower()
+    desig_lower = (desig or '').lower()
+
+    if dept_str not in TEACHING_DEPTS:
+        if 'garden' in dept_lower:
+            return 'Garden Staff'
+        if 'security' in dept_lower:
+            return 'Security'
+        if 'attender' in dept_lower or 'house' in dept_lower:
+            return 'Attender'
+        if 'transport' in dept_lower or 'driver' in dept_lower:
+            return 'Transport'
+        if 'admission' in dept_lower:
+            return 'Admission'
+        if 'management' in dept_lower or current_cat == 'Management':
+            return 'Management'
+        return 'Non-Teaching'
+    else:
+        # Academic department - check for non-teaching designations (lab tech, programmer, operator, etc.)
+        if any(k in desig_lower for k in NON_TEACH_DESIG_KEYWORDS):
+            return 'Non-Teaching'
+        return 'Teaching'
+
 # Days in month helper
 def get_days_in_month_str(month_year_str: str) -> int:
     """Extract total days in month (e.g. 'August -2026' -> 31, 'June 2026' -> 30)."""

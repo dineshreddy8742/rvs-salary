@@ -546,17 +546,6 @@
       </div>
     </section>
 
-    <!-- Guidance Bar -->
-    <div class="guidance-bar">
-      <div class="guide-tag">💡 Tip</div>
-      <div class="guide-content" id="guidance-content">
-        <span>Click any number in the table to edit it directly — days, salary, or deductions.</span>
-        <span>•</span>
-        <span><strong>📄 Slip</strong> = Print pay slip &nbsp;|&nbsp; <strong>📅 Punches</strong> = See daily punch calendar &nbsp;|&nbsp; <strong>✏️ Edit</strong> = Edit all details</span>
-        <span>•</span>
-        <span><strong>✔ Full</strong> = Give full 31-day salary &nbsp;|&nbsp; <strong>↺ Revert</strong> = Reset to machine punch data</span>
-      </div>
-    </div>
 
     <!-- Mobile Table Swipe Hint -->
     <div class="mobile-table-hint">
@@ -565,7 +554,19 @@
 
     <!-- Main Spreadsheet Table Section -->
     <section class="table-section-card" id="table-section">
-      <div class="table-wrapper">
+      <div class="table-card-header">
+        <div class="table-card-title">
+          <span class="table-title-icon">📋</span>
+          <span class="table-title-text" id="table-record-count">Master Payroll & Attendance Roster (377 Staff)</span>
+        </div>
+        <div class="table-card-actions">
+          <button class="table-view-toggle-btn" id="btn-toggle-table-height" onclick="toggleTableHeight()" title="Toggle between Fit-to-Screen (Fixed Sticky Header) and Expanded Full View">
+            <span id="table-height-icon">⛶</span>
+            <span id="table-height-text">Full Expand</span>
+          </button>
+        </div>
+      </div>
+      <div class="table-wrapper" id="table-wrapper">
         <table class="payroll-table" id="main-table">
           <thead id="table-head">
             <!-- Dynamically populated headers for Attendance vs Salary mode -->
@@ -787,10 +788,33 @@
 
       <div class="modal-content-area">
         <div class="modal-summary-ribbon" id="timeline-summary-bar"></div>
-        <div class="modal-guide-tip">
-          💡 <strong>One-Click Regularization:</strong> Click on any day card below to regularize missing out-punches, convert absent days into approved CL/OD slips, or adjust half-days. Changes update salary instantly.
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem;">
+          <div class="modal-guide-tip" style="margin-bottom: 0; flex: 1; min-width: 260px;">
+            💡 <strong>Exact Biometric Punch Verification:</strong> Shows punch-in, punch-out, late coming, missing out-punches, leaves, and absences with zero mismatch.
+          </div>
+          <div style="display: flex; gap: 6px; background: #e2e8f0; padding: 3px; border-radius: 8px;">
+            <button id="btn-timeline-cards" class="btn-toggle-view active" onclick="switchTimelineView('cards')" style="padding: 4px 12px; font-size: 0.78rem; font-weight: 700; border: none; border-radius: 6px; cursor: pointer; background: white; color: #1e3a8a; box-shadow: 0 1px 2px rgba(0,0,0,0.08);">📅 Calendar Cards</button>
+            <button id="btn-timeline-table" class="btn-toggle-view" onclick="switchTimelineView('table')" style="padding: 4px 12px; font-size: 0.78rem; font-weight: 600; border: none; border-radius: 6px; cursor: pointer; background: transparent; color: #64748b;">📋 Tabular Punch Log</button>
+          </div>
         </div>
         <div class="calendar-cards-grid" id="calendar-grid"></div>
+        <div id="timeline-table-wrap" style="display: none; max-height: 480px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+          <table class="payroll-table" style="width: 100%; border-collapse: collapse; font-size: 0.8rem;">
+            <thead style="position: sticky; top: 0; z-index: 10; background: #f8fafc;">
+              <tr>
+                <th style="width: 42px; text-align: center; padding: 8px 6px; border-bottom: 2px solid #cbd5e1;">Day</th>
+                <th style="width: 95px; padding: 8px 6px; border-bottom: 2px solid #cbd5e1;">Date</th>
+                <th style="width: 85px; text-align: center; padding: 8px 6px; border-bottom: 2px solid #cbd5e1;">Punch In</th>
+                <th style="width: 85px; text-align: center; padding: 8px 6px; border-bottom: 2px solid #cbd5e1;">Punch Out</th>
+                <th style="width: 75px; text-align: center; padding: 8px 6px; border-bottom: 2px solid #cbd5e1;">Duration</th>
+                <th style="width: 110px; text-align: center; padding: 8px 6px; border-bottom: 2px solid #cbd5e1;">Status</th>
+                <th style="min-width: 170px; padding: 8px 6px; border-bottom: 2px solid #cbd5e1;">Daily Remarks & Punch Flags</th>
+                <th style="width: 170px; text-align: center; padding: 8px 6px; border-bottom: 2px solid #cbd5e1;">Regularize</th>
+              </tr>
+            </thead>
+            <tbody id="timeline-table-body"></tbody>
+          </table>
+        </div>
       </div>
 
       <div class="modal-footer-bar">

@@ -774,44 +774,6 @@ function switchDashboardMode(mode) {
     });
   }
 
-  // Update guidance bar text dynamically for instant user clarity
-  const guideTag = document.querySelector('.guidance-bar .guide-tag');
-  const guideContent = document.getElementById('guidance-content');
-
-  if (currentDashboardMode === 'unified') {
-    if (guideTag) guideTag.textContent = '🌟 Unified Master';
-    if (guideContent) {
-      guideContent.innerHTML = `
-        <span>💡 <strong>Unified Master Mode:</strong> Attendance & Salary consolidated side-by-side with full inline editing.</span>
-        <span>•</span>
-        <span>Edit <strong>CL ✎</strong>, <strong>OD ✎</strong>, <strong>Pay Days ✎</strong>, <strong>Base Rate ✎</strong>, or <strong>Other Ded ✎</strong> directly.</span>
-        <span>•</span>
-        <span>Notice <strong>₹275</strong> is split transparently: <strong>PT: ₹200</strong> (AP State Tax) + <strong>WF: ₹75</strong> (Staff Welfare).</span>
-      `;
-    }
-  } else if (currentDashboardMode === 'attendance') {
-    if (guideTag) guideTag.textContent = '📋 Attendance Register';
-    if (guideContent) {
-      guideContent.innerHTML = `
-        <span>📋 <strong>Attendance Grid Mode:</strong> Register of biometric punches, holiday credits, and leave slips.</span>
-        <span>•</span>
-        <span>Edit <strong>CL ✎</strong> or <strong>OD ✎</strong> inline to recalculate pay days automatically, or click <strong>✔ Full Pay</strong> for 1-click 31 days.</span>
-        <span>•</span>
-        <span>Click <strong>📅 Punches</strong> to view daily 1–31 biometric in/out times and apply regularization.</span>
-      `;
-    }
-  } else if (currentDashboardMode === 'salary') {
-    if (guideTag) guideTag.textContent = '💰 Salary & Bank Ledger';
-    if (guideContent) {
-      guideContent.innerHTML = `
-        <span>💰 <strong>Salary & Bank Ledger Mode:</strong> Official institutional salary bill with Bank Account Numbers & IFSC codes.</span>
-        <span>•</span>
-        <span>Clear breakdown of statutory deductions: <strong>PT ₹200</strong>, <strong>WF ₹75</strong>, <strong>EPF</strong>, and <strong>Other Ded ✎</strong>.</span>
-        <span>•</span>
-        <span>Click <strong>🖨️ Slip</strong> for formal printable pay slip, or <strong>⚙️ Edit</strong> to adjust packages & bank details.</span>
-      `;
-    }
-  }
 
   renderTable();
 }
@@ -987,6 +949,8 @@ function buildUnifiedRecords(attStats, salStats) {
       present_days: present,
       cl_days: cl,
       od_days: od,
+      cl_days_list: Array.isArray(att.cl_days_list) ? att.cl_days_list : [],
+      od_days_list: Array.isArray(att.od_days_list) ? att.od_days_list : [],
       lop_days: lopDays,
       total_pay_days: payDays,
       base_salary: baseSalary,
@@ -1427,6 +1391,22 @@ function showChangePinMode() {
   document.getElementById('btn-change-pin').style.display = 'none';
 }
 
+function toggleTableHeight() {
+  const wrapper = document.getElementById('table-wrapper');
+  const btnText = document.getElementById('table-height-text');
+  const btnIcon = document.getElementById('table-height-icon');
+  if (!wrapper) return;
+
+  const isExpanded = wrapper.classList.toggle('expanded-view');
+  if (isExpanded) {
+    if (btnText) btnText.textContent = 'Lock to Screen';
+    if (btnIcon) btnIcon.textContent = '🔒';
+  } else {
+    if (btnText) btnText.textContent = 'Full Expand';
+    if (btnIcon) btnIcon.textContent = '⛶';
+  }
+}
+
 // -----------------------------------------------------------------------------
 // RENDER DYNAMIC MASTER TABLE (3 MODES: UNIFIED MASTER, ATTENDANCE, SALARY)
 // -----------------------------------------------------------------------------
@@ -1443,9 +1423,9 @@ function renderTable() {
     if (showSalaryColumns) {
       thead.innerHTML = `
         <tr>
-          <th style="width: 38px; text-align: center;" class="sticky-col-code">#</th>
-          <th style="width: 78px; text-align: center; cursor: pointer;" class="sticky-col-code" onclick="handleHeaderSort('code')" title="Sort by Emp Code">Emp Code ↕</th>
-          <th style="min-width: 190px; cursor: pointer;" onclick="handleHeaderSort('name')" title="Sort by Name (A → Z)">Staff Member ↕</th>
+          <th style="width: 40px; text-align: center;" class="sticky-col-sno">#</th>
+          <th style="width: 80px; text-align: center; cursor: pointer;" class="sticky-col-code" onclick="handleHeaderSort('code')" title="Sort by Emp Code">Emp Code ↕</th>
+          <th style="min-width: 195px; cursor: pointer;" class="sticky-col-name" onclick="handleHeaderSort('name')" title="Sort by Name (A → Z)">Staff Member ↕</th>
           <th style="width: 65px;">Dept</th>
           
           <!-- Biometric Attendance Columns -->
@@ -1467,15 +1447,18 @@ function renderTable() {
           <th style="width: 65px; text-align: right;" class="th-section-sal" title="Other Deductions (Advance, Misc) - Click to edit directly">Other ✎</th>
           <th style="width: 105px; text-align: right; background: #ecfdf5; color: #047857; font-weight: 800; cursor: pointer;" onclick="handleHeaderSort('net')" title="Sort by Net Salary (Click to toggle High ↔ Low)">Net Pay (₹) ↕</th>
           
+          <!-- Remarks Column -->
+          <th style="min-width: 290px; text-align: left;" title="Biometric Remarks: Absences, Missed Out-Punches, Late Arrivals">Remarks / Policy</th>
+
           <th style="width: 185px; text-align: center;">Actions</th>
         </tr>
       `;
     } else {
       thead.innerHTML = `
         <tr>
-          <th style="width: 38px; text-align: center;" class="sticky-col-code">#</th>
-          <th style="width: 78px; text-align: center; cursor: pointer;" class="sticky-col-code" onclick="handleHeaderSort('code')" title="Sort by Emp Code">Emp Code ↕</th>
-          <th style="min-width: 190px; cursor: pointer;" onclick="handleHeaderSort('name')" title="Sort by Name (A → Z)">Staff Member ↕</th>
+          <th style="width: 40px; text-align: center;" class="sticky-col-sno">#</th>
+          <th style="width: 80px; text-align: center; cursor: pointer;" class="sticky-col-code" onclick="handleHeaderSort('code')" title="Sort by Emp Code">Emp Code ↕</th>
+          <th style="min-width: 195px; cursor: pointer;" class="sticky-col-name" onclick="handleHeaderSort('name')" title="Sort by Name (A → Z)">Staff Member ↕</th>
           <th style="width: 65px;">Dept</th>
           
           <!-- Biometric Attendance Columns -->
@@ -1491,6 +1474,9 @@ function renderTable() {
             🔒 Salary Hidden
           </th>
           
+          <!-- Remarks Column -->
+          <th style="min-width: 290px; text-align: left;" title="Biometric Remarks: Absences, Missed Out-Punches, Late Arrivals">Remarks / Policy</th>
+
           <th style="width: 185px; text-align: center;">Actions</th>
         </tr>
       `;
@@ -1498,9 +1484,9 @@ function renderTable() {
   } else if (mode === 'attendance') {
     thead.innerHTML = `
       <tr>
-        <th style="width: 40px; text-align: center;">#</th>
-        <th style="width: 80px; text-align: center; cursor: pointer;" onclick="handleHeaderSort('code')" title="Sort by Emp Code">Emp Code ↕</th>
-        <th style="min-width: 210px; cursor: pointer;" onclick="handleHeaderSort('name')" title="Sort by Name (A → Z)">Employee Name ↕</th>
+        <th style="width: 40px; text-align: center;" class="sticky-col-sno">#</th>
+        <th style="width: 80px; text-align: center; cursor: pointer;" class="sticky-col-code" onclick="handleHeaderSort('code')" title="Sort by Emp Code">Emp Code ↕</th>
+        <th style="min-width: 210px; cursor: pointer;" class="sticky-col-name" onclick="handleHeaderSort('name')" title="Sort by Name (A → Z)">Employee Name ↕</th>
         <th style="width: 95px;">Designation</th>
         <th style="width: 75px;">Dept</th>
         <th style="width: 60px; text-align: center;" title="Total Days in Month">Month</th>
@@ -1516,9 +1502,9 @@ function renderTable() {
   } else if (mode === 'salary') {
     thead.innerHTML = `
       <tr>
-        <th style="width: 40px; text-align: center;">#</th>
-        <th style="width: 80px; text-align: center; cursor: pointer;" onclick="handleHeaderSort('code')" title="Sort by Emp Code">Emp Code ↕</th>
-        <th style="min-width: 190px; cursor: pointer;" onclick="handleHeaderSort('name')" title="Sort by Name (A → Z)">Staff Member ↕</th>
+        <th style="width: 40px; text-align: center;" class="sticky-col-sno">#</th>
+        <th style="width: 80px; text-align: center; cursor: pointer;" class="sticky-col-code" onclick="handleHeaderSort('code')" title="Sort by Emp Code">Emp Code ↕</th>
+        <th style="min-width: 195px; cursor: pointer;" class="sticky-col-name" onclick="handleHeaderSort('name')" title="Sort by Name (A → Z)">Staff Member ↕</th>
         <th style="width: 95px;">Category</th>
         <th style="width: 70px;">Dept</th>
         <th style="width: 70px; text-align: center; cursor: pointer;" onclick="handleHeaderSort('days')" title="Eligible Pay Days - Click to edit directly">Pay Days ✎ ↕</th>
@@ -1613,7 +1599,12 @@ function renderTable() {
     }
   });
 
-  const totalCols = (mode === 'unified') ? (showSalaryColumns ? 20 : 12) : ((mode === 'attendance') ? 13 : 18);
+  const countEl = document.getElementById('table-record-count');
+  if (countEl) {
+    countEl.textContent = `Master Payroll & Attendance Roster (${filtered.length} Staff)`;
+  }
+
+  const totalCols = (mode === 'unified') ? (showSalaryColumns ? 21 : 13) : ((mode === 'attendance') ? 13 : 18);
 
   if (filtered.length === 0) {
     tbody.innerHTML = `<tr><td colspan="${totalCols}" style="text-align: center; padding: 3rem; color: #94a3b8; font-weight: 500;">No employees found matching the selected filter.</td></tr>`;
@@ -1657,9 +1648,9 @@ function renderTable() {
     if (mode === 'unified') {
       // 🌟 UNIFIED MASTER ROW (Attendance + Salary side-by-side with full editability)
       tr.innerHTML = `
-        <td style="text-align: center; color: #94a3b8; font-weight: 600;" class="sticky-col-code">${sNo++}</td>
+        <td style="text-align: center; color: #94a3b8; font-weight: 600;" class="sticky-col-sno">${sNo++}</td>
         <td style="text-align: center; font-weight: 700; color: #0f172a;" class="sticky-col-code">${emp.emp_code}</td>
-        <td>
+        <td class="sticky-col-name">
           <span class="emp-name-link" onclick="openPortfolio('${emp.emp_code}')" title="Click to view 360° Annual Profile & Leave Passbook">
             <strong>${emp.name}</strong>
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/></svg>
@@ -1675,29 +1666,33 @@ function renderTable() {
         <td style="text-align: center; color: #64748b; font-size: 0.8rem;">${emp.month_days}</td>
         <td style="text-align: center; font-weight: 700; color: #1e3a8a;">${emp.present_days}</td>
         
-        <!-- Editable CL -->
+        <!-- Editable CL with exact day numbers & dates -->
         <td style="text-align: center;">
-          <input type="number" step="0.5" min="0" max="31"
-                 class="cell-sal-input input-cl" 
-                 value="${emp.cl_days || 0}" 
-                 title="Casual Leave (CL) Slips - Click to edit directly"
-                 onchange="handleAttendanceInlineEdit('${emp.emp_code}', 'availed_leaves', this.value, this)">
+          <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
+            <input type="number" step="0.5" min="0" max="31"
+                   class="cell-sal-input input-cl" 
+                   value="${emp.cl_days || 0}" 
+                   title="Casual Leave (CL) Slips - Click to edit directly"
+                   onchange="handleAttendanceInlineEdit('${emp.emp_code}', 'availed_leaves', this.value, this)">
+            ${renderClDaysBadge(emp)}
+          </div>
         </td>
         
-        <!-- Editable OD -->
+        <!-- Editable OD with exact day numbers & dates -->
         <td style="text-align: center;">
-          <input type="number" step="0.5" min="0" max="31"
-                 class="cell-sal-input input-od" 
-                 value="${emp.od_days || 0}" 
-                 title="On Duty (OD) Slips - Click to edit directly"
-                 onchange="handleAttendanceInlineEdit('${emp.emp_code}', 'sv_od', this.value, this)">
+          <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
+            <input type="number" step="0.5" min="0" max="31"
+                   class="cell-sal-input input-od" 
+                   value="${emp.od_days || 0}" 
+                   title="On Duty (OD) Slips - Click to edit directly"
+                   onchange="handleAttendanceInlineEdit('${emp.emp_code}', 'sv_od', this.value, this)">
+            ${renderOdDaysBadge(emp)}
+          </div>
         </td>
         
-        <!-- LOP Badge -->
+        <!-- LOP Badge with Exact Absent/Half/No-Out Breakdown -->
         <td style="text-align: center;">
-          ${emp.lop_days > 0 
-            ? `<span class="lop-badge" title="${emp.lop_days} Unpaid Absent Days">${emp.lop_days}d LOP</span>` 
-            : `<span style="color:#94a3b8; font-size:0.75rem;">0</span>`}
+          ${renderLopCell(emp)}
         </td>
         
         <!-- Directly Editable Payable Days -->
@@ -1787,6 +1782,11 @@ function renderTable() {
         </td>
         `}
 
+        <!-- Remarks / Policy Column -->
+        <td style="font-size: 0.75rem; vertical-align: middle;">
+          ${renderRemarksBadges(emp)}
+        </td>
+
         <!-- Actions Column -->
         <td style="text-align: center;">
           <div class="row-action-cluster">
@@ -1820,9 +1820,9 @@ function renderTable() {
       }
 
       tr.innerHTML = `
-        <td style="text-align: center; color: #94a3b8; font-weight: 600;">${sNo++}</td>
-        <td style="text-align: center; font-weight: 700; color: #0f172a;">${emp.emp_code}</td>
-        <td>
+        <td style="text-align: center; color: #94a3b8; font-weight: 600;" class="sticky-col-sno">${sNo++}</td>
+        <td style="text-align: center; font-weight: 700; color: #0f172a;" class="sticky-col-code">${emp.emp_code}</td>
+        <td class="sticky-col-name">
           <span class="emp-name-link" onclick="openPortfolio('${emp.emp_code}')" title="Click to view 360° Annual Leave Passbook">
             <strong>${emp.name}</strong>
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/></svg>
@@ -1835,22 +1835,28 @@ function renderTable() {
         <td style="text-align: center; font-weight: 700; color: #1e3a8a;">${emp.present_days}</td>
         <td style="text-align: center; color: #0369a1; font-size: 0.8rem;">${emp.holiday || 6}</td>
         
-        <!-- Editable CL -->
+        <!-- Editable CL with exact day numbers & dates -->
         <td style="text-align: center;">
-          <input type="number" step="0.5" min="0" max="31"
-                 class="cell-sal-input input-cl" 
-                 value="${emp.cl_days || 0}" 
-                 title="Edit Casual Leave (CL)"
-                 onchange="handleAttendanceInlineEdit('${emp.emp_code}', 'availed_leaves', this.value, this)">
+          <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
+            <input type="number" step="0.5" min="0" max="31"
+                   class="cell-sal-input input-cl" 
+                   value="${emp.cl_days || 0}" 
+                   title="Edit Casual Leave (CL)"
+                   onchange="handleAttendanceInlineEdit('${emp.emp_code}', 'availed_leaves', this.value, this)">
+            ${renderClDaysBadge(emp)}
+          </div>
         </td>
         
-        <!-- Editable OD -->
+        <!-- Editable OD with exact day numbers & dates -->
         <td style="text-align: center;">
-          <input type="number" step="0.5" min="0" max="31"
-                 class="cell-sal-input input-od" 
-                 value="${emp.od_days || 0}" 
-                 title="Edit On-Duty (OD)"
-                 onchange="handleAttendanceInlineEdit('${emp.emp_code}', 'sv_od', this.value, this)">
+          <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
+            <input type="number" step="0.5" min="0" max="31"
+                   class="cell-sal-input input-od" 
+                   value="${emp.od_days || 0}" 
+                   title="Edit On-Duty (OD)"
+                   onchange="handleAttendanceInlineEdit('${emp.emp_code}', 'sv_od', this.value, this)">
+            ${renderOdDaysBadge(emp)}
+          </div>
         </td>
         
         <!-- Editable Pay Days -->
@@ -1885,9 +1891,9 @@ function renderTable() {
     } else if (mode === 'salary') {
       // 💰 SALARY & BANK LEDGER ROW (Financial payroll focus)
       tr.innerHTML = `
-        <td style="text-align: center; color: #94a3b8; font-weight: 600;">${sNo++}</td>
-        <td style="text-align: center; font-weight: 700; color: #0f172a;">${emp.emp_code}</td>
-        <td>
+        <td style="text-align: center; color: #94a3b8; font-weight: 600;" class="sticky-col-sno">${sNo++}</td>
+        <td style="text-align: center; font-weight: 700; color: #0f172a;" class="sticky-col-code">${emp.emp_code}</td>
+        <td class="sticky-col-name">
           <span class="emp-name-link" onclick="openFormalPaySlip('${emp.emp_code}')" title="Click to view Official Printable Pay Slip">
             <strong>${emp.name}</strong>
           </span>
@@ -2409,6 +2415,330 @@ async function handleInlineEdit(empCode, field, value, inputEl) {
   }
 }
 
+// Helper to render simple CL day and date badge under CL input
+function renderClDaysBadge(emp) {
+  const clList = (Array.isArray(emp.cl_days_list) ? emp.cl_days_list : [])
+    .map(n => parseInt(String(n).replace(/\D/g, ''), 10))
+    .filter(n => !isNaN(n) && n > 0);
+
+  if (clList.length === 0) return '';
+  
+  const daysStr = clList.join(', ');
+  const titleStr = clList.map(d => `${String(d).padStart(2, '0')}-Aug`).join(', ');
+
+  return `<span style="font-size:0.7rem; font-weight:800; color:#7e22ce; background:#fdf4ff; border:1px solid #f0abfc; padding:1px 5px; border-radius:4px; margin-top:2px; white-space:nowrap; cursor:default;" title="Approved CL on: ${titleStr}">[ Day ${daysStr} ]</span>`;
+}
+
+// Helper to render simple OD day and date badge under OD input
+function renderOdDaysBadge(emp) {
+  const odList = (Array.isArray(emp.od_days_list) ? emp.od_days_list : [])
+    .map(n => parseInt(String(n).replace(/\D/g, ''), 10))
+    .filter(n => !isNaN(n) && n > 0);
+
+  if (odList.length === 0) return '';
+
+  const daysStr = odList.join(', ');
+  const titleStr = odList.map(d => `${String(d).padStart(2, '0')}-Aug`).join(', ');
+
+  return `<span style="font-size:0.7rem; font-weight:800; color:#0f766e; background:#f0fdfa; border:1px solid #99f6e4; padding:1px 5px; border-radius:4px; margin-top:2px; white-space:nowrap; cursor:default;" title="Approved OD on: ${titleStr}">[ Day ${daysStr} ]</span>`;
+}
+
+// Helper to render LOP cell with exact breakdown of why user has loss of pay
+function renderLopCell(emp) {
+  if (emp.lop_days <= 0) {
+    return `<span style="color:#94a3b8; font-size:0.78rem; font-weight:600;">0</span>`;
+  }
+
+  const rem = String(emp.remarks || '');
+  const halfMatches = [...rem.matchAll(/(\d+)\s*\(\s*1\/2\s*\)/gi)].map(m => m[1]);
+  const absDays = Array.isArray(emp.absent_days) && emp.absent_days.length > 0 ? [...emp.absent_days] : [];
+  const misDays = Array.isArray(emp.missed_out_punches) && emp.missed_out_punches.length > 0 ? [...emp.missed_out_punches] : [];
+
+  if (absDays.length === 0) {
+    const mAb = rem.match(/(?:ab\s*-\s*|absent\s*:?\s*)([0-9,\s\wto]+?)(?=(?:,\s*[\d\s,]+no out|\s*\(|\s*\d+\(1\/2\)|\Z))/i);
+    if (mAb) {
+      const parsed = mAb[1].split(',').map(s => s.trim()).filter(Boolean);
+      parsed.forEach(p => absDays.push(p));
+    }
+  }
+
+  if (misDays.length === 0) {
+    const mNop = rem.match(/([\d\s,]+?)\s*no\s*out\s*punch/i);
+    if (mNop) {
+      const parsed = mNop[1].split(',').map(s => s.trim()).filter(Boolean);
+      parsed.forEach(p => misDays.push(p));
+    }
+  }
+
+  const lines = [];
+  if (absDays.length > 0) {
+    lines.push(`<span style="color:#b91c1c; font-size:0.72rem; font-weight:700; background:#fef2f2; padding:1px 5px; border-radius:3px; border:1px solid #fecaca;">❌ Full: [Day ${absDays.join(', ')}]</span>`);
+  }
+  if (halfMatches.length > 0) {
+    lines.push(`<span style="color:#0369a1; font-size:0.72rem; font-weight:700; background:#f0f9ff; padding:1px 5px; border-radius:3px; border:1px solid #bae6fd;">🌓 Half: [Day ${halfMatches.join(', ')}]</span>`);
+  }
+  if (misDays.length > 0) {
+    lines.push(`<span style="color:#92400e; font-size:0.72rem; font-weight:700; background:#fffbeb; padding:1px 5px; border-radius:3px; border:1px solid #fde68a;">⚠️ No Out: [Day ${misDays.join(', ')}]</span>`);
+  }
+
+  return `
+    <div style="display:flex; flex-direction:column; align-items:center; gap:3px; min-width:115px;">
+      <span class="lop-badge" style="font-size:0.82rem; font-weight:800; padding:2px 8px; border-radius:5px; background:#fee2e2; color:#991b1b; border:1px solid #fca5a5;">
+        ${emp.lop_days}d LOP
+      </span>
+      ${lines.length > 0 ? `<div style="display:flex; flex-direction:column; align-items:center; gap:2px; margin-top:2px; line-height:1.2;">${lines.join('')}</div>` : ''}
+    </div>
+  `;
+}
+
+// Helper to render colored badges for Remarks / Policy in the main Unified Master table
+function renderRemarksBadges(emp) {
+  if (emp.is_vip || emp.attendance_policy === 'exempt_full') {
+    return `<div style="display:inline-flex; align-items:center; gap:6px; background:#ecfdf5; color:#047857; border:1px solid #86efac; padding:4px 10px; border-radius:6px; font-size:0.82rem; font-weight:700;">
+      👑 <span>Full Month (Principal Override)</span>
+    </div>`;
+  }
+
+  const rem = String(emp.remarks || '').trim();
+  const absList = Array.isArray(emp.absent_days) && emp.absent_days.length > 0 ? emp.absent_days : null;
+  const misList = Array.isArray(emp.missed_out_punches) && emp.missed_out_punches.length > 0 ? emp.missed_out_punches : null;
+  const lateList = Array.isArray(emp.late_punches) && emp.late_punches.length > 0 ? emp.late_punches : null;
+
+  if (!rem && !absList && !misList && !lateList) {
+    if (emp.lop_days > 0) {
+      return `<div style="display:inline-flex; align-items:center; gap:5px; background:#fef2f2; color:#b91c1c; border:1px solid #fca5a5; padding:3px 8px; border-radius:6px; font-size:0.82rem; font-weight:700;">
+        ⚠️ <span>Loss of Pay: [${emp.lop_days} Days]</span>
+      </div>`;
+    }
+    return `<div style="display:inline-flex; align-items:center; gap:5px; color:#10b981; font-size:0.82rem; font-weight:600;">
+      ✔ <span>Clean Record</span>
+    </div>`;
+  }
+
+  const badges = [];
+
+  // Helper to format ranges nicely
+  const formatRanges = (nums) => {
+    if (!nums || nums.length === 0) return '';
+    const cleanNums = nums
+      .map(n => {
+        if (typeof n === 'number') return isNaN(n) ? null : n;
+        const parsed = parseInt(String(n).replace(/\D/g, ''), 10);
+        return isNaN(parsed) ? null : parsed;
+      })
+      .filter(n => n !== null && n > 0);
+
+    if (cleanNums.length === 0) return '';
+    const sorted = [...new Set(cleanNums)].sort((a,b) => a - b);
+    if (sorted.length <= 3) return sorted.join(', ');
+    const parts = [];
+    let i = 0;
+    while (i < sorted.length) {
+      let j = i;
+      while (j + 1 < sorted.length && sorted[j+1] === sorted[j] + 1) j++;
+      if (j - i >= 2) {
+        parts.push(`${sorted[i]} to ${sorted[j]}`);
+        i = j + 1;
+      } else {
+        parts.push(sorted[i]);
+        i++;
+      }
+    }
+    return parts.join(', ');
+  };
+
+  // 1. ABSENT DAYS (Red Badge)
+  let absStr = '';
+  if (absList) {
+    absStr = formatRanges(absList);
+  } else {
+    const mAb = rem.match(/(?:ab\s*-\s*|absent\s*:?\s*)([0-9,\s\wto]+?)(?=(?:,\s*[\d\s,]+no out|\s*\(|\s*\d+\(1\/2\)|\Z))/i);
+    if (mAb) absStr = mAb[1].trim().replace(/,\s*$/, '');
+  }
+  if (absStr) {
+    badges.push(`
+      <div style="display:inline-flex; align-items:center; gap:6px; background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; padding:4px 9px; border-radius:6px; font-size:0.82rem; margin:2px 0;">
+        <span style="font-weight:700; color:#b91c1c;">❌ Absent:</span>
+        <strong style="background:#ffffff; color:#991b1b; padding:1px 7px; border-radius:4px; border:1px solid #fecaca; font-size:0.82rem; font-weight:800;">[ ${absStr} ]</strong>
+      </div>
+    `);
+  }
+
+  // 2. NO OUT PUNCH (Amber/Yellow Badge)
+  let nopStr = '';
+  if (misList) {
+    nopStr = misList.join(', ');
+  } else {
+    const mNop = rem.match(/([\d\s,]+?)\s*no\s*out\s*punch/i);
+    if (mNop) nopStr = mNop[1].trim().replace(/,\s*$/, '');
+  }
+  if (nopStr) {
+    badges.push(`
+      <div style="display:inline-flex; align-items:center; gap:6px; background:#fef3c7; color:#92400e; border:1px solid #fde68a; padding:4px 9px; border-radius:6px; font-size:0.82rem; margin:2px 0;">
+        <span style="font-weight:700; color:#b45309;">⚠️ No Out-Punch:</span>
+        <strong style="background:#ffffff; color:#92400e; padding:1px 7px; border-radius:4px; border:1px solid #fef08a; font-size:0.82rem; font-weight:800;">[ ${nopStr} ]</strong>
+      </div>
+    `);
+  }
+
+  // 4. HALF DAYS (Blue Badge)
+  const halfMatches = [...rem.matchAll(/(\d+)\s*\(\s*1\/2\s*\)/gi)].map(m => m[1]);
+  if (halfMatches.length > 0) {
+    const halfDays = halfMatches.join(', ');
+    badges.push(`
+      <div style="display:inline-flex; align-items:center; gap:6px; background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; padding:4px 9px; border-radius:6px; font-size:0.82rem; margin:2px 0;">
+        <span style="font-weight:700; color:#0284c7;">🌓 Half Day:</span>
+        <strong style="background:#ffffff; color:#0369a1; padding:1px 7px; border-radius:4px; border:1px solid #bfdbfe; font-size:0.82rem; font-weight:800;">[ ${halfDays} ]</strong>
+      </div>
+    `);
+  }
+
+  // 3. LATE ARRIVALS (Purple Badge)
+  let lateStr = '';
+  if (rem.toLowerCase().includes('(late punch)')) {
+    lateStr = 'Penalty: >4 Late Punches';
+  } else if (lateList && lateList.length > 0) {
+    // Check if lateList entries have "Day" in them
+    const formattedLateList = lateList.map((entry, idx) => {
+      let str = String(entry).trim();
+      if (/^Day\s*\d+/i.test(str)) {
+        return str;
+      }
+      // If entry is a raw time like "11.12" or "09:36", pair with half day if available
+      if (halfMatches[idx]) {
+        return `Day ${halfMatches[idx]} (${str.replace('.', ':')})`;
+      }
+      return str;
+    });
+    lateStr = formattedLateList.slice(0, 4).join(', ');
+  } else {
+    // 1. Check if remarks has Day X (HH:MM)
+    const dayLateMatches = [...rem.matchAll(/Day\s*(\d+)\s*\(([^)]+)\)/gi)];
+    if (dayLateMatches.length > 0) {
+      lateStr = dayLateMatches.slice(0, 4).map(m => `Day ${m[1]} (${m[2]})`).join(', ');
+    } else {
+      // 2. Check for raw times inside parentheses, e.g. (11.12, 9.36) or (9.26, 9.30)
+      const mLate = rem.match(/\(([\d\.,\s]+)\)/);
+      if (mLate) {
+        const rawTimes = mLate[1].split(',').map(s => s.trim()).filter(Boolean);
+        if (rawTimes.length > 0 && halfMatches.length >= rawTimes.length) {
+          // Exactly map each late punch time to its corresponding day
+          lateStr = rawTimes.map((t, idx) => `Day ${halfMatches[idx]} (${t.replace('.', ':')})`).join(', ');
+        } else {
+          lateStr = rawTimes.map(t => t.replace('.', ':')).join(', ');
+        }
+      }
+    }
+  }
+
+  if (lateStr) {
+    badges.push(`
+      <div style="display:inline-flex; align-items:center; gap:6px; background:#f3e8ff; color:#6b21a8; border:1px solid #d8b4fe; padding:4px 9px; border-radius:6px; font-size:0.82rem; margin:2px 0;" title="Click 📅 Punches to see daily in/out times and logs">
+        <span style="font-weight:700; color:#7e22ce;">⏰ Late Punch:</span>
+        <strong style="background:#ffffff; color:#6b21a8; padding:1px 7px; border-radius:4px; border:1px solid #e9d5ff; font-size:0.82rem; font-weight:800;">[ ${lateStr} ]</strong>
+      </div>
+    `);
+  }
+
+  // 5. CL LEAVES (Lavender Badge - with Days)
+  const clDaysNum = Number(emp.cl_days || 0);
+  const clDaysArr = (Array.isArray(emp.cl_days_list) ? emp.cl_days_list : [])
+    .map(n => parseInt(String(n).replace(/\D/g, ''), 10))
+    .filter(n => !isNaN(n) && n > 0);
+  const clCleanStr = formatRanges(clDaysArr);
+
+  if (clCleanStr) {
+    badges.push(`
+      <div style="display:inline-flex; align-items:center; gap:6px; background:#fdf4ff; color:#9333ea; border:1px solid #f0abfc; padding:4px 9px; border-radius:6px; font-size:0.82rem; margin:2px 0;" title="Approved Casual Leave (CL) Days">
+        <span style="font-weight:700; color:#a855f7;">📄 CL:</span>
+        <strong style="background:#ffffff; color:#9333ea; padding:1px 7px; border-radius:4px; border:1px solid #fae8ff; font-size:0.82rem; font-weight:800;">[ Day ${clCleanStr} ]</strong>
+      </div>
+    `);
+  } else if (clDaysNum > 0) {
+    badges.push(`
+      <div style="display:inline-flex; align-items:center; gap:6px; background:#fdf4ff; color:#9333ea; border:1px solid #f0abfc; padding:4px 9px; border-radius:6px; font-size:0.82rem; margin:2px 0;" title="Approved Casual Leave (CL) Days">
+        <span style="font-weight:700; color:#a855f7;">📄 CL:</span>
+        <strong style="background:#ffffff; color:#9333ea; padding:1px 7px; border-radius:4px; border:1px solid #fae8ff; font-size:0.82rem; font-weight:800;">[ ${clDaysNum} Days ]</strong>
+      </div>
+    `);
+  }
+
+  // 6. OD (ON DUTY) (Teal Badge - with Days)
+  const odDaysNum = Number(emp.od_days || 0);
+  const odDaysArr = (Array.isArray(emp.od_days_list) ? emp.od_days_list : [])
+    .map(n => parseInt(String(n).replace(/\D/g, ''), 10))
+    .filter(n => !isNaN(n) && n > 0);
+  const odCleanStr = formatRanges(odDaysArr);
+
+  if (odCleanStr) {
+    badges.push(`
+      <div style="display:inline-flex; align-items:center; gap:6px; background:#f0fdfa; color:#0f766e; border:1px solid #99f6e4; padding:4px 9px; border-radius:6px; font-size:0.82rem; margin:2px 0;" title="Official On Duty (OD) Days">
+        <span style="font-weight:700; color:#0d9488;">✈️ OD:</span>
+        <strong style="background:#ffffff; color:#0f766e; padding:1px 7px; border-radius:4px; border:1px solid #ccfbf1; font-size:0.82rem; font-weight:800;">[ Day ${odCleanStr} ]</strong>
+      </div>
+    `);
+  } else if (odDaysNum > 0) {
+    badges.push(`
+      <div style="display:inline-flex; align-items:center; gap:6px; background:#f0fdfa; color:#0f766e; border:1px solid #99f6e4; padding:4px 9px; border-radius:6px; font-size:0.82rem; margin:2px 0;" title="Official On Duty (OD) Days">
+        <span style="font-weight:700; color:#0d9488;">✈️ OD:</span>
+        <strong style="background:#ffffff; color:#0f766e; padding:1px 7px; border-radius:4px; border:1px solid #ccfbf1; font-size:0.82rem; font-weight:800;">[ ${odDaysNum} Days ]</strong>
+      </div>
+    `);
+  }
+
+  // 5. Fallback for other text (e.g. DOJ or custom remarks)
+  if (badges.length === 0 && rem) {
+    badges.push(`
+      <div style="display:inline-flex; align-items:center; gap:6px; background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; padding:4px 9px; border-radius:6px; font-size:0.82rem; margin:2px 0;">
+        <span style="font-weight:700;">📝 Remarks:</span>
+        <strong style="background:#ffffff; color:#475569; padding:1px 7px; border-radius:4px; border:1px solid #e2e8f0; font-size:0.82rem;">[ ${rem} ]</strong>
+      </div>
+    `);
+  }
+
+  return `<div style="display:flex; flex-direction:column; gap:4px; align-items:flex-start; min-width:280px; line-height:1.25;">${badges.join('')}</div>`;
+}
+
+let currentTimelineEmp = null;
+let currentTimelineDays = [];
+let currentTimelineViewMode = 'cards';
+
+function switchTimelineView(mode) {
+  currentTimelineViewMode = mode;
+  const gridEl = document.getElementById('calendar-grid');
+  const tableWrapEl = document.getElementById('timeline-table-wrap');
+  const btnCards = document.getElementById('btn-timeline-cards');
+  const btnTable = document.getElementById('btn-timeline-table');
+
+  if (mode === 'cards') {
+    if (gridEl) gridEl.style.display = 'grid';
+    if (tableWrapEl) tableWrapEl.style.display = 'none';
+    if (btnCards) {
+      btnCards.style.background = 'white';
+      btnCards.style.color = '#1e3a8a';
+      btnCards.style.boxShadow = '0 1px 2px rgba(0,0,0,0.08)';
+    }
+    if (btnTable) {
+      btnTable.style.background = 'transparent';
+      btnTable.style.color = '#64748b';
+      btnTable.style.boxShadow = 'none';
+    }
+  } else {
+    if (gridEl) gridEl.style.display = 'none';
+    if (tableWrapEl) tableWrapEl.style.display = 'block';
+    if (btnTable) {
+      btnTable.style.background = 'white';
+      btnTable.style.color = '#1e3a8a';
+      btnTable.style.boxShadow = '0 1px 2px rgba(0,0,0,0.08)';
+    }
+    if (btnCards) {
+      btnCards.style.background = 'transparent';
+      btnCards.style.color = '#64748b';
+      btnCards.style.boxShadow = 'none';
+    }
+  }
+}
+
 // 31-Day Punch Timeline Modal
 async function openTimelineModal(empCode) {
   try {
@@ -2418,10 +2748,12 @@ async function openTimelineModal(empCode) {
 
     const emp = data.employee;
     const days = data.days;
+    currentTimelineEmp = emp;
+    currentTimelineDays = days;
 
     document.getElementById('timeline-emp-name').textContent = emp.name;
     document.getElementById('timeline-emp-meta').textContent = 
-      `Emp Code: ${emp.emp_code} | Department: ${emp.department} | Month: ${currentMonth}`;
+      `Emp Code: ${emp.emp_code} | Department: ${emp.department} | Designation: ${emp.designation || 'Staff'} | Month: ${currentMonth}`;
 
     const bar = document.getElementById('timeline-summary-bar');
     const activeMonthData = emp.months.find(m => m.month_year === currentMonth) || {};
@@ -2431,16 +2763,295 @@ async function openTimelineModal(empCode) {
       <span class="badge-pill" style="background:#f5f3ff; color:#6b21a8; font-size: 0.78rem; padding: 0.35rem 0.85rem;">Availed Leaves: ${activeMonthData.availed_leaves || 0}</span>
       <span class="badge-pill" style="background:#f0fdfa; color:#0f766e; font-size: 0.78rem; padding: 0.35rem 0.85rem;">SV/OD: ${activeMonthData.sv_od || 0}</span>
       <span class="badge-pill" style="background:#dcfce7; color:#15803d; font-size: 0.82rem; font-weight:800; padding: 0.35rem 0.85rem; border:1px solid #86efac;">Total Pay Days: ${activeMonthData.total_pay_days || 0}</span>
+      ${activeMonthData.remarks ? `<span class="badge-pill" style="background:#fffbeb; color:#b45309; font-size: 0.78rem; padding: 0.35rem 0.85rem; border:1px solid #fde68a;">Remarks: ${activeMonthData.remarks}</span>` : ''}
     `;
 
-    renderCalendarGrid(emp.emp_code, days);
+    renderCalendarGrid(emp.emp_code, days, emp);
+    renderTimelineTable(emp, days);
+    switchTimelineView(currentTimelineViewMode);
     document.getElementById('modal-timeline').classList.add('active');
   } catch (err) {
     alert('Error loading employee punch details');
   }
 }
 
-function renderCalendarGrid(empCode, days) {
+// Check late status according to employee specific thresholds
+function getPunchFlags(emp, day) {
+  const code = String(emp.emp_code || '').trim();
+  const deptLower = String(emp.department || '').toLowerCase();
+  const inT = day.in_time || '';
+  const outT = day.out_time || '';
+  const st = (day.override_status || day.status || '').toUpperCase();
+
+  const electricianIds = ['206', '243', '218', '217', '213', '214'];
+  const isElectrician = electricianIds.includes(code);
+  const isTransport = ['625', '26', '27', '626', '627', '648', '1198', '628', '622', '6621', '606', '623', '603', '653', '605', '6623', '607', '6633', '610', '613'].includes(code) || deptLower.includes('transport');
+
+  let targetH = 9, targetM = 25;
+  if (code === '1018') { targetH = 9; targetM = 35; }
+  else if (code === '109') { targetH = 11; targetM = 0; }
+  else if (code === '536') { targetH = 12; targetM = 10; }
+  else if (deptLower.includes('attender') || deptLower.includes('garden') || isElectrician) { targetH = 8; targetM = 35; }
+
+  let isLate = false;
+  let isEarlyShift = false;
+  let isMissedOut = false;
+  let flagNote = '';
+  let computedStatus = 'PRESENT';
+
+  // 1. Institutional Holiday
+  if (st.includes('HOLIDAY')) {
+    computedStatus = 'HOLIDAY';
+    flagNote = '🌴 Institutional Holiday / Sunday';
+  } 
+  // 2. Approved Leaves
+  else if (st.includes('CL') || st.includes('LEAVE')) {
+    computedStatus = 'CL';
+    flagNote = '📄 Approved Casual Leave';
+  } else if (st.includes('OD') || st.includes('ON DUTY')) {
+    computedStatus = 'OD';
+    flagNote = '✈️ Approved On Duty';
+  } 
+  // 3. Absent handling with overrides
+  else if (st.includes('ABSENT')) {
+    if (code === '109' && inT && inT.includes(':')) {
+      const [ih] = inT.split(':').map(Number);
+      if (ih < 11) {
+        computedStatus = 'PRESENT';
+        flagNote = '✔ Full Day Present (In before 11:00 AM per Principal Rule)';
+      } else {
+        computedStatus = 'ABSENT';
+        flagNote = '❌ Unexcused Absence (1.0d LOP)';
+      }
+    } else if (code === '536' && inT && inT.includes(':')) {
+      const [ih, im] = inT.split(':').map(Number);
+      if (ih < 12 || (ih === 12 && im <= 10)) {
+        computedStatus = 'PRESENT';
+        flagNote = '✔ Full Day Present (In before 12:10 PM per Principal Rule)';
+      } else {
+        computedStatus = 'ABSENT';
+        flagNote = '❌ Unexcused Absence (1.0d LOP)';
+      }
+    } else {
+      computedStatus = 'ABSENT';
+      flagNote = '❌ Unexcused Absence (1.0d LOP)';
+    }
+  } 
+  // 4. In-Punch Present Evaluation
+  else if (inT && inT.includes(':')) {
+    const [ih, im] = inT.split(':').map(Number);
+    const hasValidOut = Boolean(outT && outT.includes(':'));
+    let outH = 0, outM = 0;
+    if (hasValidOut) {
+      [outH, outM] = outT.split(':').map(Number);
+    }
+
+    // A. Electrician Early Shift (8:30 - 16:30)
+    if (isElectrician) {
+      if (ih < 8 || (ih === 8 && im <= 35)) {
+        isEarlyShift = true;
+        if (hasValidOut && (outH > 16 || (outH === 16 && outM >= 30))) {
+          flagNote = '⚡ Early Shift 8:30-4:30 Completed';
+          computedStatus = 'PRESENT';
+        } else if (!hasValidOut) {
+          isMissedOut = true;
+          computedStatus = 'NO_OUTPUNCH';
+          flagNote = '⚠️ Missing Evening Out-Punch (0.5d Penalty)';
+        } else {
+          computedStatus = 'PRESENT';
+          flagNote = '⚡ Early Shift Attended';
+        }
+      } else if (ih > 9 || (ih === 9 && im > 25)) {
+        isLate = true;
+        computedStatus = 'HALF_DAY';
+        flagNote = `⚠️ Late Arrival (${inT} > 09:25) - Half Day`;
+      } else {
+        computedStatus = 'PRESENT';
+        flagNote = '✔ Biometric Present On-Time';
+      }
+    }
+    // B. Civil 109 (M. Leelakar): In before 11:00 AM & Out 5:00 PM -> Full Day; In after 11:00 AM -> Half Day
+    else if (code === '109') {
+      if (ih < 11) {
+        // In before 11:00 AM
+        if (hasValidOut && (outH >= 17 || (outH === 16 && outM >= 50))) {
+          computedStatus = 'PRESENT';
+          flagNote = '✔ Full Day Present (In before 11:00 AM & Out 5:00 PM)';
+        } else if (!hasValidOut || st.includes('NO OUTPUNCH') || st.includes('NO OUT PUNCH')) {
+          isMissedOut = true;
+          computedStatus = 'NO_OUTPUNCH';
+          flagNote = '⚠️ Missing Evening Out-Punch (0.5d Penalty)';
+        } else if (outH < 17) {
+          computedStatus = 'HALF_DAY';
+          flagNote = `⚠️ Left Early (${outT} < 17:00) - Marked Half Day`;
+        } else {
+          computedStatus = 'PRESENT';
+          flagNote = '✔ Full Day Present (In before 11:00 AM)';
+        }
+      } else {
+        // In after 11:00 AM -> Late & Half Day
+        isLate = true;
+        computedStatus = 'HALF_DAY';
+        flagNote = `⏰ Late Arrival (${inT} > 11:00 AM) - Marked Half Day`;
+      }
+    }
+    // C. CSE 536 (Bala Subramanyam): In before 12:10 PM -> Full Day
+    else if (code === '536') {
+      if (ih < 12 || (ih === 12 && im <= 10)) {
+        if (!hasValidOut || st.includes('NO OUTPUNCH') || st.includes('NO OUT PUNCH')) {
+          isMissedOut = true;
+          computedStatus = 'NO_OUTPUNCH';
+          flagNote = '⚠️ Missing Evening Out-Punch (0.5d Penalty)';
+        } else {
+          computedStatus = 'PRESENT';
+          flagNote = '✔ Full Day Present (In before 12:10 PM per Principal Rule)';
+        }
+      } else {
+        isLate = true;
+        computedStatus = 'HALF_DAY';
+        flagNote = `⏰ Late Arrival (${inT} > 12:10 PM) - Marked Half Day`;
+      }
+    }
+    // D. Media 1018 (Prudhvi Raj): In before 9:35 AM -> On-Time Full Day
+    else if (code === '1018') {
+      if (ih < 9 || (ih === 9 && im <= 35)) {
+        if (!hasValidOut || st.includes('NO OUTPUNCH') || st.includes('NO OUT PUNCH')) {
+          isMissedOut = true;
+          computedStatus = 'NO_OUTPUNCH';
+          flagNote = '⚠️ Missing Evening Out-Punch (0.5d Penalty)';
+        } else {
+          computedStatus = 'PRESENT';
+          flagNote = '✔ Full Day Present (In before 09:35 AM per Media Rule)';
+        }
+      } else {
+        isLate = true;
+        flagNote = `⏰ Late Arrival (${inT} > 09:35 AM)`;
+        computedStatus = (st.includes('1/2') || st.includes('HALF')) ? 'HALF_DAY' : 'PRESENT';
+      }
+    }
+    // E. General Staff
+    else {
+      if ((ih === targetH && im > targetM) || (ih > targetH && ih < 13)) {
+        isLate = true;
+        flagNote = `⚠️ Late Arrival (${inT} > ${String(targetH).padStart(2,'0')}:${String(targetM).padStart(2,'0')})`;
+        if (st.includes('1/2') || st.includes('HALF')) {
+          computedStatus = 'HALF_DAY';
+        }
+      }
+      if (!isTransport && (!hasValidOut || st.includes('NO OUTPUNCH') || st.includes('NO OUT PUNCH'))) {
+        isMissedOut = true;
+        computedStatus = 'NO_OUTPUNCH';
+        flagNote = '⚠️ Missing Evening Out-Punch (0.5d Penalty)';
+      } else if (!flagNote) {
+        flagNote = '✔ Biometric Present On-Time';
+        computedStatus = (st.includes('1/2') || st.includes('HALF')) ? 'HALF_DAY' : 'PRESENT';
+      }
+    }
+  } else {
+    // No in-punch
+    if (st.includes('NO OUTPUNCH') || st.includes('NO OUT PUNCH')) {
+      isMissedOut = true;
+      computedStatus = 'NO_OUTPUNCH';
+      flagNote = '⚠️ Missing Evening Out-Punch (0.5d Penalty)';
+    } else if (st.includes('1/2') || st.includes('HALF')) {
+      computedStatus = 'HALF_DAY';
+      flagNote = '½ Half Day Present';
+    }
+  }
+
+  return { isLate, isEarlyShift, isMissedOut, flagNote, computedStatus, targetH, targetM };
+}
+
+// Render the Tabular Punch Log view inside the Punches Modal
+function renderTimelineTable(emp, days) {
+  const tbody = document.getElementById('timeline-table-body');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  if (!days || days.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:2rem; color:#94a3b8;">No raw biometric records found for this month.</td></tr>';
+    return;
+  }
+
+  days.forEach(day => {
+    const flags = getPunchFlags(emp, day);
+    const tr = document.createElement('tr');
+    tr.style.borderBottom = '1px solid #f1f5f9';
+
+    // Status pill based on computedStatus
+    let statusPill = `<span class="badge-pill" style="background:#ecfdf5; color:#047857; font-weight:700;">✔ Present</span>`;
+    if (flags.computedStatus === 'NO_OUTPUNCH') {
+      statusPill = `<span class="badge-pill" style="background:#fef3c7; color:#92400e; font-weight:700;">⚠️ No Out-Punch</span>`;
+    } else if (flags.computedStatus === 'CL') {
+      statusPill = `<span class="badge-pill" style="background:#fdf4ff; color:#9333ea; font-weight:700;">📄 CL Leave</span>`;
+    } else if (flags.computedStatus === 'OD') {
+      statusPill = `<span class="badge-pill" style="background:#f0fdfa; color:#0f766e; font-weight:700;">✈️ On Duty</span>`;
+    } else if (flags.computedStatus === 'HOLIDAY') {
+      statusPill = `<span class="badge-pill" style="background:#f8fafc; color:#64748b; font-weight:600;">🌴 Holiday</span>`;
+    } else if (flags.computedStatus === 'ABSENT') {
+      statusPill = `<span class="badge-pill" style="background:#fee2e2; color:#b91c1c; font-weight:700;">❌ Absent</span>`;
+    } else if (flags.computedStatus === 'HALF_DAY') {
+      statusPill = `<span class="badge-pill" style="background:#e0f2fe; color:#0369a1; font-weight:700;">½ Present</span>`;
+    }
+
+    // Punch In display
+    let inHtml = `<span style="color:#94a3b8;">--:--</span>`;
+    if (day.in_time) {
+      if (flags.isLate) {
+        inHtml = `<span style="color:#c2410c; font-weight:700;">${day.in_time}</span> <span class="badge-pill" style="background:#ffedd5; color:#c2410c; font-size:0.68rem;">⚠️ Late</span>`;
+      } else {
+        inHtml = `<span style="font-weight:600; color:#0f172a;">${day.in_time}</span>`;
+      }
+    }
+
+    // Punch Out display
+    let outHtml = `<span style="color:#94a3b8;">--:--</span>`;
+    if (day.out_time) {
+      if (flags.isEarlyShift) {
+        outHtml = `<span style="color:#047857; font-weight:600;">${day.out_time}</span> <span class="badge-pill" style="background:#dcfce7; color:#15803d; font-size:0.68rem;">⚡ Shift Done</span>`;
+      } else {
+        outHtml = `<span style="font-weight:600; color:#0f172a;">${day.out_time}</span>`;
+      }
+    } else if (flags.isMissedOut) {
+      outHtml = `<span class="badge-pill" style="background:#fef3c7; color:#92400e; font-size:0.68rem; font-weight:700;">⚠️ No Out</span>`;
+    }
+
+    // Action buttons
+    let actHtml = '';
+    if (flags.computedStatus === 'NO_OUTPUNCH') {
+      actHtml = `
+        <button class="day-btn" style="background:#ecfdf5; color:#065f46; border-color:#86efac; font-size:0.72rem; padding:2px 6px;" onclick="applyDayAction('${emp.emp_code}', ${day.day}, 'present')">✔ Full</button>
+        <button class="day-btn" style="font-size:0.72rem; padding:2px 6px;" onclick="applyDayAction('${emp.emp_code}', ${day.day}, 'cl')">+ CL</button>
+      `;
+    } else if (flags.computedStatus === 'ABSENT') {
+      actHtml = `
+        <button class="day-btn" style="font-size:0.72rem; padding:2px 6px;" onclick="applyDayAction('${emp.emp_code}', ${day.day}, 'cl')">+ CL</button>
+        <button class="day-btn" style="font-size:0.72rem; padding:2px 6px;" onclick="applyDayAction('${emp.emp_code}', ${day.day}, 'od')">+ OD</button>
+        <button class="day-btn" style="font-size:0.72rem; padding:2px 6px; color:#15803d;" onclick="applyDayAction('${emp.emp_code}', ${day.day}, 'present')">✔ Present</button>
+      `;
+    } else {
+      actHtml = `
+        <button class="day-btn" style="font-size:0.72rem; padding:2px 6px;" onclick="applyDayAction('${emp.emp_code}', ${day.day}, 'cl')">CL</button>
+        <button class="day-btn" style="font-size:0.72rem; padding:2px 6px;" onclick="applyDayAction('${emp.emp_code}', ${day.day}, 'od')">OD</button>
+        <button class="day-btn" style="font-size:0.72rem; padding:2px 6px; color:#ef4444;" onclick="applyDayAction('${emp.emp_code}', ${day.day}, 'absent')">Abs</button>
+      `;
+    }
+
+    tr.innerHTML = `
+      <td style="text-align:center; font-weight:700; color:#64748b; padding:6px;">${day.day}</td>
+      <td style="color:#334155; font-size:0.75rem; padding:6px;">${day.date || ''}</td>
+      <td style="text-align:center; padding:6px;">${inHtml}</td>
+      <td style="text-align:center; padding:6px;">${outHtml}</td>
+      <td style="text-align:center; color:#64748b; font-size:0.75rem; padding:6px;">${day.duration && day.duration !== '00:00' ? day.duration : '--'}</td>
+      <td style="text-align:center; padding:6px;">${statusPill}</td>
+      <td style="font-size:0.75rem; color:#475569; padding:6px;">${flags.flagNote}</td>
+      <td style="text-align:center; padding:6px;"><div style="display:flex; gap:3px; justify-content:center;">${actHtml}</div></td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderCalendarGrid(empCode, days, emp) {
   const grid = document.getElementById('calendar-grid');
   grid.innerHTML = '';
 
@@ -2451,46 +3062,48 @@ function renderCalendarGrid(empCode, days) {
 
   days.forEach(day => {
     const card = document.createElement('div');
-    const st = (day.override_status || day.status || '').toUpperCase();
+    const flags = emp ? getPunchFlags(emp, day) : { isLate: false, isMissedOut: false, computedStatus: 'PRESENT' };
 
     let statusClass = 'status-present';
     let statusPill = 'Present';
 
-    if (st.includes('NO OUTPUNCH') || st.includes('NO OUT PUNCH')) {
+    if (flags.computedStatus === 'NO_OUTPUNCH') {
       statusClass = 'status-missed';
       statusPill = 'No Out-Punch';
-    } else if (st.includes('CL') || st.includes('LEAVE')) {
+    } else if (flags.computedStatus === 'CL') {
       statusClass = 'status-cl';
       statusPill = 'CL Leave';
-    } else if (st.includes('OD') || st.includes('ON DUTY')) {
+    } else if (flags.computedStatus === 'OD') {
       statusClass = 'status-od';
       statusPill = 'On Duty';
-    } else if (st.includes('HOLIDAY')) {
+    } else if (flags.computedStatus === 'HOLIDAY') {
       statusClass = 'status-holiday';
       statusPill = 'Holiday';
-    } else if (st.includes('ABSENT')) {
+    } else if (flags.computedStatus === 'ABSENT') {
       statusClass = 'status-absent';
       statusPill = 'Absent';
-    } else if (st.includes('1/2') || st.includes('HALF')) {
+    } else if (flags.computedStatus === 'HALF_DAY') {
       statusClass = 'status-present';
       statusPill = '½ Present';
     }
 
     card.className = `day-card ${statusClass}`;
 
-    const inTime = day.in_time ? `In: ${day.in_time}` : 'In: --';
-    const outTime = day.out_time ? `Out: ${day.out_time}` : 'Out: --';
+    let inTimeText = day.in_time ? `In: ${day.in_time}` : 'In: --';
+    if (flags.isLate) inTimeText = `In: ${day.in_time} (Late)`;
+    let outTimeText = day.out_time ? `Out: ${day.out_time}` : 'Out: --';
+    if (flags.isMissedOut) outTimeText = `Out: ⚠️ Missing`;
     const dur = day.duration && day.duration !== '00:00' ? `Dur: ${day.duration}` : '';
 
     let actionButtons = '';
-    if (st.includes('NO OUTPUNCH') || st.includes('NO OUT PUNCH')) {
+    if (flags.computedStatus === 'NO_OUTPUNCH') {
       actionButtons = `
         <div class="day-actions-menu">
           <button class="day-btn" style="background:#ecfdf5; color:#065f46; border-color:#86efac;" onclick="applyDayAction('${empCode}', ${day.day}, 'present')">✔ Approve Full</button>
           <button class="day-btn" onclick="applyDayAction('${empCode}', ${day.day}, 'cl')">+ Add CL Slip</button>
         </div>
       `;
-    } else if (st.includes('ABSENT')) {
+    } else if (flags.computedStatus === 'ABSENT') {
       actionButtons = `
         <div class="day-actions-menu">
           <button class="day-btn" onclick="applyDayAction('${empCode}', ${day.day}, 'cl')">📄 Add CL Slip</button>
@@ -2514,8 +3127,8 @@ function renderCalendarGrid(empCode, days) {
         <span class="day-status-pill">${statusPill}</span>
       </div>
       <div class="day-times">
-        <span>${inTime}</span>
-        <span>${outTime}</span>
+        <span style="${flags.isLate ? 'color:#c2410c; font-weight:700;' : ''}">${inTimeText}</span>
+        <span style="${flags.isMissedOut ? 'color:#b45309; font-weight:700;' : ''}">${outTimeText}</span>
         ${dur ? `<span>${dur}</span>` : ''}
       </div>
       ${actionButtons}
