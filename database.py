@@ -145,10 +145,15 @@ def init_db():
         if col_name not in existing_prof_cols:
             cursor.execute(f"ALTER TABLE salary_profiles ADD COLUMN {col_name} {col_type}")
 
-    # Ensure salary columns exist in monthly_records
+    # Ensure salary columns AND per-month identity columns exist in monthly_records
     cursor.execute("PRAGMA table_info(monthly_records)")
     existing_cols = [r['name'] for r in cursor.fetchall()]
     salary_cols = {
+        # Per-month identity (name/designation/dept from raw file — NOT from global employees)
+        'name': 'TEXT',
+        'designation': 'TEXT',
+        'department': 'TEXT',
+        # Salary columns
         'base_salary': 'REAL',
         'earned_basic': 'REAL',
         'earned_da': 'REAL',
@@ -169,6 +174,15 @@ def init_db():
     for col_name, col_type in salary_cols.items():
         if col_name not in existing_cols:
             cursor.execute(f"ALTER TABLE monthly_records ADD COLUMN {col_name} {col_type}")
+
+    # Backfill name/designation/department from employees into monthly_records where missing
+    cursor.execute("""
+        UPDATE monthly_records SET
+            name = (SELECT e.name FROM employees e WHERE e.emp_code = monthly_records.emp_code),
+            designation = (SELECT e.designation FROM employees e WHERE e.emp_code = monthly_records.emp_code),
+            department = (SELECT e.department FROM employees e WHERE e.emp_code = monthly_records.emp_code)
+        WHERE name IS NULL
+    """)
 
     conn.commit()
     conn.close()
@@ -313,10 +327,12 @@ def seed_from_engine(engine, month_year: str = "August 2026", overwrite: bool = 
 
         cursor.execute("""
         INSERT OR REPLACE INTO monthly_records 
-        (emp_code, month_year, biometric_days, holiday, availed_leaves, sv_od, total_pay_days, remarks, needs_review, missed_punches_json, absent_days_json, late_punches_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (emp_code, month_year, name, designation, department, biometric_days, holiday, availed_leaves, sv_od, total_pay_days, remarks, needs_review, missed_punches_json, absent_days_json, late_punches_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            emp_code, month_year, bio_days_emp, holidays_emp, leaves, od, total_days, remarks, needs_review,
+            emp_code, month_year,
+            emp['name'], emp.get('designation', ''), normalize_dept(emp.get('department', '')),
+            bio_days_emp, holidays_emp, leaves, od, total_days, remarks, needs_review,
             json.dumps(summary.get('missed_out_punches', [])),
             json.dumps(summary.get('absent_days', [])),
             json.dumps(summary.get('late_punches', []))
@@ -693,7 +709,11 @@ def get_month_records(month_year: str, active_only: bool = True, reference_codes
         }
 
     query = """
-    SELECT e.emp_code, e.name, e.designation, e.department, e.annual_cl_quota, e.annual_od_quota, e.attendance_policy, e.is_manual,
+    SELECT e.emp_code,
+           COALESCE(m.name, e.name) AS name,
+           COALESCE(m.designation, e.designation) AS designation,
+           COALESCE(m.department, e.department) AS department,
+           e.annual_cl_quota, e.annual_od_quota, e.attendance_policy, e.is_manual,
            m.biometric_days, m.holiday, m.availed_leaves, m.sv_od, m.total_pay_days, m.remarks, m.needs_review,
            m.missed_punches_json, m.absent_days_json, m.late_punches_json
     FROM monthly_records m
