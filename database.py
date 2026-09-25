@@ -535,7 +535,7 @@ def seed_from_engine(engine, month_year: str = "August 2026", overwrite: bool = 
     emp_batch = []
     mon_batch = []
     log_batch = []
-    CHUNK_SIZE = 40
+    CHUNK_SIZE = 250
 
     def _flush_chunk(e_b, m_b, l_b):
         if e_b:
@@ -554,7 +554,6 @@ def seed_from_engine(engine, month_year: str = "August 2026", overwrite: bool = 
             INSERT OR REPLACE INTO daily_logs (emp_code, month_year, day_num, date_str, in_time, out_time, duration, status, override_status)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, l_b)
-        conn.commit()
 
     for emp_code, emp in engine.employees.items():
         name_l = str(emp.get('name', '')).lower()
