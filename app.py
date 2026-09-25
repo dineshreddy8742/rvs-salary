@@ -146,10 +146,10 @@ if not database.has_monthly_records():
         engine = AttendanceEngine(RAW_FILE, REF_FILE if os.path.exists(REF_FILE) else None)
         database.seed_from_engine(engine, "August 2026")
 
-try:
-    database.apply_principal_rules_to_db("August 2026")
-except Exception as e:
-    print("Notice on applying principal rules:", e)
+    try:
+        database.apply_principal_rules_to_db("August 2026")
+    except Exception as e:
+        print("Notice on applying principal rules:", e)
 
 # Cache reference employee codes for active_only filter
 REFERENCE_CODES = set()

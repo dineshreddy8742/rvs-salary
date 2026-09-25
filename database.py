@@ -4,27 +4,179 @@ import json
 from typing import Dict, List, Any, Optional
 import payroll_engine
 
+# Try loading dotenv
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
+
 DB_FILE = "rvs_attendance.db"
 
-# Turso cloud SQLite support
-# When TURSO_DATABASE_URL is set (on Render), use cloud DB so uploads persist
-# When not set (local dev), use local SQLite file
+# Database Configuration (Supabase PostgreSQL / Turso SQLite / Local SQLite)
+SUPABASE_DB_URL = os.environ.get('SUPABASE_DB_URL') or os.environ.get('DATABASE_URL') or "postgresql://postgres.nfqtqgqbuaotkljrsmpb:Reddy%407989604033@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres?sslmode=require"
 TURSO_DATABASE_URL = os.environ.get('TURSO_DATABASE_URL', '')
 TURSO_AUTH_TOKEN = os.environ.get('TURSO_AUTH_TOKEN', '')
 
-if TURSO_DATABASE_URL:
+_USE_SUPABASE = False
+_USE_TURSO = False
+_pg_pool = None
+
+class PgCursorProxy:
+    def __init__(self, cur, conn):
+        self._cur = cur
+        self._conn = conn
+
+    def _translate_sql(self, sql, params=None):
+        # 1. Handle PRAGMA table_info(x)
+        pragma_m = re.match(r'^\s*PRAGMA\s+table_info\(([^)]+)\)', sql, re.I)
+        if pragma_m:
+            tbl = pragma_m.group(1).strip('"\'; ')
+            return f"SELECT column_name as name, data_type as type FROM information_schema.columns WHERE table_name = '{tbl}'"
+
+        # 2. Handle SQLite CREATE TABLE AUTOINCREMENT
+        if 'AUTOINCREMENT' in sql.upper():
+            sql = re.sub(r'INTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT', 'SERIAL PRIMARY KEY', sql, flags=re.I)
+
+        # 3. Handle INSERT OR REPLACE
+        if 'INSERT OR REPLACE' in sql.upper():
+            m_emp = re.search(r'INSERT\s+OR\s+REPLACE\s+INTO\s+employees\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\)', sql, re.I | re.S)
+            if m_emp:
+                cols = [c.strip() for c in m_emp.group(1).split(',')]
+                updates = ", ".join([f'"{c}" = EXCLUDED."{c}"' for c in cols if c != 'emp_code'])
+                cols_str = ", ".join([f'"{c}"' for c in cols])
+                sql = f'INSERT INTO employees ({cols_str}) VALUES ({m_emp.group(2)}) ON CONFLICT (emp_code) DO UPDATE SET {updates}'
+            else:
+                m_prof = re.search(r'INSERT\s+OR\s+REPLACE\s+INTO\s+salary_profiles\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\)', sql, re.I | re.S)
+                if m_prof:
+                    cols = [c.strip() for c in m_prof.group(1).split(',')]
+                    updates = ", ".join([f'"{c}" = EXCLUDED."{c}"' for c in cols if c != 'emp_code'])
+                    cols_str = ", ".join([f'"{c}"' for c in cols])
+                    sql = f'INSERT INTO salary_profiles ({cols_str}) VALUES ({m_prof.group(2)}) ON CONFLICT (emp_code) DO UPDATE SET {updates}'
+                else:
+                    m_logs = re.search(r'INSERT\s+OR\s+REPLACE\s+INTO\s+daily_logs\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\)', sql, re.I | re.S)
+                    if m_logs:
+                        cols = [c.strip() for c in m_logs.group(1).split(',')]
+                        updates = ", ".join([f'"{c}" = EXCLUDED."{c}"' for c in cols if c not in ('emp_code', 'month_year', 'day_num')])
+                        cols_str = ", ".join([f'"{c}"' for c in cols])
+                        sql = f'INSERT INTO daily_logs ({cols_str}) VALUES ({m_logs.group(2)}) ON CONFLICT (emp_code, month_year, day_num) DO UPDATE SET {updates}'
+                    else:
+                        m_mon = re.search(r'INSERT\s+OR\s+REPLACE\s+INTO\s+monthly_records\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\)', sql, re.I | re.S)
+                        if m_mon:
+                            cols = [c.strip() for c in m_mon.group(1).split(',')]
+                            updates = ", ".join([f'"{c}" = EXCLUDED."{c}"' for c in cols if c not in ('emp_code', 'month_year', 'id')])
+                            cols_str = ", ".join([f'"{c}"' for c in cols])
+                            sql = f'INSERT INTO monthly_records ({cols_str}) VALUES ({m_mon.group(2)}) ON CONFLICT (emp_code, month_year) DO UPDATE SET {updates}'
+
+        # 4. Handle ? placeholder to %s and % escaping for psycopg2
+        if params is not None and len(params) > 0:
+            sql = sql.replace('%', '%%').replace('?', '%s')
+        else:
+            sql = sql.replace('?', '%s')
+        return sql
+
+    def execute(self, sql, params=None):
+        translated = self._translate_sql(sql, params)
+        if params is not None:
+            return self._cur.execute(translated, params)
+        else:
+            return self._cur.execute(translated)
+
+    def executemany(self, sql, seq_of_params):
+        if not seq_of_params:
+            return
+        sample_params = seq_of_params[0] if seq_of_params else None
+        translated = self._translate_sql(sql, sample_params)
+        import psycopg2.extras
+        psycopg2.extras.execute_batch(self._cur, translated, seq_of_params, page_size=200)
+
+    def fetchone(self):
+        return self._cur.fetchone()
+
+    def fetchall(self):
+        return self._cur.fetchall()
+
+    def fetchmany(self, size=None):
+        return self._cur.fetchmany(size)
+
+    @property
+    def rowcount(self):
+        return self._cur.rowcount
+
+    @property
+    def description(self):
+        return self._cur.description
+
+    @property
+    def lastrowid(self):
+        return getattr(self._cur, 'lastrowid', None)
+
+    def close(self):
+        return self._cur.close()
+
+    def __iter__(self):
+        return iter(self._cur)
+
+class PgConnectionProxy:
+    def __init__(self, raw_conn, pool_ref=None):
+        self._raw_conn = raw_conn
+        self._pool_ref = pool_ref
+        self.row_factory = None
+
+    def cursor(self):
+        return PgCursorProxy(self._raw_conn.cursor(), self)
+
+    def commit(self):
+        return self._raw_conn.commit()
+
+    def rollback(self):
+        return self._raw_conn.rollback()
+
+    def close(self):
+        if self._pool_ref:
+            try:
+                self._raw_conn.commit()
+            except Exception:
+                pass
+            self._pool_ref.putconn(self._raw_conn)
+        else:
+            return self._raw_conn.close()
+
+    def execute(self, sql, params=None):
+        cur = self.cursor()
+        cur.execute(sql, params)
+        return cur
+
+if SUPABASE_DB_URL and not os.environ.get('USE_LOCAL_SQLITE'):
     try:
-        import libsql_experimental as sqlite3
-        _USE_TURSO = True
-        print(f"[DB] Using Turso cloud SQLite: {TURSO_DATABASE_URL}")
-    except ImportError:
+        import psycopg2
+        import psycopg2.extras
+        from psycopg2 import pool
+        _pg_pool = pool.ThreadedConnectionPool(
+            minconn=1,
+            maxconn=10,
+            dsn=SUPABASE_DB_URL
+        )
+        _USE_SUPABASE = True
+        print(f"[DB] Using Supabase PostgreSQL Cloud Database")
+    except Exception as e:
+        print(f"[DB] Supabase connection failed ({e}), falling back to local database...")
+        _USE_SUPABASE = False
+
+if not _USE_SUPABASE:
+    if TURSO_DATABASE_URL:
+        try:
+            import libsql_experimental as sqlite3
+            _USE_TURSO = True
+            print(f"[DB] Using Turso cloud SQLite: {TURSO_DATABASE_URL}")
+        except ImportError:
+            import sqlite3
+            _USE_TURSO = False
+            print("[DB] libsql_experimental not installed, falling back to local SQLite")
+    else:
         import sqlite3
         _USE_TURSO = False
-        print("[DB] libsql_experimental not installed, falling back to local SQLite")
-else:
-    import sqlite3
-    _USE_TURSO = False
-    print(f"[DB] Using local SQLite: {DB_FILE}")
+        print(f"[DB] Using local SQLite: {DB_FILE}")
 
 # Canonical mapping for department normalization to eliminate duplicate/fragmented departments
 DEPARTMENT_CANONICAL_MAP = {
@@ -69,19 +221,28 @@ def normalize_month_year(month_year: str) -> str:
     return re.sub(r'\s+', ' ', m)
 
 def get_db():
-    """Get database connection — Turso cloud if configured, else local SQLite."""
-    if _USE_TURSO:
+    """Get database connection — Supabase PostgreSQL if configured, Turso cloud if configured, else local SQLite."""
+    if _USE_SUPABASE and _pg_pool:
+        import psycopg2.extras
+        raw_conn = _pg_pool.getconn()
+        raw_conn.cursor_factory = psycopg2.extras.DictCursor
+        return PgConnectionProxy(raw_conn, _pg_pool)
+    elif _USE_TURSO:
         conn = sqlite3.connect(
             database=TURSO_DATABASE_URL,
             auth_token=TURSO_AUTH_TOKEN
         )
+        conn.row_factory = sqlite3.Row
+        return conn
     else:
         conn = sqlite3.connect(DB_FILE)
-    conn.row_factory = sqlite3.Row
-    return conn
+        conn.row_factory = sqlite3.Row
+        return conn
 
 def init_db():
     """Create tables if they do not exist."""
+    if _USE_SUPABASE:
+        return
     conn = get_db()
     cursor = conn.cursor()
 
@@ -315,6 +476,10 @@ def seed_from_engine(engine, month_year: str = "August 2026", overwrite: bool = 
     holidays = float(len(sundays.union(fest_hol)))
     bio_days = max(0.0, m_days - holidays)
 
+    emp_batch = []
+    mon_batch = []
+    log_batch = []
+
     for emp_code, emp in engine.employees.items():
         name_l = str(emp.get('name', '')).lower()
         desig_l = str(emp.get('designation', '')).lower()
@@ -326,10 +491,7 @@ def seed_from_engine(engine, month_year: str = "August 2026", overwrite: bool = 
                   ('siva' in name_l and ('driver' in desig_l or 'transport' in dept_l)))
         policy = 'exempt_full' if is_vip else 'standard'
         
-        cursor.execute("""
-        INSERT OR REPLACE INTO employees (emp_code, name, designation, department, annual_cl_quota, annual_od_quota, attendance_policy, is_manual)
-        VALUES (?, ?, ?, ?, 12.0, 15.0, ?, 0)
-        """, (emp_code, emp['name'], emp['designation'], normalize_dept(emp['department']), policy))
+        emp_batch.append((emp_code, emp['name'], emp.get('designation', ''), normalize_dept(emp.get('department', '')), policy))
 
         summary = engine.calculate_employee_summary(emp)
         
@@ -351,11 +513,7 @@ def seed_from_engine(engine, month_year: str = "August 2026", overwrite: bool = 
             remarks = summary['remarks']
             needs_review = 1 if summary['needs_review'] else 0
 
-        cursor.execute("""
-        INSERT OR REPLACE INTO monthly_records 
-        (emp_code, month_year, name, designation, department, biometric_days, holiday, availed_leaves, sv_od, total_pay_days, remarks, needs_review, missed_punches_json, absent_days_json, late_punches_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
+        mon_batch.append((
             emp_code, month_year,
             emp['name'], emp.get('designation', ''), normalize_dept(emp.get('department', '')),
             bio_days_emp, holidays_emp, leaves, od, total_days, remarks, needs_review,
@@ -366,13 +524,32 @@ def seed_from_engine(engine, month_year: str = "August 2026", overwrite: bool = 
 
         # Seed daily logs
         for day in emp['days']:
-            cursor.execute("""
-            INSERT OR REPLACE INTO daily_logs (emp_code, month_year, day_num, date_str, in_time, out_time, duration, status, override_status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
+            log_batch.append((
                 emp_code, month_year, day['day'], day['date'], day['in_time'], day['out_time'],
                 day['duration'], day['status'], day.get('override_status')
             ))
+
+    if emp_batch:
+        cursor.executemany("""
+        INSERT OR REPLACE INTO employees (emp_code, name, designation, department, annual_cl_quota, annual_od_quota, attendance_policy, is_manual)
+        VALUES (?, ?, ?, ?, 12.0, 15.0, ?, 0)
+        """, emp_batch)
+        conn.commit()
+
+    if mon_batch:
+        cursor.executemany("""
+        INSERT OR REPLACE INTO monthly_records 
+        (emp_code, month_year, name, designation, department, biometric_days, holiday, availed_leaves, sv_od, total_pay_days, remarks, needs_review, missed_punches_json, absent_days_json, late_punches_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, mon_batch)
+        conn.commit()
+
+    if log_batch:
+        cursor.executemany("""
+        INSERT OR REPLACE INTO daily_logs (emp_code, month_year, day_num, date_str, in_time, out_time, duration, status, override_status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, log_batch)
+        conn.commit()
 
     # Also ensure any reference metadata employees (like Principal 101) exist
     if hasattr(engine, 'reference_metadata'):
@@ -397,7 +574,9 @@ def seed_from_engine(engine, month_year: str = "August 2026", overwrite: bool = 
     print(f"Database seeded successfully for {month_year}.")
     apply_principal_rules_to_db(month_year)
 
-def apply_principal_rules_to_db(month_year: str = "August 2026"):
+_PRINCIPAL_RULES_APPLIED = set()
+
+def apply_principal_rules_to_db(month_year: str = "August 2026", force: bool = False):
     """
     Enforce Principal Sir's 21 attendance rules directly on database records:
     - 101, 707, 900, 1060, 1015, 1019, 1021, 4001, 1030, Shajahan, Siva driver: full days.
@@ -411,6 +590,8 @@ def apply_principal_rules_to_db(month_year: str = "August 2026"):
     - Admission: 6 days/week, Sunday work offsets absent.
     """
     month_year = normalize_month_year(month_year)
+    if not force and month_year in _PRINCIPAL_RULES_APPLIED:
+        return
     conn = get_db()
     cursor = conn.cursor()
 
@@ -559,22 +740,31 @@ def apply_principal_rules_to_db(month_year: str = "August 2026"):
 
     # 4. 109 (Civil M. Leelakar) - daily punch before 11 am is handled by attendance engine
     # (Do not blindly set to 31.0; preserve actual attendance calculated from punches)
+    conn.commit()
 
     # 5. Transport Dept: remove late punch penalties & credit full days for in+out punches
     transport_ids = ['625', '26', '27', '626', '627', '648', '1198', '628', '622', '6621', '606', '623', '603', '653', '605', '6623', '607', '6633', '610', '613']
+    from collections import defaultdict
+    t_placeholders = ','.join('?' * len(transport_ids))
+    cursor.execute(f"SELECT * FROM daily_logs WHERE emp_code IN ({t_placeholders}) AND month_year = ? ORDER BY emp_code, day_num", (*transport_ids, month_year))
+    t_days_map = defaultdict(list)
+    for r in cursor.fetchall():
+        t_days_map[str(r['emp_code'])].append(r)
+
+    transport_updates = []
+    transport_empty_updates = []
     for tid in transport_ids:
-        cursor.execute("SELECT * FROM daily_logs WHERE emp_code = ? AND month_year = ? ORDER BY day_num", (tid, month_year))
-        tdays = cursor.fetchall()
+        tdays = t_days_map.get(tid, [])
         if tdays:
             in_out_count = sum(1.0 for d in tdays if (d['in_time'] and d['out_time']))
             t_pay_days = min(m_days, in_out_count + holidays)
 
-            # Use dynamically computed sundays for this month (not hardcoded August Sundays)
+            # Use dynamically computed sundays for this month
             t_absent = []
             t_half = []
             for d in tdays:
                 d_num = d['day_num']
-                if d_num in sundays:  # sundays computed dynamically at top of function
+                if d_num in sundays:
                     continue
                 in_t = d['in_time']
                 out_t = d['out_time']
@@ -592,13 +782,19 @@ def apply_principal_rules_to_db(month_year: str = "August 2026"):
                 rem_parts.extend(t_half)
             t_rem = ', '.join(rem_parts)
 
-            cursor.execute("""
-            UPDATE monthly_records
-            SET biometric_days = ?, holiday = ?, total_pay_days = ?, remarks = ?, absent_days_json = ?, late_punches_json = '[]'
-            WHERE emp_code = ? AND month_year = ?
-            """, (in_out_count, holidays, t_pay_days, t_rem, json.dumps(t_absent), tid, month_year))
+            transport_updates.append((in_out_count, holidays, t_pay_days, t_rem, json.dumps(t_absent), tid, month_year))
         else:
-            cursor.execute("UPDATE monthly_records SET late_punches_json = '[]' WHERE emp_code = ? AND month_year = ?", (tid, month_year))
+            transport_empty_updates.append((tid, month_year))
+
+    if transport_updates:
+        cursor.executemany("""
+        UPDATE monthly_records
+        SET biometric_days = ?, holiday = ?, total_pay_days = ?, remarks = ?, absent_days_json = ?, late_punches_json = '[]'
+        WHERE emp_code = ? AND month_year = ?
+        """, transport_updates)
+    if transport_empty_updates:
+        cursor.executemany("UPDATE monthly_records SET late_punches_json = '[]' WHERE emp_code = ? AND month_year = ?", transport_empty_updates)
+    conn.commit()
 
     # 6. Admission Dept: 6 days/week, 5 on 2nd Sat week, Sunday punches offset weekday leaves
     admission_ids = ['2005', '2006', '6001', '1040', '1017', '2011', '6000', '2010', '2007', '2013', '2514', '2512', '2511', '2503', '2502', '2505', '2051', '2508', '6004', '6005']
@@ -612,15 +808,21 @@ def apply_principal_rules_to_db(month_year: str = "August 2026"):
             if sat_count == 2:
                 second_saturday_day = _d
                 break
+
+    a_placeholders = ','.join('?' * len(admission_ids))
+    cursor.execute(f"SELECT * FROM daily_logs WHERE emp_code IN ({a_placeholders}) AND month_year = ? ORDER BY emp_code, day_num", (*admission_ids, month_year))
+    a_days_map = defaultdict(list)
+    for r in cursor.fetchall():
+        a_days_map[str(r['emp_code'])].append(r)
+
+    admission_updates = []
     for aid in admission_ids:
-        cursor.execute("SELECT * FROM daily_logs WHERE emp_code = ? AND month_year = ? ORDER BY day_num", (aid, month_year))
-        adays = cursor.fetchall()
+        adays = a_days_map.get(aid, [])
         if adays:
             weeks = {}
             for d in adays:
                 d_num = d['day_num']
                 try:
-                    # Use actual month/year, not hardcoded 2026/8
                     dt = datetime.date(y, m, d_num)
                     w_start = dt - datetime.timedelta(days=dt.weekday())
                     w_key = str(w_start)
@@ -632,7 +834,6 @@ def apply_principal_rules_to_db(month_year: str = "August 2026"):
 
             total_shortfall = 0.0
             for w_key, w_days in weeks.items():
-                # Check if actual 2nd Saturday of this month falls in this week
                 has_2nd_sat = second_saturday_day is not None and any(d['day_num'] == second_saturday_day for d in w_days)
                 req = 5.0 if has_2nd_sat else min(float(len(w_days)), 6.0)
                 w_worked = 0.0
@@ -647,85 +848,94 @@ def apply_principal_rules_to_db(month_year: str = "August 2026"):
 
             a_pay_days = max(0.0, m_days - total_shortfall)
             a_bio_days = max(0.0, a_pay_days - holidays)
-            cursor.execute("""
-            UPDATE monthly_records
-            SET biometric_days = ?, holiday = ?, total_pay_days = ?
-            WHERE emp_code = ? AND month_year = ?
-            """, (a_bio_days, holidays, a_pay_days, aid, month_year))
+            admission_updates.append((a_bio_days, holidays, a_pay_days, aid, month_year))
+
+    if admission_updates:
+        cursor.executemany("""
+        UPDATE monthly_records
+        SET biometric_days = ?, holiday = ?, total_pay_days = ?
+        WHERE emp_code = ? AND month_year = ?
+        """, admission_updates)
+    conn.commit()
 
     # 7. Media Team 1018 (Prudhvi Raj): 9:35 in-time cutoff
-    # Compute correct values from actual month (not hardcoded August values)
-    emp1018_bio = max(0.0, m_days - holidays - 2.0)  # ~2 absent days from late punch pattern
-    emp1018_pay = max(0.0, m_days - 2.0)             # 2 days LOP from late punches
+    emp1018_bio = max(0.0, m_days - holidays - 2.0)
+    emp1018_pay = max(0.0, m_days - 2.0)
     cursor.execute("""
     UPDATE monthly_records
     SET biometric_days = ?, holiday = ?, total_pay_days = ?, remarks = '(LATE PUNCH) ab - 31', needs_review = 1
     WHERE emp_code = '1018' AND month_year = ?
     """, (emp1018_bio, holidays, emp1018_pay, month_year,))
+    conn.commit()
 
     # Recalculate salary for any staff whose total_pay_days was updated by principal rules
     all_overridden = list(NON_BIOMETRIC_STAFF.keys()) + ['1053', '1203', '109', '1018'] + transport_ids + admission_ids
-    for u_id in all_overridden:
-        cursor.execute("""
-        SELECT m.emp_code, m.total_pay_days, m.base_salary, m.arrears,
-               m.epf_deduction, m.it_deduction, m.bus_deduction, m.mess_deduction,
-               m.hostel_eb_deduction, m.other_deductions, m.pt_deduction, m.wf_deduction,
-               p.base_salary as prof_base, p.category as prof_category, p.epf_amount as prof_epf,
-               p.default_bus as prof_bus, p.default_mess as prof_mess, p.default_hostel_eb as prof_hostel,
-               p.default_arrears as prof_arrears,
-               e.name, e.department, e.designation
-        FROM monthly_records m
-        LEFT JOIN salary_profiles p ON m.emp_code = p.emp_code
-        JOIN employees e ON m.emp_code = e.emp_code
-        WHERE m.emp_code = ? AND m.month_year = ?
-        """, (u_id, month_year))
-        r = cursor.fetchone()
-        if r:
-            prof = {
-                'emp_code': u_id,
-                'name': r['name'],
-                'category': payroll_engine.determine_employee_category(r['department'], r['designation'], r['prof_category']),
-                'base_salary': float(r['prof_base'] or 0.0),
-                'default_arrears': float(r['prof_arrears'] or 0.0),
-                'epf_amount': float(r['prof_epf'] or 0.0)
-            }
-            pay_days = float(r['total_pay_days'] or 0.0)
-            overrides = {
-                'base_salary': r['base_salary'] if r['base_salary'] is not None else prof.get('base_salary'),
-                'arrears': r['arrears'] or 0.0,
-                'epf_deduction': r['epf_deduction'] if r['epf_deduction'] is not None else prof.get('epf_amount', 0.0),
-                'it_deduction': r['it_deduction'] or 0.0,
-                'bus_deduction': r['bus_deduction'] if r['bus_deduction'] is not None else float(r['prof_bus'] or 0.0),
-                'mess_deduction': r['mess_deduction'] if r['mess_deduction'] is not None else float(r['prof_mess'] or 0.0),
-                'hostel_eb_deduction': r['hostel_eb_deduction'] if r['hostel_eb_deduction'] is not None else float(r['prof_hostel'] or 0.0),
-                'other_deductions': r['other_deductions'] or 0.0,
-                'pt_deduction': r['pt_deduction'],
-                'wf_deduction': r['wf_deduction']
-            }
-            res = payroll_engine.calculate_salary_for_profile(prof, m_days, pay_days, overrides)
-            cursor.execute("""
-            UPDATE monthly_records
-            SET base_salary = ?, earned_basic = ?, earned_da = ?, earned_hra = ?, arrears = ?,
-                gross_salary = ?, pt_deduction = ?, wf_deduction = ?, epf_deduction = ?,
-                it_deduction = ?, bus_deduction = ?, mess_deduction = ?, hostel_eb_deduction = ?,
-                other_deductions = ?, total_deductions = ?, net_salary = ?
-            WHERE emp_code = ? AND month_year = ?
-            """, (
-                res['base_salary'], res['earned_basic'], res['da'], res['hra'], res['arrears'],
-                res['gross_salary'], res['pt'], res['wf'], res['epf'],
-                res['it'], res['bus_deduction'], res['mess_deduction'], res['hostel_eb_deduction'],
-                res['other_deductions'], res['total_deductions'], res['net_salary'],
-                u_id, month_year
-            ))
+    o_placeholders = ','.join('?' * len(all_overridden))
+    cursor.execute(f"""
+    SELECT m.emp_code, m.total_pay_days, m.base_salary, m.arrears,
+           m.epf_deduction, m.it_deduction, m.bus_deduction, m.mess_deduction,
+           m.hostel_eb_deduction, m.other_deductions, m.pt_deduction, m.wf_deduction,
+           p.base_salary as prof_base, p.category as prof_category, p.epf_amount as prof_epf,
+           p.default_bus as prof_bus, p.default_mess as prof_mess, p.default_hostel_eb as prof_hostel,
+           p.default_arrears as prof_arrears,
+           e.name, e.department, e.designation
+    FROM monthly_records m
+    LEFT JOIN salary_profiles p ON m.emp_code = p.emp_code
+    JOIN employees e ON m.emp_code = e.emp_code
+    WHERE m.emp_code IN ({o_placeholders}) AND m.month_year = ?
+    """, (*all_overridden, month_year))
+    overridden_rows = cursor.fetchall()
+
+    salary_updates = []
+    for r in overridden_rows:
+        u_id = str(r['emp_code'])
+        prof = {
+            'emp_code': u_id,
+            'name': r['name'],
+            'category': payroll_engine.determine_employee_category(r['department'], r['designation'], r['prof_category']),
+            'base_salary': float(r['prof_base'] or 0.0),
+            'default_arrears': float(r['prof_arrears'] or 0.0),
+            'epf_amount': float(r['prof_epf'] or 0.0)
+        }
+        pay_days = float(r['total_pay_days'] or 0.0)
+        overrides = {
+            'base_salary': r['base_salary'] if r['base_salary'] is not None else prof.get('base_salary'),
+            'arrears': r['arrears'] or 0.0,
+            'epf_deduction': r['epf_deduction'] if r['epf_deduction'] is not None else prof.get('epf_amount', 0.0),
+            'it_deduction': r['it_deduction'] or 0.0,
+            'bus_deduction': r['bus_deduction'] if r['bus_deduction'] is not None else float(r['prof_bus'] or 0.0),
+            'mess_deduction': r['mess_deduction'] if r['mess_deduction'] is not None else float(r['prof_mess'] or 0.0),
+            'hostel_eb_deduction': r['hostel_eb_deduction'] if r['hostel_eb_deduction'] is not None else float(r['prof_hostel'] or 0.0),
+            'other_deductions': r['other_deductions'] or 0.0,
+            'pt_deduction': r['pt_deduction'],
+            'wf_deduction': r['wf_deduction']
+        }
+        res = payroll_engine.calculate_salary_for_profile(prof, m_days, pay_days, overrides)
+        salary_updates.append((
+            res['base_salary'], res['earned_basic'], res['da'], res['hra'], res['arrears'],
+            res['gross_salary'], res['pt'], res['wf'], res['epf'],
+            res['it'], res['bus_deduction'], res['mess_deduction'], res['hostel_eb_deduction'],
+            res['other_deductions'], res['total_deductions'], res['net_salary'],
+            u_id, month_year
+        ))
+
+    if salary_updates:
+        cursor.executemany("""
+        UPDATE monthly_records
+        SET base_salary = ?, earned_basic = ?, earned_da = ?, earned_hra = ?, arrears = ?,
+            gross_salary = ?, pt_deduction = ?, wf_deduction = ?, epf_deduction = ?,
+            it_deduction = ?, bus_deduction = ?, mess_deduction = ?, hostel_eb_deduction = ?,
+            other_deductions = ?, total_deductions = ?, net_salary = ?
+        WHERE emp_code = ? AND month_year = ?
+        """, salary_updates)
 
     conn.commit()
     conn.close()
+    _PRINCIPAL_RULES_APPLIED.add(month_year)
 
 def get_month_records(month_year: str, active_only: bool = True, reference_codes: Optional[set] = None) -> List[dict]:
     """Retrieve all employee summaries for a specific month."""
     month_year = normalize_month_year(month_year)
-    # Ensure all VIPs and non-biometric staff are guaranteed present with full pay for this month
-    apply_principal_rules_to_db(month_year)
 
     conn = get_db()
     cursor = conn.cursor()
@@ -1284,21 +1494,30 @@ def seed_salary_profiles_from_reference(database_dir: str = 'database'):
     conn = get_db()
     cursor = conn.cursor()
 
+    cursor.execute("SELECT count(*) as cnt FROM salary_profiles")
+    r = cursor.fetchone()
+    if r and r['cnt'] > 0:
+        conn.close()
+        return
+
     cursor.execute("SELECT emp_code, name, designation, department FROM employees")
     employees = cursor.fetchall()
 
+    batch_data = []
     for emp in employees:
         ec = emp['emp_code']
         raw_name = emp['name']
         dept = emp['department']
         desig = emp['designation'] or ''
         category = payroll_engine.determine_employee_category(dept, desig)
+        batch_data.append((ec, raw_name, category, desig, dept))
 
-        cursor.execute("""
+    if batch_data:
+        cursor.executemany("""
         INSERT OR REPLACE INTO salary_profiles 
         (emp_code, name, category, designation, department, base_salary, bank_name, account_no, ifsc_code, epf_amount, default_bus, default_mess, default_hostel_eb, default_arrears)
         VALUES (?, ?, ?, ?, ?, 0.0, 'PNB', '', 'PUNB0401700', 0.0, 0.0, 0.0, 0.0, 0.0)
-        """, (ec, raw_name, category, desig, dept))
+        """, batch_data)
 
     conn.commit()
     conn.close()
@@ -1412,9 +1631,18 @@ def recalculate_monthly_salary(emp_code: str, month_year: str, total_pay_days: O
 
 def populate_month_salaries_if_empty(month_year: str):
     """Ensure all employees in a month have computed salary figures."""
-    apply_principal_rules_to_db(month_year)
+    month_year = normalize_month_year(month_year)
     conn = get_db()
     cursor = conn.cursor()
+    cursor.execute("""
+    SELECT count(*) as cnt FROM monthly_records WHERE month_year = ? AND net_salary IS NULL
+    """, (month_year,))
+    r_cnt = cursor.fetchone()
+    if not r_cnt or r_cnt['cnt'] == 0:
+        conn.close()
+        return
+
+    apply_principal_rules_to_db(month_year)
     cursor.execute("""
     SELECT m.emp_code, m.total_pay_days, m.base_salary, m.arrears,
            m.epf_deduction, m.it_deduction, m.bus_deduction, m.mess_deduction,
