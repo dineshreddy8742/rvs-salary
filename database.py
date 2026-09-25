@@ -637,11 +637,11 @@ def seed_from_engine(engine, month_year: str = "August 2026", overwrite: bool = 
     conn.commit()
     conn.close()
     print(f"Database seeded successfully for {month_year}.")
-    apply_principal_rules_to_db(month_year)
+    apply_principal_rules_to_db(month_year, from_upload=True)
 
 _PRINCIPAL_RULES_APPLIED = set()
 
-def apply_principal_rules_to_db(month_year: str = "August 2026", force: bool = False):
+def apply_principal_rules_to_db(month_year: str = "August 2026", force: bool = False, from_upload: bool = False):
     """
     Enforce Principal Sir's 21 attendance rules directly on database records:
     - 101, 707, 900, 1060, 1015, 1019, 1021, 4001, 1030, Shajahan, Siva driver: full days.
@@ -653,6 +653,9 @@ def apply_principal_rules_to_db(month_year: str = "August 2026", force: bool = F
     - Electricians: 8:30 in, 16:30 out full day no penalty.
     - Attenders / Garden: 8:35 in threshold.
     - Admission: 6 days/week, Sunday work offsets absent.
+
+    from_upload=True: called after a real file upload — VIP staff are INSERTED if missing.
+    from_upload=False: called on app restart or standalone — VIPs are ONLY UPDATED if already present.
     """
     month_year = normalize_month_year(month_year)
     if not force and month_year in _PRINCIPAL_RULES_APPLIED:
@@ -716,8 +719,9 @@ def apply_principal_rules_to_db(month_year: str = "August 2026", force: bool = F
             'od': float(r['od_cnt'] or 0.0)
         }
 
-    # 1. Ensure all designated VIP staff exist in employees table & monthly_records for this month
-    # 1. Ensure all designated VIP staff exist in employees table & monthly_records for this month
+    # 1. Ensure all designated VIP staff exist in employees table & monthly_records for this month.
+    # When from_upload=True (real bulk upload): INSERT OR REPLACE so VIPs appear even if not in biometric machine.
+    # When from_upload=False (app restart / standalone): ONLY UPDATE existing records — never create phantom rows.
     vip_emp_batch = []
     vip_mon_batch = []
     for vc, meta in NON_BIOMETRIC_STAFF.items():
@@ -725,13 +729,14 @@ def apply_principal_rules_to_db(month_year: str = "August 2026", force: bool = F
         v_od = vip_leave_map.get(str(vc), {}).get('od')
         v_cl = v_cl if (v_cl is not None and v_cl > 0) else None
         v_od = v_od if (v_od is not None and v_od > 0) else None
-        
+
         vip_emp_batch.append((vc, meta['name'], meta['desig'], meta['dept'], 12.0, 15.0, 'exempt_full', 1))
         vip_mon_batch.append((
             vc, month_year, meta['name'], meta['desig'], meta['dept'],
             bio_days, holidays, v_cl, v_od, m_days, 'Full Attendance (Principal Override)', 0, '[]', '[]', '[]'
         ))
 
+    # Always upsert VIP employees master (they are always valid staff)
     if vip_emp_batch:
         cursor.executemany("""
         INSERT OR REPLACE INTO employees (emp_code, name, designation, department, annual_cl_quota, annual_od_quota, attendance_policy, is_manual)
@@ -739,11 +744,27 @@ def apply_principal_rules_to_db(month_year: str = "August 2026", force: bool = F
         """, vip_emp_batch)
 
     if vip_mon_batch:
-        cursor.executemany("""
-        INSERT OR REPLACE INTO monthly_records
-        (emp_code, month_year, name, designation, department, biometric_days, holiday, availed_leaves, sv_od, total_pay_days, remarks, needs_review, absent_days_json, missed_punches_json, late_punches_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, vip_mon_batch)
+        if from_upload:
+            # Real upload: insert VIP monthly records so they appear alongside uploaded staff
+            cursor.executemany("""
+            INSERT OR REPLACE INTO monthly_records
+            (emp_code, month_year, name, designation, department, biometric_days, holiday, availed_leaves, sv_od, total_pay_days, remarks, needs_review, absent_days_json, missed_punches_json, late_punches_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, vip_mon_batch)
+        else:
+            # Standalone / restart: only UPDATE VIP records that already exist — do NOT create phantom rows
+            for row in vip_mon_batch:
+                (vc, my, vname, vdesig, vdept, vbio, vhol, vcl, vod, vtpd, vrem, vnr, vab, vmp, vlp) = row
+                cursor.execute("""
+                UPDATE monthly_records
+                SET name = ?, designation = ?, department = ?,
+                    biometric_days = ?, holiday = ?,
+                    availed_leaves = COALESCE(?, availed_leaves),
+                    sv_od = COALESCE(?, sv_od),
+                    total_pay_days = ?, remarks = ?, needs_review = 0,
+                    absent_days_json = '[]', missed_punches_json = '[]', late_punches_json = '[]'
+                WHERE emp_code = ? AND month_year = ?
+                """, (vname, vdesig, vdept, vbio, vhol, vcl, vod, vtpd, vrem, vc, my))
 
     # Ensure regular bus drivers with 'Siva' in their name are standard policy, not VIP
     cursor.execute("UPDATE employees SET attendance_policy = 'standard' WHERE emp_code IN ('603', '610', '6623')")
