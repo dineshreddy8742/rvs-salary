@@ -77,10 +77,17 @@ class PgCursorProxy:
 
     def execute(self, sql, params=None):
         translated = self._translate_sql(sql, params)
-        if params is not None:
-            return self._cur.execute(translated, params)
-        else:
-            return self._cur.execute(translated)
+        try:
+            if params is not None:
+                return self._cur.execute(translated, params)
+            else:
+                return self._cur.execute(translated)
+        except Exception as e:
+            try:
+                self._conn._raw_conn.rollback()
+            except Exception:
+                pass
+            raise e
 
     def executemany(self, sql, seq_of_params):
         if not seq_of_params:
@@ -88,7 +95,22 @@ class PgCursorProxy:
         sample_params = seq_of_params[0] if seq_of_params else None
         translated = self._translate_sql(sql, sample_params)
         import psycopg2.extras
-        psycopg2.extras.execute_batch(self._cur, translated, seq_of_params, page_size=200)
+        # Use high-speed execute_values for multi-row INSERTs to prevent TLS timeouts and SSL errors
+        if 'VALUES' in translated.upper() and 'INSERT' in translated.upper():
+            val_sql = re.sub(r'VALUES\s*\([^)]+\)', 'VALUES %s', translated, flags=re.I)
+            try:
+                psycopg2.extras.execute_values(self._cur, val_sql, seq_of_params, page_size=2000)
+                return
+            except Exception as e:
+                print(f"[DB] execute_values fallback: {e}")
+        try:
+            psycopg2.extras.execute_batch(self._cur, translated, seq_of_params, page_size=500)
+        except Exception as e:
+            try:
+                self._conn._raw_conn.rollback()
+            except Exception:
+                pass
+            raise e
 
     def fetchone(self):
         return self._cur.fetchone()
@@ -135,11 +157,22 @@ class PgConnectionProxy:
     def close(self):
         if self._pool_ref:
             try:
-                self._raw_conn.commit()
+                if getattr(self._raw_conn, 'closed', 0) == 0:
+                    self._raw_conn.commit()
+                    self._pool_ref.putconn(self._raw_conn)
+                else:
+                    self._pool_ref.putconn(self._raw_conn, close=True)
+            except Exception:
+                try:
+                    self._pool_ref.putconn(self._raw_conn, close=True)
+                except Exception:
+                    pass
+        else:
+            try:
+                if getattr(self._raw_conn, 'closed', 0) == 0:
+                    self._raw_conn.commit()
             except Exception:
                 pass
-            self._pool_ref.putconn(self._raw_conn)
-        else:
             return self._raw_conn.close()
 
     def execute(self, sql, params=None):
@@ -222,11 +255,33 @@ def normalize_month_year(month_year: str) -> str:
 
 def get_db():
     """Get database connection — Supabase PostgreSQL if configured, Turso cloud if configured, else local SQLite."""
-    if _USE_SUPABASE and _pg_pool:
+    if _USE_SUPABASE:
         import psycopg2.extras
-        raw_conn = _pg_pool.getconn()
-        raw_conn.cursor_factory = psycopg2.extras.DictCursor
-        return PgConnectionProxy(raw_conn, _pg_pool)
+        raw_conn = None
+        if _pg_pool:
+            try:
+                raw_conn = _pg_pool.getconn()
+                if getattr(raw_conn, 'closed', 0) != 0:
+                    _pg_pool.putconn(raw_conn, close=True)
+                    raw_conn = _pg_pool.getconn()
+                raw_conn.cursor_factory = psycopg2.extras.DictCursor
+                return PgConnectionProxy(raw_conn, _pg_pool)
+            except Exception as e:
+                print(f"[DB] Pool getconn notice: {e}, falling back to direct dedicated connection")
+                try:
+                    if raw_conn:
+                        _pg_pool.putconn(raw_conn, close=True)
+                except Exception:
+                    pass
+        try:
+            direct_conn = psycopg2.connect(SUPABASE_DB_URL)
+            direct_conn.cursor_factory = psycopg2.extras.DictCursor
+            return PgConnectionProxy(direct_conn, None)
+        except Exception as e:
+            print(f"[DB] Direct Supabase connection failed ({e}), falling back to local SQLite")
+            conn = sqlite3.connect(DB_FILE)
+            conn.row_factory = sqlite3.Row
+            return conn
     elif _USE_TURSO:
         conn = sqlite3.connect(
             database=TURSO_DATABASE_URL,
@@ -492,7 +547,7 @@ def seed_from_engine(engine, month_year: str = "August 2026", overwrite: bool = 
                   ('siva' in name_l and ('driver' in desig_l or 'transport' in dept_l)))
         policy = 'exempt_full' if is_vip else 'standard'
         
-        emp_batch.append((emp_code, emp['name'], emp.get('designation', ''), normalize_dept(emp.get('department', '')), policy))
+        emp_batch.append((emp_code, emp['name'], emp.get('designation', ''), normalize_dept(emp.get('department', '')), 12.0, 15.0, policy, 0))
 
         summary = engine.calculate_employee_summary(emp)
         
@@ -533,7 +588,7 @@ def seed_from_engine(engine, month_year: str = "August 2026", overwrite: bool = 
     if emp_batch:
         cursor.executemany("""
         INSERT OR REPLACE INTO employees (emp_code, name, designation, department, annual_cl_quota, annual_od_quota, attendance_policy, is_manual)
-        VALUES (?, ?, ?, ?, 12.0, 15.0, ?, 0)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, emp_batch)
         conn.commit()
 
