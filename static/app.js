@@ -876,7 +876,10 @@ async function loadData() {
   if (!currentMonth) {
     allEmployees = [];
     allSalaryRecords = [];
-    renderAll();
+    unifiedRecords = [];
+    buildUnifiedRecords({}, {});
+    populateDepartmentSelect([]);
+    renderTable();
     return;
   }
   try {
@@ -1019,12 +1022,12 @@ function renderUnifiedKPIs(attStats, salStats) {
 
   const elDays = document.getElementById('stat-total-pay-days');
   if (elDays) {
-    const monthDays = (unifiedRecords.length > 0 && unifiedRecords[0].month_days) ? unifiedRecords[0].month_days : 31;
-    elDays.textContent = `${monthDays} Days`;
+    const monthDays = (unifiedRecords.length > 0 && unifiedRecords[0].month_days) ? unifiedRecords[0].month_days : (currentMonth ? 31 : 0);
+    elDays.textContent = currentMonth ? `${monthDays} Days` : '0 Days';
   }
   const elSubDays = document.getElementById('stat-sub-month-days');
   if (elSubDays) {
-    elSubDays.textContent = `${currentMonth || 'August 2026'}`;
+    elSubDays.textContent = currentMonth || 'No Month Selected';
   }
 
   const navReview = document.getElementById('nav-review-count');
@@ -1629,7 +1632,10 @@ function renderTable() {
   const totalCols = (mode === 'unified') ? (showSalaryColumns ? 21 : 13) : ((mode === 'attendance') ? 13 : 18);
 
   if (filtered.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="${totalCols}" style="text-align: center; padding: 3rem; color: #94a3b8; font-weight: 500;">No employees found matching the selected filter.</td></tr>`;
+    const emptyMsg = !currentMonth 
+      ? 'No active month dataset found. Please upload a monthly biometric Excel report.' 
+      : 'No employees found matching the selected filter.';
+    tbody.innerHTML = `<tr><td colspan="${totalCols}" style="text-align: center; padding: 3rem; color: #94a3b8; font-weight: 500;">${emptyMsg}</td></tr>`;
     return;
   }
 
@@ -3962,15 +3968,24 @@ async function openDeleteMonthModal() {
 
     if (select) {
       select.innerHTML = '';
-      months.forEach(m => {
-        const opt = document.createElement('option');
-        opt.value = m;
-        opt.textContent = m;
-        if (m === currentMonth) opt.selected = true;
-        select.appendChild(opt);
-      });
       if (months.length > 0) {
+        months.forEach(m => {
+          const opt = document.createElement('option');
+          opt.value = m;
+          opt.textContent = m;
+          if (m === currentMonth) opt.selected = true;
+          select.appendChild(opt);
+        });
         updateDeleteMonthBadge(select.value || months[0]);
+      } else {
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = 'No months uploaded';
+        select.appendChild(opt);
+        const badgeName = document.getElementById('del-badge-name');
+        const badgeRecords = document.getElementById('del-badge-records');
+        if (badgeName) badgeName.textContent = 'None';
+        if (badgeRecords) badgeRecords.textContent = '0 records';
       }
     }
     modal.classList.add('active');
