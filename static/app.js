@@ -837,35 +837,48 @@ async function loadMonths() {
   try {
     const res = await fetch('/api/months');
     const data = await res.json();
-    if (data.status === 'success' && data.months.length > 0) {
-      const select = document.getElementById('month-select');
-      select.innerHTML = '';
-      data.months.forEach(m => {
-        const opt = document.createElement('option');
-        opt.value = m;
-        opt.textContent = m;
-        if (m === currentMonth) opt.selected = true;
-        select.appendChild(opt);
-      });
+    const select = document.getElementById('month-select');
+    if (data.status === 'success' && data.months && data.months.length > 0) {
+      if (select) {
+        select.innerHTML = '';
+        data.months.forEach(m => {
+          const opt = document.createElement('option');
+          opt.value = m;
+          opt.textContent = m;
+          if (m === currentMonth) opt.selected = true;
+          select.appendChild(opt);
+        });
+      }
       if (currentMonth && data.months.includes(currentMonth)) {
-        select.value = currentMonth;
+        if (select) select.value = currentMonth;
       } else if (data.months.includes('August 2026')) {
         currentMonth = 'August 2026';
-        select.value = 'August 2026';
+        if (select) select.value = 'August 2026';
       } else {
         currentMonth = data.months[0];
-        select.value = data.months[0];
+        if (select) select.value = data.months[0];
       }
+    } else {
+      if (select) {
+        select.innerHTML = '<option value="">No Months Uploaded</option>';
+      }
+      currentMonth = '';
     }
-    loadData();
+    await loadData();
   } catch (err) {
     console.error('Error loading months:', err);
-    loadData();
+    await loadData();
   }
 }
 
 // Load both attendance and salary data concurrently for the Single Unified Dashboard
 async function loadData() {
+  if (!currentMonth) {
+    allEmployees = [];
+    allSalaryRecords = [];
+    renderAll();
+    return;
+  }
   try {
     const [resAtt, resSal] = await Promise.all([
       fetch(`/api/data?month=${encodeURIComponent(currentMonth)}&active_only=${activeOnly}`),
@@ -4007,15 +4020,13 @@ async function executeDeleteMonth() {
       showToast(`✅ Successfully deleted ${targetMonth}!`);
       document.getElementById('modal-delete-data').classList.remove('active');
 
-      // Reload months
-      await loadMonths();
-      // If current month was deleted, switch to first available
-      const selectMonth = document.getElementById('month-select');
-      if (selectMonth && selectMonth.options.length > 0) {
-        currentMonth = selectMonth.options[0].value;
-        selectMonth.value = currentMonth;
+      // Reset currentMonth if target was deleted
+      if (currentMonth === targetMonth) {
+        currentMonth = '';
       }
-      await loadData();
+
+      // Reload months & auto-switch to first available (or empty state)
+      await loadMonths();
     } else {
       alert('Deletion failed: ' + (data.message || 'Unknown error'));
     }

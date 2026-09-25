@@ -201,18 +201,37 @@ def delete_month():
     if not month_name:
         return jsonify({'status': 'error', 'message': 'Please specify the month name to delete.'}), 400
 
+    norm_month = database.normalize_month_year(month_name)
     available_months = database.get_available_months()
-    if month_name not in available_months:
+    target = next((m for m in available_months if database.normalize_month_year(m).lower() == norm_month.lower()), None)
+    if not target:
         return jsonify({'status': 'error', 'message': f'Month "{month_name}" not found in database.'}), 404
 
-    res = database.delete_month_data(month_name)
+    res = database.delete_month_data(target)
     return jsonify(res)
 
 @app.route('/api/data', methods=['GET'])
 def get_data():
     """Return attendance records for a specific month."""
-    month_year = request.args.get('month', 'August 2026')
+    month_year = (request.args.get('month') or '').strip()
     active_only = request.args.get('active_only', 'true').lower() == 'true'
+
+    if not month_year or month_year == 'No Months Uploaded':
+        return jsonify({
+            'status': 'success',
+            'month_year': '',
+            'stats': {
+                'total_staff': 0,
+                'needs_review_count': 0,
+                'total_pay_days': 0,
+                'total_leaves': 0,
+                'total_od': 0,
+                'vip_count': 0,
+                'active_only': active_only
+            },
+            'departments': [],
+            'employees': []
+        })
 
     records = database.get_month_records(month_year, active_only=active_only, reference_codes=REFERENCE_CODES)
 
@@ -532,8 +551,32 @@ def export_file():
 @app.route('/api/salary/data', methods=['GET'])
 def get_salary_data():
     """Return comprehensive salary ledger and financial KPI stats for active month."""
-    month_year = request.args.get('month', 'August 2026')
+    month_year = (request.args.get('month') or '').strip()
     active_only = request.args.get('active_only', 'true').lower() == 'true'
+
+    if not month_year or month_year == 'No Months Uploaded':
+        return jsonify({
+            'status': 'success',
+            'month_year': '',
+            'stats': {
+                'total_staff': 0,
+                'total_payroll_budget': 0,
+                'total_gross_disbursed': 0,
+                'total_pt_deductions': 0,
+                'total_wf_deductions': 0,
+                'total_epf_deductions': 0,
+                'total_it_deductions': 0,
+                'total_bus_deductions': 0,
+                'total_mess_deductions': 0,
+                'total_hostel_eb_deductions': 0,
+                'total_other_deductions': 0,
+                'total_all_deductions': 0,
+                'total_net_disbursed': 0
+            },
+            'departments': [],
+            'categories': [],
+            'records': []
+        })
 
     salary_data = database.get_month_salary_records(month_year, active_only=active_only, reference_codes=REFERENCE_CODES)
     return jsonify(salary_data)

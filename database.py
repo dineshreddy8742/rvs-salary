@@ -420,6 +420,7 @@ def delete_month_data(month_year: str) -> dict:
     cursor.execute("DELETE FROM daily_logs WHERE month_year = ?", (month_year,))
     conn.commit()
     conn.close()
+    _PRINCIPAL_RULES_APPLIED.discard(month_year)
     return {
         'status': 'success',
         'message': f'Successfully deleted {rec_count} records for {month_year}',
@@ -594,6 +595,13 @@ def apply_principal_rules_to_db(month_year: str = "August 2026", force: bool = F
         return
     conn = get_db()
     cursor = conn.cursor()
+
+    # Guard: If no records exist for this month in monthly_records (e.g. month was deleted or not yet seeded),
+    # do NOT create phantom VIP rows!
+    cursor.execute("SELECT COUNT(*) as cnt FROM monthly_records WHERE month_year = ?", (month_year,))
+    if cursor.fetchone()['cnt'] == 0:
+        conn.close()
+        return
 
     m_days = float(payroll_engine.get_days_in_month_str(month_year) or 31)
     import calendar
