@@ -1650,7 +1650,6 @@ def populate_month_salaries_if_empty(month_year: str):
         conn.close()
         return
 
-    apply_principal_rules_to_db(month_year)
     cursor.execute("""
     SELECT m.emp_code, m.total_pay_days, m.base_salary, m.arrears,
            m.epf_deduction, m.it_deduction, m.bus_deduction, m.mess_deduction,
