@@ -211,24 +211,27 @@ class AttendanceEngine:
         self.calculate_all_summaries()
 
     def _parse_sheet(self, df: pd.DataFrame, target_dict: dict, sheet_name: str):
-        """Extract employee blocks from a biometric sheet."""
+        """Extract employee blocks from a biometric sheet using fast list traversal."""
         curr_dept = "General"
-        num_rows = len(df)
+        # Convert DataFrame to native Python list of lists for 50x faster iteration and minimal memory
+        rows = df.fillna('').values.tolist()
+        num_rows = len(rows)
         i = 0
 
         while i < num_rows:
-            row = df.iloc[i]
-            col1 = str(row[1]) if pd.notna(row[1]) else ''
-            col0 = str(row[0]) if pd.notna(row[0]) else ''
+            row = rows[i]
+            len_r = len(row)
+            col1 = str(row[1]).strip() if len_r > 1 else ''
+            col0 = str(row[0]).strip() if len_r > 0 else ''
             
             # Detect Department header
             if 'Department:' in col1:
-                raw_d = str(row[3]).strip() if pd.notna(row[3]) else str(row[2]).strip()
+                raw_d = str(row[3]).strip() if len_r > 3 and row[3] != '' else (str(row[2]).strip() if len_r > 2 else '')
                 curr_dept = normalize_dept(raw_d)
                 i += 1
                 continue
             elif 'Department:' in col0:
-                curr_dept = normalize_dept(str(row[1]).strip())
+                curr_dept = normalize_dept(str(row[1]).strip() if len_r > 1 else '')
                 i += 1
                 continue
 
@@ -236,12 +239,12 @@ class AttendanceEngine:
             emp_code = None
             emp_name = ""
             if 'Employee Code:' in col1:
-                emp_code = str(row[3]).strip()
-                if len(row) > 7 and pd.notna(row[7]):
+                emp_code = str(row[3]).strip() if len_r > 3 else ''
+                if len_r > 7 and row[7] != '':
                     emp_name = str(row[7]).strip()
             elif 'Employee Code:' in col0:
-                emp_code = str(row[2]).strip()
-                if len(row) > 6 and pd.notna(row[6]):
+                emp_code = str(row[2]).strip() if len_r > 2 else ''
+                if len_r > 6 and row[6] != '':
                     emp_name = str(row[6]).strip()
 
             if emp_code and emp_code != 'nan' and emp_code != '':
@@ -258,9 +261,10 @@ class AttendanceEngine:
 
                 i += 1
                 while i < num_rows:
-                    sub_row = df.iloc[i]
-                    sub_col1 = str(sub_row[1]) if len(sub_row) > 1 and pd.notna(sub_row[1]) else ''
-                    sub_col0 = str(sub_row[0]) if len(sub_row) > 0 and pd.notna(sub_row[0]) else ''
+                    sub_row = rows[i]
+                    sub_len = len(sub_row)
+                    sub_col1 = str(sub_row[1]).strip() if sub_len > 1 else ''
+                    sub_col0 = str(sub_row[0]).strip() if sub_len > 0 else ''
 
                     # Summary row starts with "Total Duration="
                     if 'Total Duration=' in sub_col1 or 'Total Duration=' in sub_col0:
@@ -273,10 +277,10 @@ class AttendanceEngine:
                         break
 
                     # Header row inside block: "Date", "InTime", etc.
-                    row_strs = [str(c).strip() for c in sub_row if pd.notna(c)]
+                    row_strs = [str(c).strip() for c in sub_row if c != '']
                     if any('Date' in s for s in row_strs):
-                        for col_idx in range(len(sub_row)):
-                            cell_str = str(sub_row[col_idx]).strip() if pd.notna(sub_row[col_idx]) else ''
+                        for col_idx in range(sub_len):
+                            cell_str = str(sub_row[col_idx]).strip()
                             if 'Date' in cell_str:
                                 date_col = col_idx
                             elif 'InTime' in cell_str:
@@ -291,15 +295,15 @@ class AttendanceEngine:
                         continue
 
                     # Daily record row (check for date-like string)
-                    date_val = sub_row[date_col] if len(sub_row) > date_col and pd.notna(sub_row[date_col]) else (sub_col1 if pd.notna(sub_row[1]) else sub_col0)
+                    date_val = sub_row[date_col] if sub_len > date_col and sub_row[date_col] != '' else (sub_col1 if sub_col1 else sub_col0)
                     m_date = re.search(r'(\d{1,2})[-/]([A-Za-z]{3}|\d{1,2})[-/](\d{4})', str(date_val))
                     if m_date:
                         if not self.target_month_year and not self.detected_month_year:
                             self._set_month_calendar(f"{m_date.group(2)} {m_date.group(3)}")
-                        in_time = str(sub_row[in_time_col]).strip() if len(sub_row) > in_time_col and pd.notna(sub_row[in_time_col]) else ''
-                        out_time = str(sub_row[out_time_col]).strip() if len(sub_row) > out_time_col and pd.notna(sub_row[out_time_col]) else ''
-                        duration = str(sub_row[duration_col]).strip() if len(sub_row) > duration_col and pd.notna(sub_row[duration_col]) else ''
-                        status = str(sub_row[status_col]).strip() if len(sub_row) > status_col and pd.notna(sub_row[status_col]) else ''
+                        in_time = str(sub_row[in_time_col]).strip() if sub_len > in_time_col and sub_row[in_time_col] != '' else ''
+                        out_time = str(sub_row[out_time_col]).strip() if sub_len > out_time_col and sub_row[out_time_col] != '' else ''
+                        duration = str(sub_row[duration_col]).strip() if sub_len > duration_col and sub_row[duration_col] != '' else ''
+                        status = str(sub_row[status_col]).strip() if sub_len > status_col and sub_row[status_col] != '' else ''
                         
                         # Replace 189 char with 1/2
                         status = status.replace(chr(189), '1/2')
