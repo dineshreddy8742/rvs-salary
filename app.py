@@ -2,6 +2,10 @@ import os
 import tempfile
 import json
 import re
+import threading
+import uuid
+import time
+import gc
 from flask import Flask, request, jsonify, send_file, send_from_directory, session, redirect, url_for
 import database
 from attendance_engine import AttendanceEngine
@@ -9,6 +13,8 @@ from export_excel import export_to_xls
 from export_salary_excel import export_salary_to_xlsx
 import disbursement_engine
 import payroll_engine
+
+UPLOAD_JOBS = {}
 
 def clean_month_str(month_str: str) -> str:
     clean = re.sub(r'[\s\-]+', '_', month_str).strip('_')
@@ -466,9 +472,55 @@ def bulk_slips():
         'applied_count': applied_count
     })
 
+def _bg_process_upload(job_id: str, save_path: str, user_month: str, orig_filename: str):
+    """Background worker thread to parse Excel and seed database without timing out HTTP connection."""
+    try:
+        UPLOAD_JOBS[job_id] = {
+            'status': 'processing',
+            'progress': 25,
+            'message': 'Parsing biometric machine Excel sheets...'
+        }
+        ref_file = REF_FILE if os.path.exists(REF_FILE) else None
+        engine = AttendanceEngine(save_path, ref_file, month_year=user_month if user_month and user_month.lower() != 'auto' else None)
+        final_month = database.normalize_month_year(engine.detected_month_year or user_month or 'August 2026')
+        total_emps = len(engine.employees)
+
+        UPLOAD_JOBS[job_id] = {
+            'status': 'processing',
+            'progress': 60,
+            'message': f'Analyzing {total_emps} staff punches and updating database...'
+        }
+
+        database.seed_from_engine(engine, final_month, overwrite=True)
+
+        del engine
+        gc.collect()
+
+        UPLOAD_JOBS[job_id] = {
+            'status': 'success',
+            'progress': 100,
+            'month_name': final_month,
+            'total_staff': total_emps,
+            'message': f'Successfully loaded and analyzed {total_emps} staff from {orig_filename} for {final_month}'
+        }
+    except Exception as e:
+        print(f"[Upload Job {job_id}] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        UPLOAD_JOBS[job_id] = {
+            'status': 'error',
+            'message': f'Failed to process file: {str(e)}'
+        }
+    finally:
+        if save_path and os.path.exists(save_path):
+            try:
+                os.remove(save_path)
+            except Exception:
+                pass
+
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
-    """Upload new biometric raw excel file for any designated month."""
+    """Upload new biometric raw excel file asynchronously for zero-timeout bulk loading."""
     if 'file' not in request.files:
         return jsonify({'status': 'error', 'message': 'No file uploaded'}), 400
     
@@ -478,49 +530,47 @@ def upload_file():
 
     user_month = (request.form.get('month_name') or '').strip()
     
-    save_path = None
     try:
-        import time
-        import gc
         from werkzeug.utils import secure_filename
 
         orig_ext = os.path.splitext(f.filename)[1].lower()
         if orig_ext not in ['.xls', '.xlsx']:
             orig_ext = '.xls'
         safe_base = secure_filename(os.path.splitext(f.filename)[0]) or 'biometric_input'
-        filename = f"rvs_upload_{int(time.time())}_{safe_base}{orig_ext}"
+        job_id = str(uuid.uuid4())[:8]
+        filename = f"rvs_upload_{int(time.time())}_{job_id}_{safe_base}{orig_ext}"
         save_path = os.path.join(tempfile.gettempdir(), filename)
         f.save(save_path)
 
-        ref_file = REF_FILE if os.path.exists(REF_FILE) else None
-        engine = AttendanceEngine(save_path, ref_file, month_year=user_month if user_month and user_month.lower() != 'auto' else None)
-        final_month = database.normalize_month_year(engine.detected_month_year or user_month or 'August 2026')
-        database.seed_from_engine(engine, final_month, overwrite=True)
-        total_emps = len(engine.employees)
+        UPLOAD_JOBS[job_id] = {
+            'status': 'processing',
+            'progress': 10,
+            'message': f'File received ({round(os.path.getsize(save_path)/(1024*1024), 2)} MB). Starting biometric analysis...'
+        }
 
-        del engine
-        gc.collect()
+        # Spawn background processing thread
+        t = threading.Thread(target=_bg_process_upload, args=(job_id, save_path, user_month, f.filename), daemon=True)
+        t.start()
 
         return jsonify({
-            'status': 'success',
-            'month_name': final_month,
-            'total_staff': total_emps,
-            'message': f'Successfully loaded and analyzed {total_emps} staff from {f.filename} for {final_month}'
+            'status': 'processing',
+            'job_id': job_id,
+            'message': 'File uploaded successfully. Processing biometric attendance...'
         })
     except Exception as e:
-        print(f"Error parsing uploaded file: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"Error initializing upload: {e}")
         return jsonify({
             'status': 'error',
-            'message': f'Failed to parse file: {str(e)}'
+            'message': f'Failed to initiate upload: {str(e)}'
         }), 500
-    finally:
-        if save_path and os.path.exists(save_path):
-            try:
-                os.remove(save_path)
-            except Exception:
-                pass
+
+@app.route('/api/upload/status/<job_id>', methods=['GET'])
+def upload_status(job_id):
+    """Check asynchronous background upload progress and completion status."""
+    job = UPLOAD_JOBS.get(job_id)
+    if not job:
+        return jsonify({'status': 'error', 'message': 'Upload task not found'}), 404
+    return jsonify(job)
 
 @app.route('/api/export', methods=['GET'])
 def export_file():

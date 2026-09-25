@@ -369,7 +369,7 @@ function setupEventListeners() {
     formData.append('file', file);
     formData.append('month_name', 'auto');
 
-    showToast(`⏳ Uploading & Analyzing ${file.name}... Auto-detecting month & calculating attendance...`);
+    showToast(`⏳ Uploading ${file.name} (${(file.size / (1024 * 1024)).toFixed(2)} MB)...`);
     try {
       const res = await fetch('/api/upload', { method: 'POST', body: formData });
       let data = null;
@@ -392,7 +392,48 @@ function setupEventListeners() {
         );
       }
 
-      if (res.ok && data && data.status === 'success') {
+      if (!res.ok || !data) {
+        alert('Upload Error: ' + ((data && data.message) || res.statusText || 'Failed to process file'));
+        return;
+      }
+
+      // Handle async background processing job
+      if (data.status === 'processing' && data.job_id) {
+        const jobId = data.job_id;
+        showToast(`⚡ ${data.message || 'File uploaded. Processing biometric attendance...'}`);
+
+        // Poll job status every 1.2s until complete
+        const pollStatus = async () => {
+          try {
+            const sRes = await fetch(`/api/upload/status/${jobId}`);
+            if (!sRes.ok) throw new Error('Status check failed');
+            const sData = await sRes.json();
+
+            if (sData.status === 'processing') {
+              showToast(`⏳ [${sData.progress || 30}%] ${sData.message || 'Processing attendance records...'}`);
+              setTimeout(pollStatus, 1200);
+            } else if (sData.status === 'success') {
+              currentMonth = sData.month_name || currentMonth;
+              showToast(`✅ Successfully loaded ${sData.total_staff || ''} staff for ${currentMonth}!`);
+              await loadMonths();
+              const select = document.getElementById('month-select');
+              if (select) select.value = currentMonth;
+              await loadData();
+            } else {
+              alert('Upload Error: ' + (sData.message || 'Processing failed'));
+            }
+          } catch (pollErr) {
+            console.error('Polling error:', pollErr);
+            setTimeout(pollStatus, 2000);
+          }
+        };
+
+        setTimeout(pollStatus, 1000);
+        return;
+      }
+
+      // Handle synchronous response (if completed directly)
+      if (data.status === 'success') {
         currentMonth = data.month_name || currentMonth;
         showToast(`✅ Successfully loaded ${data.total_staff || ''} staff for ${currentMonth}!`);
         await loadMonths();
@@ -400,11 +441,11 @@ function setupEventListeners() {
         if (select) select.value = currentMonth;
         await loadData();
       } else {
-        alert('Upload Error: ' + ((data && data.message) || res.statusText || 'Failed to process file'));
+        alert('Upload Error: ' + (data.message || 'Failed to process file'));
       }
     } catch (err) {
       console.error('Upload error:', err);
-      alert('Upload failed: ' + (err.message || 'Connection error. If the file is large, please allow 30 seconds.'));
+      alert('Upload failed: ' + (err.message || 'Connection error.'));
     } finally {
       fileInput.value = '';
     }
