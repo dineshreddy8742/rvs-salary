@@ -535,6 +535,26 @@ def seed_from_engine(engine, month_year: str = "August 2026", overwrite: bool = 
     emp_batch = []
     mon_batch = []
     log_batch = []
+    CHUNK_SIZE = 40
+
+    def _flush_chunk(e_b, m_b, l_b):
+        if e_b:
+            cursor.executemany("""
+            INSERT OR REPLACE INTO employees (emp_code, name, designation, department, annual_cl_quota, annual_od_quota, attendance_policy, is_manual)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, e_b)
+        if m_b:
+            cursor.executemany("""
+            INSERT OR REPLACE INTO monthly_records 
+            (emp_code, month_year, name, designation, department, biometric_days, holiday, availed_leaves, sv_od, total_pay_days, remarks, needs_review, missed_punches_json, absent_days_json, late_punches_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, m_b)
+        if l_b:
+            cursor.executemany("""
+            INSERT OR REPLACE INTO daily_logs (emp_code, month_year, day_num, date_str, in_time, out_time, duration, status, override_status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, l_b)
+        conn.commit()
 
     for emp_code, emp in engine.employees.items():
         name_l = str(emp.get('name', '')).lower()
@@ -585,27 +605,17 @@ def seed_from_engine(engine, month_year: str = "August 2026", overwrite: bool = 
                 day['duration'], day['status'], day.get('override_status')
             ))
 
+        if len(emp_batch) >= CHUNK_SIZE:
+            _flush_chunk(emp_batch, mon_batch, log_batch)
+            emp_batch.clear()
+            mon_batch.clear()
+            log_batch.clear()
+
     if emp_batch:
-        cursor.executemany("""
-        INSERT OR REPLACE INTO employees (emp_code, name, designation, department, annual_cl_quota, annual_od_quota, attendance_policy, is_manual)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, emp_batch)
-        conn.commit()
-
-    if mon_batch:
-        cursor.executemany("""
-        INSERT OR REPLACE INTO monthly_records 
-        (emp_code, month_year, name, designation, department, biometric_days, holiday, availed_leaves, sv_od, total_pay_days, remarks, needs_review, missed_punches_json, absent_days_json, late_punches_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, mon_batch)
-        conn.commit()
-
-    if log_batch:
-        cursor.executemany("""
-        INSERT OR REPLACE INTO daily_logs (emp_code, month_year, day_num, date_str, in_time, out_time, duration, status, override_status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, log_batch)
-        conn.commit()
+        _flush_chunk(emp_batch, mon_batch, log_batch)
+        emp_batch.clear()
+        mon_batch.clear()
+        log_batch.clear()
 
     # Also ensure any reference metadata employees (like Principal 101) exist
     if hasattr(engine, 'reference_metadata'):
