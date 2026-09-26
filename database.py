@@ -993,21 +993,34 @@ def get_month_records(month_year: str, active_only: bool = True, reference_codes
 
     # Pre-fetch CL and OD days map from daily_logs for this month
     cursor.execute("""
-    SELECT emp_code,
-           GROUP_CONCAT(CASE WHEN status LIKE '%CL%' OR status LIKE '%LEAVE%' OR override_status LIKE '%CL%' OR override_status LIKE '%LEAVE%' THEN day_num END) as cl_days,
-           GROUP_CONCAT(CASE WHEN status LIKE '%OD%' OR status LIKE '%DUTY%' OR override_status LIKE '%OD%' OR override_status LIKE '%DUTY%' THEN day_num END) as od_days
+    SELECT emp_code, day_num, status, override_status
     FROM daily_logs
     WHERE month_year = ?
-    GROUP BY emp_code
+      AND (
+        status LIKE '%CL%' OR status LIKE '%LEAVE%' OR override_status LIKE '%CL%' OR override_status LIKE '%LEAVE%'
+        OR status LIKE '%OD%' OR status LIKE '%DUTY%' OR override_status LIKE '%OD%' OR override_status LIKE '%DUTY%'
+      )
+    ORDER BY emp_code, day_num
     """, (month_year,))
     leave_map = {}
     for lr in cursor.fetchall():
-        c_days = [int(d) for d in (lr['cl_days'] or '').split(',') if d.isdigit()]
-        o_days = [int(d) for d in (lr['od_days'] or '').split(',') if d.isdigit()]
-        leave_map[str(lr['emp_code'])] = {
-            'cl_days': sorted(list(set(c_days))),
-            'od_days': sorted(list(set(o_days)))
-        }
+        ec = str(lr['emp_code'])
+        if ec not in leave_map:
+            leave_map[ec] = {'cl_days': [], 'od_days': []}
+        st = f"{(lr['override_status'] or '')} {(lr['status'] or '')}".upper()
+        d_val = lr['day_num']
+        if d_val is not None:
+            try:
+                dn = int(d_val)
+                if 'CL' in st or 'LEAVE' in st:
+                    leave_map[ec]['cl_days'].append(dn)
+                if 'OD' in st or 'DUTY' in st:
+                    leave_map[ec]['od_days'].append(dn)
+            except (ValueError, TypeError):
+                pass
+    for ec in leave_map:
+        leave_map[ec]['cl_days'] = sorted(list(set(leave_map[ec]['cl_days'])))
+        leave_map[ec]['od_days'] = sorted(list(set(leave_map[ec]['od_days'])))
 
     query = """
     SELECT e.emp_code,

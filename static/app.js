@@ -2894,7 +2894,13 @@ function getPunchFlags(emp, day) {
     computedStatus = 'OD';
     flagNote = '✈️ Approved On Duty';
   } 
-  // 3. Absent handling with overrides
+  // 3. No Out-Punch handling (machine logs often write "Absent (No OutPunch)")
+  else if (st.includes('NO OUTPUNCH') || st.includes('NO OUT PUNCH')) {
+    isMissedOut = true;
+    computedStatus = 'NO_OUTPUNCH';
+    flagNote = '⚠️ Missing Evening Out-Punch (0.5d Penalty)';
+  }
+  // 4. Absent handling with overrides
   else if (st.includes('ABSENT')) {
     if (code === '109' && inT && inT.includes(':')) {
       const [ih] = inT.split(':').map(Number);
