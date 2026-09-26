@@ -2518,7 +2518,8 @@ function formatRanges(nums) {
   const cleanNums = nums
     .map(n => {
       if (typeof n === 'number') return isNaN(n) ? null : n;
-      const parsed = parseInt(String(n).replace(/\D/g, ''), 10);
+      const m = String(n).match(/\d+/);
+      const parsed = m ? parseInt(m[0], 10) : null;
       return isNaN(parsed) ? null : parsed;
     })
     .filter(n => n !== null && n > 0);
@@ -2604,7 +2605,8 @@ function renderRemarksBadges(emp) {
   const rem = String(emp.remarks || '').trim();
   const absList = Array.isArray(emp.absent_days) && emp.absent_days.length > 0 ? emp.absent_days : null;
   const misList = Array.isArray(emp.missed_out_punches) && emp.missed_out_punches.length > 0 ? emp.missed_out_punches : null;
-  const lateList = Array.isArray(emp.late_punches) && emp.late_punches.length > 0 ? emp.late_punches : null;
+  const hasExplicitLateList = Array.isArray(emp.late_punches);
+  const lateList = hasExplicitLateList && emp.late_punches.length > 0 ? emp.late_punches : null;
 
   if (!rem && !absList && !misList && !lateList) {
     if (emp.lop_days > 0) {
@@ -2639,7 +2641,7 @@ function renderRemarksBadges(emp) {
   // 2. NO OUT PUNCH (Amber/Yellow Badge)
   let nopStr = '';
   if (misList) {
-    nopStr = misList.join(', ');
+    nopStr = formatRanges(misList);
   } else {
     const mNop = rem.match(/([\d\s,]+?)\s*no\s*out\s*punch/i);
     if (mNop) nopStr = mNop[1].trim().replace(/,\s*$/, '');
@@ -2669,34 +2671,36 @@ function renderRemarksBadges(emp) {
   let lateStr = '';
   if (rem.toLowerCase().includes('(late punch)')) {
     lateStr = 'Penalty: >4 Late Punches';
-  } else if (lateList && lateList.length > 0) {
-    // Check if lateList entries have "Day" in them
-    const formattedLateList = lateList.map((entry, idx) => {
-      let str = String(entry).trim();
-      if (/^Day\s*\d+/i.test(str)) {
+  } else if (hasExplicitLateList) {
+    // If backend provided late_punches list, trust it directly (do NOT fall back to parsing remarks)
+    if (emp.late_punches.length > 0) {
+      const formattedLateList = emp.late_punches.map((entry, idx) => {
+        let str = String(entry).trim();
+        if (/^Day\s*\d+/i.test(str)) {
+          return str;
+        }
+        if (halfMatches[idx]) {
+          return `Day ${halfMatches[idx]} (${str.replace('.', ':')})`;
+        }
         return str;
-      }
-      // If entry is a raw time like "11.12" or "09:36", pair with half day if available
-      if (halfMatches[idx]) {
-        return `Day ${halfMatches[idx]} (${str.replace('.', ':')})`;
-      }
-      return str;
-    });
-    lateStr = formattedLateList.slice(0, 4).join(', ');
+      });
+      lateStr = formattedLateList.slice(0, 4).join(', ');
+    }
   } else {
-    // 1. Check if remarks has Day X (HH:MM)
+    // Legacy fallback ONLY if late_punches is null/undefined
     const dayLateMatches = [...rem.matchAll(/Day\s*(\d+)\s*\(([^)]+)\)/gi)];
     if (dayLateMatches.length > 0) {
       lateStr = dayLateMatches.slice(0, 4).map(m => `Day ${m[1]} (${m[2]})`).join(', ');
     } else {
-      // 2. Check for raw times inside parentheses, e.g. (11.12, 9.36) or (9.26, 9.30)
-      const mLate = rem.match(/\(([\d\.,\s]+)\)/);
+      // Must not match (0.5) or (1/2); only valid clock times like (09.30) or (11:15)
+      const mLate = rem.match(/\((?!0\.5|1\/2)([\d\.,\s]+)\)/);
       if (mLate) {
-        const rawTimes = mLate[1].split(',').map(s => s.trim()).filter(Boolean);
+        const rawTimes = mLate[1].split(',')
+          .map(s => s.trim())
+          .filter(s => /^\d{1,2}[:.]\d{2}$/.test(s));
         if (rawTimes.length > 0 && halfMatches.length >= rawTimes.length) {
-          // Exactly map each late punch time to its corresponding day
           lateStr = rawTimes.map((t, idx) => `Day ${halfMatches[idx]} (${t.replace('.', ':')})`).join(', ');
-        } else {
+        } else if (rawTimes.length > 0) {
           lateStr = rawTimes.map(t => t.replace('.', ':')).join(', ');
         }
       }
@@ -2715,7 +2719,10 @@ function renderRemarksBadges(emp) {
   // 5. CL LEAVES (Lavender Badge - with Days)
   const clDaysNum = Number(emp.cl_days || 0);
   const clDaysArr = (Array.isArray(emp.cl_days_list) ? emp.cl_days_list : [])
-    .map(n => parseInt(String(n).replace(/\D/g, ''), 10))
+    .map(n => {
+      const m = String(n).match(/\d+/);
+      return m ? parseInt(m[0], 10) : null;
+    })
     .filter(n => !isNaN(n) && n > 0);
   const clCleanStr = formatRanges(clDaysArr);
 
@@ -2738,7 +2745,10 @@ function renderRemarksBadges(emp) {
   // 6. OD (ON DUTY) (Teal Badge - with Days)
   const odDaysNum = Number(emp.od_days || 0);
   const odDaysArr = (Array.isArray(emp.od_days_list) ? emp.od_days_list : [])
-    .map(n => parseInt(String(n).replace(/\D/g, ''), 10))
+    .map(n => {
+      const m = String(n).match(/\d+/);
+      return m ? parseInt(m[0], 10) : null;
+    })
     .filter(n => !isNaN(n) && n > 0);
   const odCleanStr = formatRanges(odDaysArr);
 

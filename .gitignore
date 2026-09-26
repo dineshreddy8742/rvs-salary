@@ -24,3 +24,4 @@ Thumbs.db
 scratch/
 scratch_*.py
 test_*.py
+test_*.xls*
