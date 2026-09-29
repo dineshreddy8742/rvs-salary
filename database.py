@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import datetime
 from typing import Dict, List, Any, Optional
 import payroll_engine
 
@@ -296,8 +297,6 @@ def get_db():
 
 def init_db():
     """Create tables if they do not exist."""
-    if _USE_SUPABASE:
-        return
     conn = get_db()
     cursor = conn.cursor()
 
@@ -372,6 +371,20 @@ def init_db():
         default_hostel_eb REAL DEFAULT 0.0,
         default_arrears REAL DEFAULT 0.0,
         FOREIGN KEY(emp_code) REFERENCES employees(emp_code)
+    )
+    """)
+
+    # Database Backups & Monthly Archives Table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS database_backups (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        backup_name TEXT NOT NULL,
+        month_year TEXT NOT NULL,
+        backup_type TEXT NOT NULL,
+        record_count INTEGER DEFAULT 0,
+        logs_count INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL,
+        backup_data TEXT NOT NULL
     )
     """)
 
@@ -464,9 +477,253 @@ def has_monthly_records() -> bool:
     conn.close()
     return cnt > 0
 
-def delete_month_data(month_year: str) -> dict:
-    """Delete all monthly records and daily logs for the specified month."""
+def create_database_backup(month_year: str, backup_type: str = "manual", backup_name: str = None) -> dict:
+    """Create a complete JSON snapshot archive of a month's attendance, salary, daily logs, and master employees."""
     month_year = normalize_month_year(month_year)
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    # 1. Fetch monthly records for this month
+    cursor.execute("SELECT * FROM monthly_records WHERE month_year = ?", (month_year,))
+    mon_rows = [dict(r) for r in cursor.fetchall()]
+    
+    # 2. Fetch daily logs for this month
+    cursor.execute("SELECT * FROM daily_logs WHERE month_year = ?", (month_year,))
+    log_rows = [dict(r) for r in cursor.fetchall()]
+    
+    # 3. Fetch master employees and salary profiles
+    cursor.execute("SELECT * FROM employees")
+    all_emps = [dict(r) for r in cursor.fetchall()]
+    cursor.execute("SELECT * FROM salary_profiles")
+    all_sal = [dict(r) for r in cursor.fetchall()]
+        
+    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    rec_count = len(mon_rows)
+    logs_count = len(log_rows)
+    
+    if not backup_name:
+        if backup_type == 'auto_pre_delete':
+            backup_name = f"Auto-Archive before Deleting {month_year} ({rec_count} Staff)"
+        else:
+            backup_name = f"Manual Snapshot: {month_year} ({rec_count} Staff)"
+            
+    payload = {
+        'version': 1,
+        'month_year': month_year,
+        'created_at': now_str,
+        'backup_type': backup_type,
+        'backup_name': backup_name,
+        'record_count': rec_count,
+        'logs_count': logs_count,
+        'employees': all_emps,
+        'salary_profiles': all_sal,
+        'monthly_records': mon_rows,
+        'daily_logs': log_rows
+    }
+    
+    data_json = json.dumps(payload, default=str)
+    
+    cursor.execute("""
+    INSERT INTO database_backups (backup_name, month_year, backup_type, record_count, logs_count, created_at, backup_data)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (backup_name, month_year, backup_type, rec_count, logs_count, now_str, data_json))
+    
+    # Determine inserted ID
+    cursor.execute("SELECT id FROM database_backups ORDER BY id DESC LIMIT 1")
+    row = cursor.fetchone()
+    backup_id = row['id'] if row else 1
+        
+    conn.commit()
+    conn.close()
+    
+    return {
+        'status': 'success',
+        'backup_id': backup_id,
+        'backup_name': backup_name,
+        'month_year': month_year,
+        'record_count': rec_count,
+        'logs_count': logs_count,
+        'created_at': now_str
+    }
+
+def list_database_backups(month_year: str = None) -> list:
+    """Return list of backups (without the heavy JSON payload) for the UI."""
+    conn = get_db()
+    cursor = conn.cursor()
+    if month_year:
+        norm = normalize_month_year(month_year)
+        cursor.execute("""
+        SELECT id, backup_name, month_year, backup_type, record_count, logs_count, created_at
+        FROM database_backups
+        WHERE month_year = ?
+        ORDER BY id DESC
+        """, (norm,))
+    else:
+        cursor.execute("""
+        SELECT id, backup_name, month_year, backup_type, record_count, logs_count, created_at
+        FROM database_backups
+        ORDER BY id DESC
+        """)
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
+
+def get_database_backup(backup_id: int) -> dict:
+    """Get single backup with full JSON data."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM database_backups WHERE id = ?", (backup_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    d = dict(row)
+    try:
+        d['payload'] = json.loads(d['backup_data'])
+    except Exception:
+        d['payload'] = {}
+    return d
+
+def restore_database_backup(backup_id: int) -> dict:
+    """Restore a monthly backup snapshot into active database tables."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM database_backups WHERE id = ?", (backup_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return {'status': 'error', 'message': f'Backup ID {backup_id} not found.'}
+        
+    payload = json.loads(row['backup_data'])
+    month_year = payload.get('month_year', row['month_year'])
+    
+    # 1. Restore employees master
+    emps = payload.get('employees', [])
+    for e in emps:
+        cursor.execute("""
+        INSERT OR REPLACE INTO employees 
+        (emp_code, name, designation, department, annual_cl_quota, annual_od_quota, attendance_policy, is_manual)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            str(e['emp_code']), e['name'], e.get('designation'), e.get('department'),
+            float(e.get('annual_cl_quota') or 12.0), float(e.get('annual_od_quota') or 15.0),
+            e.get('attendance_policy', 'standard'), int(e.get('is_manual') or 0)
+        ))
+        
+    # 2. Restore salary profiles
+    profs = payload.get('salary_profiles', [])
+    for p in profs:
+        cursor.execute("""
+        INSERT OR REPLACE INTO salary_profiles 
+        (emp_code, name, category, designation, department, base_salary, bank_name, account_no, ifsc_code, epf_amount, default_bus, default_mess, default_hostel_eb, default_arrears)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            str(p['emp_code']), p['name'], p.get('category', 'Non-Teaching'), p.get('designation'), p.get('department'),
+            float(p.get('base_salary') or 0.0), p.get('bank_name', 'PNB'), p.get('account_no', ''), p.get('ifsc_code', ''),
+            float(p.get('epf_amount') or 0.0), float(p.get('default_bus') or 0.0), float(p.get('default_mess') or 0.0),
+            float(p.get('default_hostel_eb') or 0.0), float(p.get('default_arrears') or 0.0)
+        ))
+        
+    # 3. Clean existing monthly records and daily logs for this month_year before restore
+    cursor.execute("DELETE FROM monthly_records WHERE month_year = ?", (month_year,))
+    cursor.execute("DELETE FROM daily_logs WHERE month_year = ?", (month_year,))
+    
+    # 4. Restore monthly records
+    m_recs = payload.get('monthly_records', [])
+    for m in m_recs:
+        cursor.execute("""
+        INSERT OR REPLACE INTO monthly_records 
+        (emp_code, month_year, name, designation, department, biometric_days, holiday, availed_leaves, sv_od, total_pay_days, remarks, needs_review, missed_punches_json, absent_days_json, late_punches_json,
+         base_salary, earned_basic, total_earnings, pt_deduction, wf_deduction, epf_deduction, it_deduction, bus_deduction, hostel_eb_deduction, mess_deduction, other_deductions, total_deductions, net_salary)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            str(m['emp_code']), month_year, m.get('name'), m.get('designation'), m.get('department'),
+            float(m.get('biometric_days') or 0.0), float(m.get('holiday') or 0.0),
+            float(m['availed_leaves']) if m.get('availed_leaves') is not None else None,
+            float(m['sv_od']) if m.get('sv_od') is not None else None,
+            float(m.get('total_pay_days') or 0.0), m.get('remarks', ''), int(m.get('needs_review') or 0),
+            m.get('missed_punches_json', '[]'), m.get('absent_days_json', '[]'), m.get('late_punches_json', '[]'),
+            float(m.get('base_salary') or 0.0) if m.get('base_salary') is not None else None,
+            float(m.get('earned_basic') or 0.0) if m.get('earned_basic') is not None else None,
+            float(m.get('total_earnings') or 0.0) if m.get('total_earnings') is not None else None,
+            float(m.get('pt_deduction') or 0.0) if m.get('pt_deduction') is not None else None,
+            float(m.get('wf_deduction') or 0.0) if m.get('wf_deduction') is not None else None,
+            float(m.get('epf_deduction') or 0.0) if m.get('epf_deduction') is not None else None,
+            float(m.get('it_deduction') or 0.0) if m.get('it_deduction') is not None else None,
+            float(m.get('bus_deduction') or 0.0) if m.get('bus_deduction') is not None else None,
+            float(m.get('hostel_eb_deduction') or 0.0) if m.get('hostel_eb_deduction') is not None else None,
+            float(m.get('mess_deduction') or 0.0) if m.get('mess_deduction') is not None else None,
+            float(m.get('other_deductions') or 0.0) if m.get('other_deductions') is not None else None,
+            float(m.get('total_deductions') or 0.0) if m.get('total_deductions') is not None else None,
+            float(m.get('net_salary') or 0.0) if m.get('net_salary') is not None else None
+        ))
+        
+    # 5. Restore daily logs
+    d_logs = payload.get('daily_logs', [])
+    for dl in d_logs:
+        cursor.execute("""
+        INSERT OR REPLACE INTO daily_logs 
+        (emp_code, month_year, day_num, date_str, in_time, out_time, duration, status, override_status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            str(dl['emp_code']), month_year, int(dl['day_num']), dl.get('date_str'),
+            dl.get('in_time'), dl.get('out_time'), dl.get('duration'), dl.get('status'), dl.get('override_status')
+        ))
+        
+    conn.commit()
+    conn.close()
+    
+    _PRINCIPAL_RULES_APPLIED.discard(month_year)
+    
+    return {
+        'status': 'success',
+        'message': f"Successfully restored '{row['backup_name']}' for {month_year} ({len(m_recs)} staff, {len(d_logs)} punch logs).",
+        'month_year': month_year,
+        'records_count': len(m_recs)
+    }
+
+def delete_database_backup(backup_id: int) -> dict:
+    """Delete a backup record from database_backups."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM database_backups WHERE id = ?", (backup_id,))
+    conn.commit()
+    conn.close()
+    return {'status': 'success', 'message': f'Backup ID {backup_id} deleted.'}
+
+def delete_employee(emp_code: str) -> dict:
+    """Permanently delete an employee from master, monthly records, salary profiles, and punch logs."""
+    emp_code = str(emp_code).strip()
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT name, department FROM employees WHERE emp_code = ?", (emp_code,))
+    row = cursor.fetchone()
+    name = row['name'] if row else emp_code
+
+    cursor.execute("DELETE FROM daily_logs WHERE emp_code = ?", (emp_code,))
+    cursor.execute("DELETE FROM monthly_records WHERE emp_code = ?", (emp_code,))
+    cursor.execute("DELETE FROM salary_profiles WHERE emp_code = ?", (emp_code,))
+    cursor.execute("DELETE FROM employees WHERE emp_code = ?", (emp_code,))
+
+    conn.commit()
+    conn.close()
+    return {
+        'status': 'success',
+        'message': f'Employee {name} ({emp_code}) has been permanently deleted.',
+        'emp_code': emp_code,
+        'name': name
+    }
+
+def delete_month_data(month_year: str) -> dict:
+    """Delete all monthly records and daily logs for the specified month, after creating an automatic archive."""
+    month_year = normalize_month_year(month_year)
+    
+    # Always create an automatic snapshot archive before deletion so data is NEVER lost!
+    try:
+        create_database_backup(month_year, backup_type='auto_pre_delete')
+    except Exception as e:
+        print(f"[BACKUP WARNING] Could not auto-archive before delete: {e}")
+        
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) as cnt FROM monthly_records WHERE month_year = ?", (month_year,))
@@ -478,7 +735,7 @@ def delete_month_data(month_year: str) -> dict:
     _PRINCIPAL_RULES_APPLIED.discard(month_year)
     return {
         'status': 'success',
-        'message': f'Successfully deleted {rec_count} records for {month_year}',
+        'message': f'Successfully deleted {rec_count} records for {month_year}. An automatic historical backup was safely archived.',
         'deleted_count': rec_count
     }
 
@@ -498,8 +755,22 @@ def get_month_summary_info(month_year: str) -> dict:
         'logs_count': log_count
     }
 
+NON_BIOMETRIC_STAFF = {
+    '101': {'name': 'Dr .M. Mohan Babu', 'dept': 'General', 'desig': 'Principal', 'title': '🏛️ Executive Biometric Exemption', 'desc': 'Institutional Head / Principal — Governing Body Biometric Exemption'},
+    '707': {'name': 'R. Gunasekaran', 'dept': 'IT', 'desig': 'Asst.Prof', 'title': '📚 Academic Council Exemption', 'desc': 'Special Institutional Assignment — Approved duty schedule'},
+    '900': {'name': 'I. Sudarsan Kumar', 'dept': 'HAS', 'desig': 'Professor & DAP', 'title': '🎓 Dean Academic Exemption', 'desc': 'Dean Academic Affairs (DAP) — University council schedule'},
+    '1060': {'name': 'Vivekanand Adhikari', 'dept': 'Administration', 'desig': 'IR Officer', 'title': '🌐 Institutional Relations Exemption', 'desc': 'IR Officer — Corporate relations & placement field duty'},
+    '1015': {'name': 'R Hari Krishna', 'dept': 'Exam Section', 'desig': 'Clerk', 'title': '📋 Examination Section Exemption', 'desc': 'Exam Section Staff — Confidential university examinations schedule'},
+    '1019': {'name': 'Bishal Kumar Sha', 'dept': 'TAP', 'desig': 'Executive Assistant', 'title': '🎯 Training & Placement Exemption', 'desc': 'Executive Assistant (TAP) — External campus recruitment drives'},
+    '1021': {'name': 'M P Balaji', 'dept': 'Management Staff', 'desig': 'Accounts Officer', 'title': '💼 Financial Executive Exemption', 'desc': 'Accounts Officer — Institutional audit & bank coordination'},
+    '4001': {'name': 'R. Poorna Chandra', 'dept': 'Management Staff', 'desig': 'Administrative officer', 'title': '🏛️ Administrative Head Exemption', 'desc': 'Administrative Officer (AO) — Campus administration & supervision'},
+    '1030': {'name': 'Thangeeru Surendera', 'dept': 'Transport', 'desig': 'VC Driver', 'title': '🚘 Executive Protocol Duty', 'desc': 'Vice Chairman Driver — Protocol transport schedule'},
+    'SHAJAHAN': {'name': 'S Shajahan', 'dept': 'Management Staff', 'desig': 'P A To Chairman', 'title': '🏢 Chairman Secretariat Exemption', 'desc': 'PA to Chairman — Executive secretariat & trust board protocol'},
+    'SHIVA_DRIVER': {'name': 'Shiva', 'dept': 'Transport', 'desig': 'Principal Diver', 'title': '🚘 Executive Protocol Duty', 'desc': 'Principal Driver — Institutional executive transit schedule'},
+}
+
 def seed_from_engine(engine, month_year: str = "August 2026", overwrite: bool = False):
-    """Populate database from an AttendanceEngine instance."""
+    """Populate database from an AttendanceEngine instance, preserving master profiles for manual staff."""
     month_year = normalize_month_year(month_year)
     conn = get_db()
     cursor = conn.cursor()
@@ -517,7 +788,7 @@ def seed_from_engine(engine, month_year: str = "August 2026", overwrite: bool = 
         cursor.execute("DELETE FROM daily_logs WHERE month_year = ?", (month_year,))
 
     print(f"Seeding database for {month_year}...")
-    vip_full_pay_codes = {'101', '707', '900', '1060', '1015', '1019', '1021', '4001', '1030', 'SHAJAHAN', 'SHIVA_DRIVER'}
+    vip_full_pay_codes = set(NON_BIOMETRIC_STAFF.keys())
 
     m_days = float(payroll_engine.get_days_in_month_str(month_year) or 31)
     import calendar
@@ -531,6 +802,10 @@ def seed_from_engine(engine, month_year: str = "August 2026", overwrite: bool = 
     fest_hol = {26} if m == 8 else set()
     holidays = float(len(sundays.union(fest_hol)))
     bio_days = max(0.0, m_days - holidays)
+
+    # Fetch existing master employees so manual additions (e.g. 914 D. Keertana) and custom designations are preserved
+    cursor.execute("SELECT emp_code, name, designation, department, annual_cl_quota, annual_od_quota, attendance_policy, is_manual FROM employees")
+    master_emps = {str(r['emp_code']): dict(r) for r in cursor.fetchall()}
 
     emp_batch = []
     mon_batch = []
@@ -556,28 +831,59 @@ def seed_from_engine(engine, month_year: str = "August 2026", overwrite: bool = 
             """, l_b)
 
     for emp_code, emp in engine.employees.items():
+        ec_str = str(emp_code).strip()
+        existing = master_emps.get(ec_str)
         name_l = str(emp.get('name', '')).lower()
         desig_l = str(emp.get('designation', '')).lower()
         dept_l = str(emp.get('department', '')).lower()
 
-        is_vip = (emp_code in vip_full_pay_codes or 
+        is_vip = (ec_str in vip_full_pay_codes or 
                   'principal' in desig_l or 
                   any(k in name_l for k in ['mohan babu', 'gunasekaran', 'gunaskaran', 'veveka', 'adhikari', 'hari krishna', 'visal kumar', 'bishal kumar', 'shajahan']) or
                   ('siva' in name_l and ('driver' in desig_l or 'transport' in dept_l)))
-        policy = 'exempt_full' if is_vip else 'standard'
-        
-        emp_batch.append((emp_code, emp['name'], emp.get('designation', ''), normalize_dept(emp.get('department', '')), 12.0, 15.0, policy, 0))
+                  
+        if existing:
+            # Preserve curated master profile so manual additions (e.g. 914 D. Keertana) or edited profiles are never lost or downgraded
+            m_name = existing['name'] if existing.get('name') else emp['name']
+            m_desig = existing['designation'] if existing.get('designation') else emp.get('designation', '')
+            m_dept = existing['department'] if (existing.get('department') and existing.get('department') != 'General') else normalize_dept(emp.get('department', ''))
+            policy = existing.get('attendance_policy') or ('exempt_full' if is_vip else 'standard')
+            is_manual_val = int(existing.get('is_manual', 0))
+            cl_q = float(existing.get('annual_cl_quota') or 12.0)
+            od_q = float(existing.get('annual_od_quota') or 15.0)
+        else:
+            m_name = emp['name']
+            m_desig = emp.get('designation', '')
+            m_dept = normalize_dept(emp.get('department', ''))
+            policy = 'exempt_full' if is_vip else 'standard'
+            is_manual_val = 0
+            cl_q = 12.0
+            od_q = 15.0
+
+        emp_batch.append((ec_str, m_name, m_desig, m_dept, cl_q, od_q, policy, is_manual_val))
 
         summary = engine.calculate_employee_summary(emp)
         
-        # If policy is exempt_full, give full month pay days
+        # 2-line institutional condition remarks
         if policy == 'exempt_full':
             total_days = m_days
             bio_days_emp = bio_days
             holidays_emp = holidays
             leaves = None
             od = None
-            remarks = "Full Attendance (Exempt / Principal)"
+            if ec_str in NON_BIOMETRIC_STAFF:
+                meta = NON_BIOMETRIC_STAFF[ec_str]
+                remarks = f"{meta.get('title', 'Executive Biometric Exemption')}\n{meta.get('desc', 'Institutional Exemption')}"
+            else:
+                remarks = "👑 Executive Full Pay Approval\nInstitutional waiver approved — 100% full salary credited"
+            needs_review = 0
+        elif policy == 'visiting_twice_weekly':
+            total_days = m_days
+            bio_days_emp = summary['biometric_days']
+            holidays_emp = summary['holiday']
+            leaves = summary['availed_leaves']
+            od = summary['sv_od']
+            remarks = "🏫 Visiting Faculty Schedule\nTwice weekly academic lectures completed (Full pay waiver)"
             needs_review = 0
         else:
             total_days = summary['total_pay_days']
@@ -589,8 +895,8 @@ def seed_from_engine(engine, month_year: str = "August 2026", overwrite: bool = 
             needs_review = 1 if summary['needs_review'] else 0
 
         mon_batch.append((
-            emp_code, month_year,
-            emp['name'], emp.get('designation', ''), normalize_dept(emp.get('department', '')),
+            ec_str, month_year,
+            m_name, m_desig, m_dept,
             bio_days_emp, holidays_emp, leaves, od, total_days, remarks, needs_review,
             json.dumps(summary.get('missed_out_punches', [])),
             json.dumps(summary.get('absent_days', [])),
@@ -600,7 +906,7 @@ def seed_from_engine(engine, month_year: str = "August 2026", overwrite: bool = 
         # Seed daily logs
         for day in emp['days']:
             log_batch.append((
-                emp_code, month_year, day['day'], day['date'], day['in_time'], day['out_time'],
+                ec_str, month_year, day['day'], day['date'], day['in_time'], day['out_time'],
                 day['duration'], day['status'], day.get('override_status')
             ))
 
@@ -683,20 +989,7 @@ def apply_principal_rules_to_db(month_year: str = "August 2026", force: bool = F
     holidays = float(len(sundays.union(fest_hol)))
     bio_days = max(0.0, m_days - holidays)
 
-    # Known VIP / Exempt staff who may not exist in raw biometric machines
-    NON_BIOMETRIC_STAFF = {
-        '101': {'name': 'Dr .M. Mohan Babu', 'dept': 'General', 'desig': 'Principal'},
-        '707': {'name': 'R. Gunasekaran', 'dept': 'IT', 'desig': 'Asst.Prof'},
-        '900': {'name': 'I. Sudarsan Kumar', 'dept': 'HAS', 'desig': 'Professor & DAP'},
-        '1060': {'name': 'Vivekanand Adhikari', 'dept': 'Administration', 'desig': 'IR Officer'},
-        '1015': {'name': 'R Hari Krishna', 'dept': 'Exam Section', 'desig': 'Clerk'},
-        '1019': {'name': 'Bishal Kumar Sha', 'dept': 'TAP', 'desig': 'Executive Assistant'},
-        '1021': {'name': 'M P Balaji', 'dept': 'Management Staff', 'desig': 'Accounts Officer'},
-        '4001': {'name': 'R. Poorna Chandra', 'dept': 'Management Staff', 'desig': 'Administrative officer'},
-        '1030': {'name': 'Thangeeru Surendera', 'dept': 'Transport', 'desig': 'VC Driver'},
-        'SHAJAHAN': {'name': 'S Shajahan', 'dept': 'Management Staff', 'desig': 'P A To Chairman'},
-        'SHIVA_DRIVER': {'name': 'Shiva', 'dept': 'Transport', 'desig': 'Principal Diver'},
-    }
+    # Module-level NON_BIOMETRIC_STAFF has full institutional titles and descriptions
 
     # Pre-calculate availed leaves and OD for VIPs if they exist in daily_logs
     cursor.execute("""
@@ -730,10 +1023,11 @@ def apply_principal_rules_to_db(month_year: str = "August 2026", force: bool = F
         v_cl = v_cl if (v_cl is not None and v_cl > 0) else None
         v_od = v_od if (v_od is not None and v_od > 0) else None
 
+        rem_str = f"{meta.get('title', 'Executive Biometric Exemption')}\n{meta.get('desc', 'Institutional Exemption')}"
         vip_emp_batch.append((vc, meta['name'], meta['desig'], meta['dept'], 12.0, 15.0, 'exempt_full', 1))
         vip_mon_batch.append((
             vc, month_year, meta['name'], meta['desig'], meta['dept'],
-            bio_days, holidays, v_cl, v_od, m_days, 'Full Attendance (Principal Override)', 0, '[]', '[]', '[]'
+            bio_days, holidays, v_cl, v_od, m_days, rem_str, 0, '[]', '[]', '[]'
         ))
 
     # Always upsert VIP employees master (they are always valid staff)
@@ -773,24 +1067,31 @@ def apply_principal_rules_to_db(month_year: str = "August 2026", force: bool = F
     cursor.execute("SELECT biometric_days, total_pay_days FROM monthly_records WHERE emp_code = '1053' AND month_year = ?", (month_year,))
     r1053 = cursor.fetchone()
     if r1053 and (float(r1053['biometric_days'] or 0) >= 12 or float(r1053['total_pay_days'] or 0) >= 12):
+        rem_1053 = "📚 Faculty Attendance Rule Met\nAttended ≥ 12 duty days threshold (IT Faculty Academic Duty)"
         cursor.execute("""
         UPDATE monthly_records 
-        SET biometric_days = ?, holiday = ?, total_pay_days = ?, remarks = 'Full Attendance (Principal Override)', needs_review = 0, absent_days_json = '[]', missed_punches_json = '[]', late_punches_json = '[]'
+        SET biometric_days = ?, holiday = ?, total_pay_days = ?, remarks = ?, needs_review = 0, absent_days_json = '[]', missed_punches_json = '[]', late_punches_json = '[]'
         WHERE emp_code = '1053' AND month_year = ?
-        """, (bio_days, holidays, m_days, month_year))
+        """, (bio_days, holidays, m_days, rem_1053, month_year))
 
     # 3. 1203 (Dr J Velmurugan, IT HOD) - >=14 days
     cursor.execute("SELECT biometric_days, total_pay_days FROM monthly_records WHERE emp_code = '1203' AND month_year = ?", (month_year,))
     r1203 = cursor.fetchone()
     if r1203 and (float(r1203['biometric_days'] or 0) >= 14 or float(r1203['total_pay_days'] or 0) >= 14):
+        rem_1203 = "🎓 Department Head Rule Met\nAttended ≥ 14 duty days threshold (IT HOD Academic & Admin Duty)"
         cursor.execute("""
         UPDATE monthly_records 
-        SET biometric_days = ?, holiday = ?, total_pay_days = ?, remarks = 'Full Attendance (Principal Override)', needs_review = 0, absent_days_json = '[]', missed_punches_json = '[]', late_punches_json = '[]'
+        SET biometric_days = ?, holiday = ?, total_pay_days = ?, remarks = ?, needs_review = 0, absent_days_json = '[]', missed_punches_json = '[]', late_punches_json = '[]'
         WHERE emp_code = '1203' AND month_year = ?
-        """, (bio_days, holidays, m_days, month_year))
+        """, (bio_days, holidays, m_days, rem_1203, month_year))
 
-    # 4. 109 (Civil M. Leelakar) - daily punch before 11 am is handled by attendance engine
-    # (Do not blindly set to 31.0; preserve actual attendance calculated from punches)
+    # 4. 109 (Civil M. Leelakar) - daily punch before 11 am regularized
+    cursor.execute("SELECT remarks FROM monthly_records WHERE emp_code = '109' AND month_year = ?", (month_year,))
+    r109 = cursor.fetchone()
+    if r109 and ('11' in str(r109['remarks']) or 'shift' in str(r109['remarks']).lower() or not r109['remarks']):
+        rem_109 = "⚙️ Shift Regularization Approved\nCivil Engineering morning punch before 11:00 AM credited"
+        cursor.execute("UPDATE monthly_records SET remarks = ? WHERE emp_code = '109' AND month_year = ?", (rem_109, month_year))
+
     conn.commit()
 
     # 5. Transport Dept: remove late punch penalties & credit full days for in+out punches
@@ -919,8 +1220,87 @@ def apply_principal_rules_to_db(month_year: str = "August 2026", force: bool = F
     """, (emp1018_bio, holidays, emp1018_pay, month_year,))
     conn.commit()
 
+    # 8. Security & Water Staff / Watchman Rule:
+    # 2 Floating Holidays anytime; 28 duty days (or continuous shifts + OD/CL) = Full Attendance (m_days)
+    cursor.execute("""
+        SELECT e.emp_code, e.name, e.designation, e.department
+        FROM employees e
+        WHERE e.department = 'Security & Water Staff' OR lower(e.designation) LIKE '%security%'
+           OR lower(e.designation) LIKE '%watch%' OR lower(e.name) LIKE '%watch%'
+           OR lower(e.designation) LIKE '%water man%' OR lower(e.designation) LIKE '%water woman%'
+    """)
+    sec_emps = cursor.fetchall()
+    sec_ids = [str(r['emp_code']) for r in sec_emps]
+
+    sec_updates = []
+    if sec_ids:
+        s_placeholders = ','.join('?' * len(sec_ids))
+        cursor.execute(f"SELECT * FROM daily_logs WHERE emp_code IN ({s_placeholders}) AND month_year = ? ORDER BY emp_code, day_num", (*sec_ids, month_year))
+        s_days_map = defaultdict(list)
+        for r in cursor.fetchall():
+            s_days_map[str(r['emp_code'])].append(r)
+
+        for sid in sec_ids:
+            sdays = s_days_map.get(sid, [])
+            if sdays:
+                day_presence = set()
+                od_days = set()
+                cl_days = set()
+                for d in sdays:
+                    d_num = d['day_num']
+                    st = (d['override_status'] or d['status'] or '').upper()
+                    in_t = (d['in_time'] or '').strip()
+                    out_t = (d['out_time'] or '').strip()
+                    if 'OD' in st or 'ON DUTY' in st:
+                        od_days.add(d_num)
+                    elif 'CL' in st or 'LEAVE' in st:
+                        cl_days.add(d_num)
+                    elif in_t or out_t or 'PRESENT' in st:
+                        day_presence.add(d_num)
+
+                od_count = float(len(od_days))
+                cl_count = float(len(cl_days))
+                total_duty = len(day_presence) + od_count + cl_count
+
+                threshold = 28.0
+                w_hol = 2.0
+                if total_duty >= threshold:
+                    pay_days = m_days
+                    bio_days = m_days - w_hol - od_count - cl_count
+                    rem = ""
+                    nr = 0
+                    ab_json = '[]'
+                elif total_duty > 0:
+                    shortfall = threshold - total_duty
+                    pay_days = max(0.0, m_days - shortfall)
+                    bio_days = max(0.0, float(len(day_presence)))
+                    all_m_days = set(range(1, int(m_days) + 1))
+                    unatt = sorted(list(all_m_days - day_presence - od_days - cl_days))
+                    unexcused = unatt[-int(shortfall):] if shortfall > 0 else []
+                    rem = f"ab-{','.join(str(x) for x in unexcused)}" if unexcused else ""
+                    nr = 1 if unexcused else 0
+                    ab_json = json.dumps(unexcused)
+                else:
+                    pay_days = 0.0
+                    bio_days = 0.0
+                    rem = "No Biometric Records"
+                    nr = 0
+                    ab_json = '[]'
+
+                sec_updates.append((bio_days, w_hol, cl_count if cl_count > 0 else None, od_count if od_count > 0 else None, pay_days, rem, nr, ab_json, sid, month_year))
+
+        if sec_updates:
+            cursor.executemany("""
+            UPDATE monthly_records
+            SET biometric_days = ?, holiday = ?, availed_leaves = ?, sv_od = ?,
+                total_pay_days = ?, remarks = ?, needs_review = ?,
+                absent_days_json = ?, missed_punches_json = '[]', late_punches_json = '[]'
+            WHERE emp_code = ? AND month_year = ?
+            """, sec_updates)
+            conn.commit()
+
     # Recalculate salary for any staff whose total_pay_days was updated by principal rules
-    all_overridden = list(NON_BIOMETRIC_STAFF.keys()) + ['1053', '1203', '109', '1018'] + transport_ids + admission_ids
+    all_overridden = list(NON_BIOMETRIC_STAFF.keys()) + ['1053', '1203', '109', '1018'] + transport_ids + admission_ids + sec_ids
     o_placeholders = ','.join('?' * len(all_overridden))
     cursor.execute(f"""
     SELECT m.emp_code, m.total_pay_days, m.base_salary, m.arrears,
@@ -1174,7 +1554,8 @@ def get_employee_daily_logs(emp_code: str, month_year: str) -> List[dict]:
     } for r in rows]
 
 def create_or_update_manual_employee(emp_data: dict, current_month: str = "August -2026") -> dict:
-    """Manually add an employee (Principal, visiting faculty, etc.) and give initial attendance."""
+    """Manually add an employee (Principal, visiting faculty, consultant, new joiner) with policy, profile, and initial salary."""
+    current_month = normalize_month_year(current_month)
     conn = get_db()
     cursor = conn.cursor()
 
@@ -1182,36 +1563,60 @@ def create_or_update_manual_employee(emp_data: dict, current_month: str = "Augus
     name = str(emp_data['name']).strip()
     desig = str(emp_data.get('designation', 'Staff')).strip()
     dept = normalize_dept(str(emp_data.get('department', 'Administration')).strip())
-    policy = str(emp_data.get('attendance_policy', 'exempt_full')).strip()
+    policy = str(emp_data.get('attendance_policy', 'standard')).strip()
     quota = float(emp_data.get('annual_cl_quota', 12.0))
+    category = str(emp_data.get('category', 'Teaching' if any(w in desig.lower() for w in ['prof', 'lecturer', 'faculty', 'hod', 'dean']) else 'Non-Teaching')).strip()
+    base_sal = float(emp_data.get('base_salary', 0.0) or 0.0)
 
+    # 1. Save to employees master
     cursor.execute("""
     INSERT OR REPLACE INTO employees (emp_code, name, designation, department, annual_cl_quota, annual_od_quota, attendance_policy, is_manual)
     VALUES (?, ?, ?, ?, ?, 15.0, ?, 1)
     """, (emp_code, name, desig, dept, quota, policy))
 
-    # Determine monthly values based on policy
-    if policy in ('exempt_full', 'visiting_twice_weekly'):
+    # 2. Save / update salary_profiles
+    cursor.execute("""
+    INSERT OR REPLACE INTO salary_profiles 
+    (emp_code, name, category, designation, department, base_salary, bank_name, account_no, ifsc_code)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (emp_code, name, category, desig, dept, base_sal,
+          emp_data.get('bank_name', 'PNB'), emp_data.get('account_no', ''), emp_data.get('ifsc_code', '')))
+
+    # 3. Determine monthly values based on policy
+    m_days = float(payroll_engine.get_days_in_month_str(current_month) or 31)
+    if policy == 'exempt_full':
         bio_days = 25.0
         holiday = 6.0
-        total_pay = 31.0
-        remarks = "Full Attendance (VIP / Exempt)" if policy == 'exempt_full' else "Full Attendance (Visiting Schedule)"
+        total_pay = m_days
+        remarks = "👑 Executive Full Pay Approval\nInstitutional waiver approved — 100% full salary credited"
+        needs_review = 0
+    elif policy == 'visiting_twice_weekly':
+        bio_days = 8.0
+        holiday = 6.0
+        total_pay = m_days
+        remarks = "🏫 Visiting Faculty Schedule\nTwice weekly academic lectures completed (Full pay waiver)"
         needs_review = 0
     else:
         bio_days = float(emp_data.get('biometric_days', 25.0))
         holiday = 6.0
-        total_pay = bio_days + holiday
-        remarks = "Manually Added Staff"
+        total_pay = min(m_days, bio_days + holiday)
+        remarks = "👤 Manually Added Staff\nRegular roster staff member"
         needs_review = 0
 
+    # 4. Save to monthly_records
     cursor.execute("""
     INSERT OR REPLACE INTO monthly_records 
-    (emp_code, month_year, biometric_days, holiday, availed_leaves, sv_od, total_pay_days, remarks, needs_review)
-    VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, ?)
-    """, (emp_code, current_month, bio_days, holiday, total_pay, remarks, needs_review))
+    (emp_code, month_year, name, designation, department, biometric_days, holiday, availed_leaves, sv_od, total_pay_days, remarks, needs_review, base_salary)
+    VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?)
+    """, (emp_code, current_month, name, desig, dept, bio_days, holiday, total_pay, remarks, needs_review, base_sal))
 
     conn.commit()
     conn.close()
+
+    try:
+        recalculate_monthly_salary(emp_code, current_month)
+    except Exception as e:
+        print(f"[MANUAL EMP SALARY CALC WARNING] {e}")
 
     return get_employee_portfolio(emp_code)
 
@@ -1317,14 +1722,38 @@ def revert_employee_to_original(emp_code: str, month_year: str) -> dict:
             elif 'ABSENT' in st and 'HOLIDAY' not in st:
                 absent_days.append(d_num)
 
-        hol = 6.0
-        total = min(31.0, present_count + hol + cl_count + od_count)
+        cursor.execute("SELECT department, designation FROM employees WHERE emp_code = ?", (emp_code,))
+        e_info = cursor.fetchone()
+        e_dept = (e_info['department'] if e_info else '').lower()
+        e_desig = (e_info['designation'] if e_info else '').lower()
+        is_w = 'security' in e_dept or 'security' in e_desig or 'watchman' in e_desig or 'watch man' in e_desig or 'water man' in e_desig or 'water woman' in e_desig
 
-        rem_parts = []
-        if absent_days: rem_parts.append(f"ab-{','.join(str(d) for d in absent_days)}")
-        if missed_punches: rem_parts.append(f"{','.join(str(d) for d in missed_punches)} no out punch")
-        rem_str = ", ".join(rem_parts)
-        needs_review = 1 if (absent_days or missed_punches) else 0
+        if is_w:
+            hol = 2.0
+            missed_punches = []
+            total_duty = present_count + cl_count + od_count
+            if total_duty >= 28.0:
+                total = 31.0
+                rem_str = ""
+                needs_review = 0
+            elif total_duty > 0:
+                shortfall = 28.0 - total_duty
+                total = max(0.0, 31.0 - shortfall)
+                unexcused = absent_days[-int(shortfall):] if shortfall > 0 else []
+                rem_str = f"ab-{','.join(str(d) for d in unexcused)}" if unexcused else ""
+                needs_review = 1 if unexcused else 0
+            else:
+                total = 0.0
+                rem_str = "No Biometric Records"
+                needs_review = 0
+        else:
+            hol = 6.0
+            total = min(31.0, present_count + hol + cl_count + od_count)
+            rem_parts = []
+            if absent_days: rem_parts.append(f"ab-{','.join(str(d) for d in absent_days)}")
+            if missed_punches: rem_parts.append(f"{','.join(str(d) for d in missed_punches)} no out punch")
+            rem_str = ", ".join(rem_parts)
+            needs_review = 1 if (absent_days or missed_punches) else 0
     else:
         present_count = 25.0
         hol = 6.0
@@ -1501,22 +1930,49 @@ def regularize_day_in_db(emp_code: str, month_year: str, day_num: int, action: s
         elif 'ABSENT' in st and 'HOLIDAY' not in st:
             absent_days.append(d_num)
 
-    cursor.execute("SELECT holiday FROM monthly_records WHERE emp_code = ? AND month_year = ?", (emp_code, month_year))
-    hol = cursor.fetchone()['holiday']
+    cursor.execute("SELECT department, designation FROM employees WHERE emp_code = ?", (emp_code,))
+    e_info = cursor.fetchone()
+    e_dept = (e_info['department'] if e_info else '').lower()
+    e_desig = (e_info['designation'] if e_info else '').lower()
+    is_w = 'security' in e_dept or 'security' in e_desig or 'watchman' in e_desig or 'watch man' in e_desig or 'water man' in e_desig or 'water woman' in e_desig
 
-    total = present_count + hol + cl_count + od_count
-    total = min(31.0, total)
+    if is_w:
+        hol = 2.0
+        missed_punches = []
+        total_duty = present_count + cl_count + od_count
+        if total_duty >= 28.0:
+            total = 31.0
+            rem_str = ""
+            needs_review_flag = 0
+        elif total_duty > 0:
+            shortfall = 28.0 - total_duty
+            total = max(0.0, 31.0 - shortfall)
+            unexcused = absent_days[-int(shortfall):] if shortfall > 0 else []
+            rem_str = f"ab-{','.join(str(d) for d in unexcused)}" if unexcused else ""
+            needs_review_flag = 1 if unexcused else 0
+        else:
+            total = 0.0
+            rem_str = "No Biometric Records"
+            needs_review_flag = 0
+    else:
+        cursor.execute("SELECT holiday FROM monthly_records WHERE emp_code = ? AND month_year = ?", (emp_code, month_year))
+        h_rec = cursor.fetchone()
+        hol = h_rec['holiday'] if h_rec else 6.0
 
-    rem_parts = []
-    if absent_days: rem_parts.append(f"ab-{','.join(str(d) for d in absent_days)}")
-    if missed_punches: rem_parts.append(f"{','.join(str(d) for d in missed_punches)} no out punch")
-    rem_str = ", ".join(rem_parts)
+        total = present_count + hol + cl_count + od_count
+        total = min(31.0, total)
+
+        rem_parts = []
+        if absent_days: rem_parts.append(f"ab-{','.join(str(d) for d in absent_days)}")
+        if missed_punches: rem_parts.append(f"{','.join(str(d) for d in missed_punches)} no out punch")
+        rem_str = ", ".join(rem_parts)
+        needs_review_flag = 1 if (absent_days or missed_punches) else 0
 
     cursor.execute("""
     UPDATE monthly_records
     SET biometric_days = ?, availed_leaves = ?, sv_od = ?, total_pay_days = ?, remarks = ?, needs_review = ?
     WHERE emp_code = ? AND month_year = ?
-    """, (present_count, cl_count if cl_count > 0 else None, od_count if od_count > 0 else None, total, rem_str, 1 if (absent_days or missed_punches) else 0, emp_code, month_year))
+    """, (present_count, cl_count if cl_count > 0 else None, od_count if od_count > 0 else None, total, rem_str, needs_review_flag, emp_code, month_year))
 
     conn.commit()
     conn.close()

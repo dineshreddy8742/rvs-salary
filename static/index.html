@@ -68,10 +68,15 @@
             <polyline points="6 9 12 15 18 9"></polyline>
           </svg>
         </div>
-        <button class="sidebar-delete-month-btn" id="btn-open-delete-modal-side" title="Delete or remove an old month dataset">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-          <span>Delete / Remove Data</span>
-        </button>
+        <div style="display: flex; gap: 0.4rem; margin-top: 0.45rem;">
+          <button class="sidebar-delete-month-btn" id="btn-open-backups-modal-side" style="flex: 1.1; border-color: #cbd5e1; color: #1e3a8a; background: #eff6ff; font-weight: 700;" title="View database backups and restore deleted data">
+            <span>💾 Archives</span>
+          </button>
+          <button class="sidebar-delete-month-btn" id="btn-open-delete-modal-side" style="flex: 1;" title="Delete or remove an old month dataset">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            <span>Delete</span>
+          </button>
+        </div>
       </div>
 
       <!-- Scrollable Hierarchy Nav Container -->
@@ -364,6 +369,13 @@
                     <div class="d-sub">Compare changes from previous month</div>
                   </div>
                 </a>
+                <a href="javascript:void(0)" class="dropdown-item" id="btn-menu-backups">
+                  <span class="d-icon">💾</span>
+                  <div>
+                    <strong>Database Backups & Archives</strong>
+                    <div class="d-sub">View snapshots, auto-archives, and restore any month</div>
+                  </div>
+                </a>
                 <div class="dropdown-divider"></div>
                 <a href="javascript:void(0)" class="dropdown-item" id="btn-menu-delete-month" style="color: #dc2626;">
                   <span class="d-icon">🗑️</span>
@@ -400,12 +412,12 @@
     <!-- Unified KPI Stats Section -->
     <section class="stats-section" id="stats-section">
       <div class="stats-grid stats-grid-unified" id="unified-stats-grid">
-        <div class="stat-card">
+        <div class="stat-card" id="card-total-staff" style="cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;" title="Click to view all staff names and department profiles">
           <div class="stat-icon-wrap icon-orange">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           </div>
           <div class="stat-details">
-            <span class="stat-label">Total Staff</span>
+            <span class="stat-label">Total Staff 🔍</span>
             <span class="stat-number" id="stat-total-staff">--</span>
           </div>
         </div>
@@ -746,12 +758,30 @@
             </div>
           </div>
 
+          <div class="form-row">
+            <div class="form-field">
+              <label>Staff Category: *</label>
+              <select id="add-emp-category" class="form-select">
+                <option value="Teaching">Teaching Faculty</option>
+                <option value="Non-Teaching">Non-Teaching Staff</option>
+                <option value="Transport">Transport / Drivers</option>
+                <option value="Security">Security & Water</option>
+                <option value="Attender">Attender</option>
+                <option value="Management">Management Staff</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label>Monthly Base Package (₹):</label>
+              <input type="number" id="add-emp-base-salary" placeholder="e.g. 35000" step="100" min="0" value="25000">
+            </div>
+          </div>
+
           <div class="form-field">
             <label>Attendance Policy: *</label>
             <select id="add-emp-policy" class="form-select">
+              <option value="standard">Standard Biometric (Punch calculation)</option>
               <option value="exempt_full">👑 Full Attendance (Principal / VIP / 100% Full Pay)</option>
               <option value="visiting_twice_weekly">Visiting Faculty (2 Days/Week = Full Attendance)</option>
-              <option value="standard">Standard Biometric (Punch calculation)</option>
             </select>
           </div>
 
@@ -1110,9 +1140,14 @@
       </div>
 
       <div class="modal-footer-bar" style="display:flex; justify-content:space-between; align-items:center;">
-        <button type="button" class="btn-row-action btn-row-revert" id="btn-revert-from-modal" style="padding: 0.55rem 1.1rem; font-size: 0.82rem;" title="Revert this employee to raw machine punches">
-          ↺ Revert to Raw Biometrics
-        </button>
+        <div style="display: flex; gap: 0.65rem; align-items: center;">
+          <button type="button" class="btn-row-action btn-row-revert" id="btn-revert-from-modal" style="padding: 0.55rem 1.1rem; font-size: 0.82rem;" title="Revert this employee to raw machine punches">
+            ↺ Revert to Raw Biometrics
+          </button>
+          <button type="button" class="btn-row-action" id="btn-delete-emp-from-modal" style="padding: 0.55rem 1.1rem; font-size: 0.82rem; background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; font-weight: 700; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 0.35rem;" title="Permanently delete or remove this employee">
+            🗑️ Delete Employee
+          </button>
+        </div>
         <div style="display: flex; gap: 0.65rem;">
           <button class="btn-secondary-pill" id="btn-cancel-edit-pkg">Cancel</button>
           <button class="btn-navy-pill" id="btn-save-edit-pkg" style="padding: 0.55rem 1.6rem; font-weight: 700;">
@@ -1309,6 +1344,10 @@
             </label>
             <input type="text" id="delete-confirm-input" placeholder="Type DELETE to enable button" autocomplete="off" style="border-color: #fca5a5; font-size: 0.9rem; font-weight: 700; letter-spacing: 1px;">
           </div>
+          <div style="font-size: 0.78rem; color: #15803d; background: #f0fdf4; border: 1px solid #bbf7d0; padding: 0.55rem 0.85rem; border-radius: 8px; margin-top: 0.75rem; display: flex; align-items: center; gap: 0.4rem;">
+            <span>🛡️</span>
+            <span><strong>Automatic Safety Archive:</strong> A historical backup snapshot is automatically created before deletion. You can view or restore this month anytime from <strong>Database Backups & Archives</strong>!</span>
+          </div>
         </form>
       </div>
 
@@ -1317,6 +1356,123 @@
         <button class="btn-danger-pill" id="btn-execute-delete-data" disabled style="background: #dc2626; border-color: #b91c1c; color: white; opacity: 0.5; cursor: not-allowed; padding: 0.5rem 1.25rem; border-radius: 9999px; font-weight: 700; font-size: 0.8rem;">
           🗑️ Delete This Month's Data
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: TOTAL STAFF DIRECTORY & PROFILES -->
+  <div class="modal-overlay" id="modal-staff-directory">
+    <div class="modal-window modal-wide" style="max-width: 1100px; width: 95%;">
+      <div class="modal-header-bar">
+        <div>
+          <div class="modal-header-pill" style="background:#e0f2fe; color:#0369a1;">Institutional Staff Directory</div>
+          <h2 class="modal-emp-name">👥 Total Staff Directory & Department Profiles</h2>
+          <p class="modal-emp-meta" id="directory-meta-subtitle">Showing all active employees across departments with easy search, department filter, salary packages, and direct profile editor</p>
+        </div>
+        <button class="modal-close-btn" id="btn-close-staff-directory">&times;</button>
+      </div>
+
+      <div class="modal-content-area" style="padding: 1.25rem;">
+        <!-- Filter Bar -->
+        <div style="display: flex; gap: 0.75rem; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 1rem; background: #f8fafc; padding: 0.85rem 1rem; border-radius: 12px; border: 1px solid #e2e8f0;">
+          <div style="display: flex; gap: 0.75rem; align-items: center; flex: 1; min-width: 280px; flex-wrap: wrap;">
+            <div style="position: relative; flex: 1.5; min-width: 220px;">
+              <input type="text" id="dir-search-input" placeholder="🔍 Search staff name, ID code, or designation..." style="width: 100%; padding: 0.5rem 0.85rem 0.5rem 2rem; border-radius: 8px; border: 1.5px solid #cbd5e1; font-size: 0.85rem; font-weight: 500;">
+              <span style="position: absolute; left: 0.65rem; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 0.85rem;">🔍</span>
+            </div>
+            <select id="dir-dept-select" class="form-select" style="font-size: 0.85rem; padding: 0.5rem 0.75rem; border-radius: 8px; border: 1.5px solid #cbd5e1; font-weight: 600; color: #1e293b; max-width: 220px;">
+              <option value="">All Departments</option>
+            </select>
+            <select id="dir-cat-select" class="form-select" style="font-size: 0.85rem; padding: 0.5rem 0.75rem; border-radius: 8px; border: 1.5px solid #cbd5e1; font-weight: 600; color: #1e293b; max-width: 180px;">
+              <option value="">All Categories</option>
+              <option value="Teaching">Teaching Faculty</option>
+              <option value="Non-Teaching">Non-Teaching Staff</option>
+              <option value="Transport">Transport / Drivers</option>
+              <option value="Security">Security & Water</option>
+              <option value="Attender">Attender</option>
+              <option value="Management">Management Staff</option>
+            </select>
+          </div>
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <span class="editor-sec-badge" id="dir-count-badge" style="background:#e0e7ff; color:#3730a3; font-weight: 700; font-size: 0.8rem; padding: 5px 12px; border-radius: 9999px;">Showing -- Staff</span>
+          </div>
+        </div>
+
+        <!-- Directory Table Container -->
+        <div style="max-height: 480px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 10px;">
+          <table class="unified-master-table" style="width: 100%; border-collapse: collapse; font-size: 0.82rem;">
+            <thead>
+              <tr style="background: #f1f5f9; color: #475569; position: sticky; top: 0; z-index: 2;">
+                <th style="padding: 0.65rem 0.5rem; text-align: center; width: 45px;">#</th>
+                <th style="padding: 0.65rem 0.5rem; text-align: center; width: 70px;">Emp ID</th>
+                <th style="padding: 0.65rem 0.75rem; text-align: left;">Staff Name & Category</th>
+                <th style="padding: 0.65rem 0.75rem; text-align: left;">Department</th>
+                <th style="padding: 0.65rem 0.75rem; text-align: left;">Designation</th>
+                <th style="padding: 0.65rem 0.5rem; text-align: center; width: 85px;">Pay Days</th>
+                <th style="padding: 0.65rem 0.75rem; text-align: right; width: 105px;">Net Salary</th>
+                <th style="padding: 0.65rem 0.75rem; text-align: center; width: 180px;">Profile Actions</th>
+              </tr>
+            </thead>
+            <tbody id="dir-table-body">
+              <!-- Populated dynamically -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="modal-footer-bar" style="display: flex; justify-content: flex-end;">
+        <button class="btn-navy-pill" id="btn-close-dir-footer">Done / Close Directory</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: DATABASE BACKUPS & MONTHLY ARCHIVES -->
+  <div class="modal-overlay" id="modal-database-backups">
+    <div class="modal-window modal-wide" style="max-width: 980px; width: 95%;">
+      <div class="modal-header-bar">
+        <div>
+          <div class="modal-header-pill" style="background:#ecfdf5; color:#047857;">Data Protection & Historical Recovery</div>
+          <h2 class="modal-emp-name">💾 Database Backups & Monthly Archives</h2>
+          <p class="modal-emp-meta">Snapshots are archived securely. Even if a user deletes a month dataset, you can restore or download it anytime.</p>
+        </div>
+        <button class="modal-close-btn" id="btn-close-database-backups">&times;</button>
+      </div>
+
+      <div class="modal-content-area" style="padding: 1.25rem;">
+        <!-- Action strip -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; background: #f8fafc; padding: 0.85rem 1.15rem; border-radius: 12px; border: 1px solid #e2e8f0; flex-wrap: wrap; gap: 0.75rem;">
+          <div>
+            <div style="font-weight: 700; color: #0f172a; font-size: 0.9rem;">Current Active Month: <span id="backup-current-month" style="color: #1e3a8a;">--</span></div>
+            <div style="font-size: 0.78rem; color: #64748b;">Instant 1-click snapshot of all employees, biometric attendance, and salary profiles</div>
+          </div>
+          <button class="btn-navy-pill" id="btn-create-backup-now" style="padding: 0.5rem 1.25rem; font-size: 0.82rem; font-weight: 700; display: flex; align-items: center; gap: 0.4rem;">
+            ➕ Create Backup Snapshot Now
+          </button>
+        </div>
+
+        <!-- Backups List Table -->
+        <div style="max-height: 420px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 10px;">
+          <table class="unified-master-table" style="width: 100%; border-collapse: collapse; font-size: 0.82rem;">
+            <thead>
+              <tr style="background: #f1f5f9; color: #475569; position: sticky; top: 0; z-index: 2;">
+                <th style="padding: 0.65rem 0.5rem; text-align: center; width: 45px;">#</th>
+                <th style="padding: 0.65rem 0.75rem; text-align: left;">Backup Name & Type</th>
+                <th style="padding: 0.65rem 0.75rem; text-align: left; width: 120px;">Month</th>
+                <th style="padding: 0.65rem 0.75rem; text-align: center; width: 95px;">Staff Records</th>
+                <th style="padding: 0.65rem 0.75rem; text-align: left; width: 155px;">Archived Date & Time</th>
+                <th style="padding: 0.65rem 0.75rem; text-align: center; width: 230px;">Recovery Actions</th>
+              </tr>
+            </thead>
+            <tbody id="backups-table-body">
+              <!-- Populated dynamically -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="modal-footer-bar" style="display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-size: 0.78rem; color: #64748b;">🛡️ Auto-archives are created before any month deletion for guaranteed recovery</span>
+        <button class="btn-secondary-pill" id="btn-close-backups-footer">Close</button>
       </div>
     </div>
   </div>

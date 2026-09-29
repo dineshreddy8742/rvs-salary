@@ -860,6 +860,83 @@ def get_cash_denominations():
     res = disbursement_engine.calculate_cash_denominations(records)
     return jsonify(res)
 
+@app.route('/api/employee/delete', methods=['POST'])
+def delete_employee_api():
+    """Permanently delete an employee from database master, records, and logs."""
+    data = request.json or {}
+    emp_code = data.get('emp_code')
+    if not emp_code:
+        return jsonify({'status': 'error', 'message': 'emp_code is required'}), 400
+    try:
+        res = database.delete_employee(emp_code)
+        return jsonify(res)
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/backups', methods=['GET'])
+def list_backups_api():
+    """Return all database backup archives."""
+    month_year = request.args.get('month', '')
+    try:
+        backups = database.list_database_backups(month_year if month_year else None)
+        return jsonify({'status': 'success', 'backups': backups})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/backups/create', methods=['POST'])
+def create_backup_api():
+    """Create a manual backup snapshot."""
+    data = request.json or {}
+    month_year = data.get('month_year', 'August 2026')
+    backup_name = data.get('backup_name')
+    try:
+        res = database.create_database_backup(month_year, backup_type='manual', backup_name=backup_name)
+        return jsonify(res)
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/backups/restore', methods=['POST'])
+def restore_backup_api():
+    """Restore a database backup snapshot."""
+    data = request.json or {}
+    backup_id = data.get('backup_id')
+    if not backup_id:
+        return jsonify({'status': 'error', 'message': 'backup_id is required'}), 400
+    try:
+        res = database.restore_database_backup(int(backup_id))
+        return jsonify(res)
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/backups/<int:backup_id>/download', methods=['GET'])
+def download_backup_api(backup_id):
+    """Download the JSON payload of a backup."""
+    backup = database.get_database_backup(backup_id)
+    if not backup:
+        return jsonify({'status': 'error', 'message': 'Backup not found'}), 404
+    
+    clean_name = re.sub(r'[^a-zA-Z0-9_\-]', '_', backup.get('backup_name', f'backup_{backup_id}'))
+    filename = f"{clean_name}_{backup_id}.json"
+    
+    temp_path = os.path.join(tempfile.gettempdir(), filename)
+    with open(temp_path, 'w', encoding='utf-8') as f:
+        f.write(backup.get('backup_data', '{}'))
+        
+    return send_file(temp_path, as_attachment=True, download_name=filename, mimetype='application/json')
+
+@app.route('/api/backups/delete', methods=['POST'])
+def delete_backup_api():
+    """Delete a backup record."""
+    data = request.json or {}
+    backup_id = data.get('backup_id')
+    if not backup_id:
+        return jsonify({'status': 'error', 'message': 'backup_id is required'}), 400
+    try:
+        res = database.delete_database_backup(int(backup_id))
+        return jsonify(res)
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 if __name__ == '__main__':
     print("Starting RVS Multi-Month Salary Platform on http://localhost:5000...")
     app.run(host='0.0.0.0', port=5000, debug=False)

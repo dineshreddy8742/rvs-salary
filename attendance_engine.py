@@ -204,7 +204,7 @@ class AttendanceEngine:
                         'manual_od_override': None,
                         'manual_holiday_override': hol_count,
                         'manual_biometric_override': bio_count,
-                        'manual_remarks_override': 'Full Month (Principal Override)'
+                        'manual_remarks_override': '🏛️ Executive Biometric Exemption\nInstitutional Head / Principal — Governing Body Biometric Exemption' if code == '101' else '👑 Executive Full Pay Approval\nInstitutional waiver approved — 100% full salary credited'
                     }
 
         self.employees = parsed_emps
@@ -465,6 +465,106 @@ class AttendanceEngine:
             m_doj = re.search(r'(?:DOJ:?\s*|^\()(\d{1,2})[\.\-]\d{2}[\.\-]\d{4}', emp['manual_remarks_override'])
             if m_doj:
                 doj_day = int(m_doj.group(1))
+
+        # Check Watchman / Security & Water Staff
+        is_watchman = (
+            'security' in dept_lower or
+            'security' in desig_lower or
+            'watchman' in desig_lower or
+            'watch man' in desig_lower or
+            'water man' in desig_lower or
+            'water woman' in desig_lower
+        )
+
+        if is_watchman:
+            # Watchman / Security Staff Attendance Rules:
+            # 1. 2 Floating Holidays anytime per month (holiday = 2.0).
+            # 2. Continuous 2-Day Shifts: No penalties for missing out punch, late arrival, or overnight shifts.
+            # 3. 28-Day Full Attendance: If attended days + OD + CL >= 28, mark Full Attendance (Full Pay Days = self.num_days).
+            # 4. Shortfall / Absents: If total duty < 28, only deduct genuine shortfall (28 - total_duty).
+            # 5. The 2 allowed holidays excuse first 2 off days; only excess absences are listed.
+            w_holiday = float(emp['manual_holiday_override']) if emp.get('manual_holiday_override') is not None else 2.0
+            
+            day_presence = set()
+            od_days = set()
+            cl_days = set()
+            
+            for d in days:
+                d_num = d.get('day')
+                st = (d.get('override_status') or d.get('status') or '').upper()
+                in_t = (d.get('in_time') or '').strip()
+                out_t = (d.get('out_time') or '').strip()
+                
+                if 'OD' in st or 'ON DUTY' in st:
+                    od_days.add(d_num)
+                elif 'CL' in st or 'LEAVE' in st:
+                    cl_days.add(d_num)
+                elif in_t or out_t or 'PRESENT' in st:
+                    day_presence.add(d_num)
+            
+            cl_count = float(emp['manual_cl_override']) if emp.get('manual_cl_override') is not None else float(len(cl_days))
+            od_count = float(emp['manual_od_override']) if emp.get('manual_od_override') is not None else float(len(od_days))
+            if raw_leaves > 0 and cl_count == 0:
+                cl_count = raw_leaves
+                
+            total_duty = len(day_presence) + od_count + cl_count
+            
+            # Proration if joined midway through month
+            if doj_day:
+                working_days_in_period = self.num_days - doj_day + 1
+                threshold = round(28.0 * working_days_in_period / float(self.num_days))
+                max_pay = float(working_days_in_period)
+                w_holiday = max(0.0, min(w_holiday, round(w_holiday * working_days_in_period / float(self.num_days))))
+            else:
+                threshold = 28.0
+                max_pay = float(self.num_days)
+                
+            if total_duty >= threshold:
+                total_pay_days = max_pay
+                biometric_days = max(0.0, total_pay_days - w_holiday - cl_count - od_count)
+                remarks_str = ""
+                needs_review = False
+                unexcused_absents = []
+            elif total_duty > 0:
+                shortfall = threshold - total_duty
+                total_pay_days = max(0.0, max_pay - shortfall)
+                biometric_days = max(0.0, float(len(day_presence)))
+                all_month_days = set(range(1, int(self.num_days) + 1))
+                if doj_day:
+                    all_month_days = set(range(doj_day, int(self.num_days) + 1))
+                unattended = sorted(list(all_month_days - day_presence - od_days - cl_days))
+                unexcused_absents = unattended[-int(shortfall):] if shortfall > 0 else []
+                remarks_str = f"ab-{self._format_day_ranges(unexcused_absents)}" if unexcused_absents else ""
+                needs_review = len(unexcused_absents) > 0
+            else:
+                total_pay_days = 0.0
+                biometric_days = 0.0
+                remarks_str = "No Biometric Records"
+                needs_review = False
+                unexcused_absents = []
+                
+            if emp.get('manual_biometric_override') is not None:
+                biometric_days = float(emp['manual_biometric_override'])
+            if emp.get('manual_remarks_override'):
+                remarks_str = emp['manual_remarks_override']
+                
+            return {
+                'emp_code': code,
+                'name': emp['name'],
+                'designation': emp['designation'],
+                'department': dept,
+                'biometric_days': biometric_days,
+                'holiday': w_holiday,
+                'availed_leaves': cl_count if cl_count > 0 else None,
+                'sv_od': od_count if od_count > 0 else None,
+                'total_pay_days': total_pay_days,
+                'remarks': remarks_str,
+                'needs_review': needs_review,
+                'missed_out_punches': [],
+                'absent_days': unexcused_absents,
+                'late_punches': [],
+                'days': emp['days']
+            }
 
         # Late threshold
         target_in_h, target_in_m = 9, 25

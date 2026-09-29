@@ -469,6 +469,8 @@ function setupEventListeners() {
     const name = document.getElementById('add-emp-name').value.trim();
     const desig = document.getElementById('add-emp-desig').value.trim();
     const dept = document.getElementById('add-emp-dept').value.trim();
+    const category = (document.getElementById('add-emp-category') ? document.getElementById('add-emp-category').value : 'Teaching');
+    const baseSal = parseFloat((document.getElementById('add-emp-base-salary') ? document.getElementById('add-emp-base-salary').value : 0) || 0);
     const policy = document.getElementById('add-emp-policy').value;
     const clQuota = parseFloat(document.getElementById('add-emp-cl-quota').value || 12);
     const baseDays = parseFloat(document.getElementById('add-emp-base-days').value || 25);
@@ -487,6 +489,8 @@ function setupEventListeners() {
           name: name,
           designation: desig,
           department: dept,
+          category: category,
+          base_salary: baseSal,
           attendance_policy: policy,
           annual_cl_quota: clQuota,
           biometric_days: baseDays,
@@ -592,6 +596,40 @@ function setupEventListeners() {
     });
   }
 
+  // Total Staff Card Click -> Open 360 Staff Directory
+  const cardTotalStaff = document.getElementById('card-total-staff');
+  if (cardTotalStaff) {
+    cardTotalStaff.addEventListener('click', () => {
+      openStaffDirectoryModal();
+    });
+  }
+
+  // Backups & Archives Modal Listeners
+  const backupsModal = document.getElementById('modal-database-backups');
+  const btnOpenBackupsSide = document.getElementById('btn-open-backups-modal-side');
+  if (btnOpenBackupsSide) btnOpenBackupsSide.addEventListener('click', openBackupsModal);
+  const btnMenuBackups = document.getElementById('btn-menu-backups');
+  if (btnMenuBackups) btnMenuBackups.addEventListener('click', openBackupsModal);
+  const btnCloseBackups = document.getElementById('btn-close-database-backups');
+  if (btnCloseBackups) btnCloseBackups.addEventListener('click', () => backupsModal && backupsModal.classList.remove('active'));
+  const btnCloseBackupsFooter = document.getElementById('btn-close-backups-footer');
+  if (btnCloseBackupsFooter) btnCloseBackupsFooter.addEventListener('click', () => backupsModal && backupsModal.classList.remove('active'));
+  const btnCreateBackupNow = document.getElementById('btn-create-backup-now');
+  if (btnCreateBackupNow) btnCreateBackupNow.addEventListener('click', handleCreateBackupNow);
+
+  // Staff Directory Modal Listeners
+  const staffDirModal = document.getElementById('modal-staff-directory');
+  const btnCloseDir = document.getElementById('btn-close-staff-directory');
+  if (btnCloseDir) btnCloseDir.addEventListener('click', () => staffDirModal && staffDirModal.classList.remove('active'));
+  const btnCloseDirFooter = document.getElementById('btn-close-dir-footer');
+  if (btnCloseDirFooter) btnCloseDirFooter.addEventListener('click', () => staffDirModal && staffDirModal.classList.remove('active'));
+  const dirSearchInput = document.getElementById('dir-search-input');
+  if (dirSearchInput) dirSearchInput.addEventListener('input', renderStaffDirectoryRows);
+  const dirDeptSelect = document.getElementById('dir-dept-select');
+  if (dirDeptSelect) dirDeptSelect.addEventListener('change', renderStaffDirectoryRows);
+  const dirCatSelect = document.getElementById('dir-cat-select');
+  if (dirCatSelect) dirCatSelect.addEventListener('change', renderStaffDirectoryRows);
+
   // Bulk Adjust Modal
   const bulkAdjustModal = document.getElementById('modal-bulk-adjust');
   const btnBulkOpen = document.getElementById('btn-bulk-adjust-modal');
@@ -653,6 +691,8 @@ function setupEventListeners() {
   if (btnPkgCancel) btnPkgCancel.addEventListener('click', () => pkgModal.classList.remove('active'));
   const btnPkgSave = document.getElementById('btn-save-edit-pkg');
   if (btnPkgSave) btnPkgSave.addEventListener('click', saveEmployeePackage);
+  const btnPkgDelete = document.getElementById('btn-delete-emp-from-modal');
+  if (btnPkgDelete) btnPkgDelete.addEventListener('click', deleteEmployeeFromModal);
 
   // Live calculation listeners for Complete Unified 360 Master Editor Modal
   const editorLiveInputs = [
@@ -1880,8 +1920,9 @@ function renderTable() {
     } else if (mode === 'attendance') {
       // 📋 ATTENDANCE GRID ROW (Dedicated Biometric & Leave focus)
       let remarkBadges = '';
-      if (emp.is_vip || emp.attendance_policy === 'exempt_full') {
-        remarkBadges = '<span class="badge-pill badge-vip" style="font-size:0.7rem;">👑 Full Pay VIP</span>';
+      const vipLines = renderVipOrExemptionLines(emp);
+      if (vipLines) {
+        remarkBadges = vipLines;
       } else if (emp.remarks) {
         remarkBadges = `<span style="font-size:0.75rem; color:#64748b;">${emp.remarks}</span>`;
       } else {
@@ -2594,12 +2635,82 @@ function renderLopCell(emp) {
   `;
 }
 
+// Helper to render 2-line institutional condition explanation badges
+function renderVipOrExemptionLines(emp) {
+  const rem = String(emp.remarks || '').trim();
+  let title = '';
+  let desc = '';
+
+  if (rem.includes('\n')) {
+    const parts = rem.split('\n');
+    title = parts[0].trim();
+    desc = parts.slice(1).join(' ').trim();
+  } else if (emp.emp_code === '101') {
+    title = '🏛️ Executive Biometric Exemption';
+    desc = 'Institutional Head / Principal — Governing Body Biometric Exemption';
+  } else if (emp.emp_code === '4001') {
+    title = '🏛️ Administrative Head Exemption';
+    desc = 'Administrative Officer (AO) — Institutional Campus Supervision';
+  } else if (emp.emp_code === '1021') {
+    title = '💼 Financial Executive Exemption';
+    desc = 'Accounts Officer — Financial Management & Banking Schedule';
+  } else if (emp.emp_code === 'SHAJAHAN') {
+    title = '🏢 Chairman Secretariat Exemption';
+    desc = 'PA to Chairman — Trust Board & Chairman Office Protocol';
+  } else if (emp.emp_code === '1060') {
+    title = '🌐 Institutional Relations Exemption';
+    desc = 'IR Officer — Corporate Relations & Placement Field Duty';
+  } else if (emp.emp_code === '707') {
+    title = '📚 Academic Council Exemption';
+    desc = 'Special Academic Assignment — Approved Institutional Duty';
+  } else if (emp.emp_code === '900') {
+    title = '🎓 Dean Academic Exemption';
+    desc = 'Dean Academic Affairs (DAP) — University Council Schedule';
+  } else if (emp.emp_code === '1015') {
+    title = '📋 Examination Section Exemption';
+    desc = 'Exam Section Staff — Confidential University Examinations Duty';
+  } else if (emp.emp_code === '1019') {
+    title = '🎯 Training & Placement Exemption';
+    desc = 'Executive Assistant (TAP) — External Campus Recruitment Drives';
+  } else if (emp.emp_code === '1030' || emp.emp_code === 'SHIVA_DRIVER') {
+    title = '🚘 Executive Protocol Duty';
+    desc = 'Executive Driver — Protocol Transit Schedule';
+  } else if (emp.emp_code === '1053') {
+    title = '📚 Faculty Attendance Rule Met';
+    desc = 'Attended ≥ 12 duty days threshold (IT Faculty Academic Duty)';
+  } else if (emp.emp_code === '1203') {
+    title = '🎓 Department Head Rule Met';
+    desc = 'Attended ≥ 14 duty days threshold (IT HOD Academic & Admin Duty)';
+  } else if (emp.emp_code === '109') {
+    title = '⚙️ Shift Regularization Approved';
+    desc = 'Civil Engineering morning punch before 11:00 AM credited';
+  } else if (emp.department && emp.department.toLowerCase().includes('security') && emp.total_pay_days >= 31) {
+    title = '🛡️ Watchman Duty Policy Met';
+    desc = '28 duty days target achieved (2 floating offs + continuous shift allowance)';
+  } else if (emp.attendance_policy === 'visiting_twice_weekly') {
+    title = '🏫 Visiting Faculty Schedule';
+    desc = 'Twice weekly academic lectures completed (Full pay waiver)';
+  } else if (emp.is_vip || emp.attendance_policy === 'exempt_full') {
+    title = '👑 Executive Full Pay Approval';
+    desc = rem && !rem.toLowerCase().includes('principal override') ? rem : 'Institutional waiver approved — 100% full salary credited';
+  }
+
+  if (title) {
+    return `<div style="display:flex; flex-direction:column; align-items:flex-start; gap:2px; max-width:280px; text-align:left;">
+      <div style="display:inline-flex; align-items:center; gap:5px; background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; padding:2px 8px; border-radius:6px; font-size:0.75rem; font-weight:700;">
+        ${title}
+      </div>
+      ${desc ? `<div style="font-size:0.68rem; color:#475569; line-height:1.25; margin-left:2px;">${desc}</div>` : ''}
+    </div>`;
+  }
+  return null;
+}
+
 // Helper to render colored badges for Remarks / Policy in the main Unified Master table
 function renderRemarksBadges(emp) {
-  if (emp.is_vip || emp.attendance_policy === 'exempt_full') {
-    return `<div style="display:inline-flex; align-items:center; gap:6px; background:#ecfdf5; color:#047857; border:1px solid #86efac; padding:4px 10px; border-radius:6px; font-size:0.82rem; font-weight:700;">
-      👑 <span>Full Month (Principal Override)</span>
-    </div>`;
+  const vipOrExemptHtml = renderVipOrExemptionLines(emp);
+  if (vipOrExemptHtml) {
+    return vipOrExemptHtml;
   }
 
   const rem = String(emp.remarks || '').trim();
@@ -4105,5 +4216,287 @@ async function executeDeleteMonth() {
   } catch (err) {
     console.error('Delete error:', err);
     alert('Error deleting month: ' + err.message);
+  }
+}
+
+// =============================================================================
+// DELETE EMPLOYEE FROM MODAL
+// =============================================================================
+async function deleteEmployeeFromModal() {
+  const codeInput = document.getElementById('edit-pkg-emp-code');
+  const nameInput = document.getElementById('edit-pkg-name');
+  const empCode = codeInput ? codeInput.value.trim() : '';
+  const empName = nameInput ? nameInput.value.trim() : empCode;
+
+  if (!empCode) {
+    alert('No employee code selected.');
+    return;
+  }
+
+  const confirmMsg = `Are you ABSOLUTELY sure you want to permanently remove employee "${empName}" (ID: ${empCode})?\n\nThis will completely delete their master profile, monthly attendance, and salary records from the database.`;
+  if (!confirm(confirmMsg)) return;
+
+  showToast(`⏳ Deleting employee ${empName}...`);
+  try {
+    const res = await fetch('/api/employee/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ emp_code: empCode })
+    });
+    const data = await res.json();
+    if (res.ok && data.status === 'success') {
+      showToast(`✅ Successfully deleted ${empName} (${empCode})!`);
+      const modal = document.getElementById('modal-employee-package');
+      if (modal) modal.classList.remove('active');
+      await loadData();
+    } else {
+      alert('Delete failed: ' + (data.message || 'Unknown error'));
+    }
+  } catch (err) {
+    console.error('Delete employee error:', err);
+    alert('Error deleting employee: ' + err.message);
+  }
+}
+
+// =============================================================================
+// 👥 TOTAL STAFF DIRECTORY & PROFILES
+// =============================================================================
+function openStaffDirectoryModal() {
+  const modal = document.getElementById('modal-staff-directory');
+  if (!modal) return;
+
+  // Populate department filter from unifiedRecords
+  const deptSelect = document.getElementById('dir-dept-select');
+  if (deptSelect && Array.isArray(unifiedRecords)) {
+    const currentVal = deptSelect.value;
+    const depts = Array.from(new Set(unifiedRecords.map(r => r.department || 'General'))).sort();
+    deptSelect.innerHTML = '<option value="">All Departments</option>';
+    depts.forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d;
+      opt.textContent = d;
+      deptSelect.appendChild(opt);
+    });
+    deptSelect.value = currentVal;
+  }
+
+  const sub = document.getElementById('directory-meta-subtitle');
+  if (sub) {
+    sub.textContent = `Showing all ${unifiedRecords.length} staff across departments for ${currentMonth || 'current month'}`;
+  }
+
+  renderStaffDirectoryRows();
+  modal.classList.add('active');
+}
+
+function renderStaffDirectoryRows() {
+  const tbody = document.getElementById('dir-table-body');
+  const countBadge = document.getElementById('dir-count-badge');
+  if (!tbody) return;
+
+  const q = (document.getElementById('dir-search-input') ? document.getElementById('dir-search-input').value.trim().toLowerCase() : '');
+  const dept = (document.getElementById('dir-dept-select') ? document.getElementById('dir-dept-select').value : '');
+  const cat = (document.getElementById('dir-cat-select') ? document.getElementById('dir-cat-select').value : '');
+
+  const filtered = (unifiedRecords || []).filter(emp => {
+    if (dept && emp.department !== dept) return false;
+    if (cat && emp.category !== cat) return false;
+    if (q) {
+      const match = (emp.name && emp.name.toLowerCase().includes(q)) ||
+                    (emp.emp_code && String(emp.emp_code).toLowerCase().includes(q)) ||
+                    (emp.department && emp.department.toLowerCase().includes(q)) ||
+                    (emp.designation && emp.designation.toLowerCase().includes(q));
+      if (!match) return false;
+    }
+    return true;
+  });
+
+  if (countBadge) {
+    countBadge.textContent = `Showing ${filtered.length} of ${unifiedRecords.length} Staff`;
+  }
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:2rem; color:#94a3b8;">No staff members match the selected search or department filter.</td></tr>`;
+    return;
+  }
+
+  let html = '';
+  filtered.forEach((emp, idx) => {
+    const netFormatted = typeof formatNumber === 'function' ? formatNumber(emp.net_salary || 0) : (emp.net_salary || 0);
+    html += `
+      <tr style="border-bottom: 1px solid #f1f5f9;">
+        <td style="text-align: center; color: #94a3b8; font-weight: 600; padding: 0.65rem 0.5rem;">${idx + 1}</td>
+        <td style="text-align: center; font-weight: 700; color: #0f172a; padding: 0.65rem 0.5rem;">${emp.emp_code}</td>
+        <td style="padding: 0.65rem 0.75rem;">
+          <div style="font-weight: 700; color: #1e3a8a;">${emp.name}</div>
+          <div style="font-size: 0.7rem; color: #64748b;">${emp.category || 'Staff'}</div>
+        </td>
+        <td style="padding: 0.65rem 0.75rem; color: #334155; font-weight: 600;">${emp.department || '--'}</td>
+        <td style="padding: 0.65rem 0.75rem; color: #475569;">${emp.designation || 'Staff'}</td>
+        <td style="padding: 0.65rem 0.5rem; text-align: center; font-weight: 700; color: #1e3a8a;">
+          ${emp.total_pay_days} <span style="font-size: 0.72rem; color: #94a3b8; font-weight: 400;">/ ${emp.month_days || 31}</span>
+        </td>
+        <td style="padding: 0.65rem 0.75rem; text-align: right; font-weight: 800; color: #15803d;">₹${netFormatted}</td>
+        <td style="padding: 0.65rem 0.75rem; text-align: center;">
+          <div style="display: flex; gap: 0.35rem; justify-content: center;">
+            <button class="btn-row-action" style="padding: 0.3rem 0.6rem; font-size: 0.74rem;" onclick="document.getElementById('modal-staff-directory').classList.remove('active'); openEditPackageModal('${emp.emp_code}')" title="Edit Profile & Package">
+              ✏️ Edit
+            </button>
+            <button class="btn-row-action btn-row-slip" style="padding: 0.3rem 0.6rem; font-size: 0.74rem;" onclick="openSlipModal('${emp.emp_code}')" title="View Payslip">
+              📄 Slip
+            </button>
+            <button class="btn-row-action btn-row-punches" style="padding: 0.3rem 0.6rem; font-size: 0.74rem;" onclick="openPortfolio('${emp.emp_code}')" title="View Punch Calendar">
+              📅
+            </button>
+          </div>
+        </td>
+      </tr>
+    `;
+  });
+  tbody.innerHTML = html;
+}
+
+// =============================================================================
+// 💾 DATABASE BACKUPS & MONTHLY ARCHIVES
+// =============================================================================
+async function openBackupsModal() {
+  const modal = document.getElementById('modal-database-backups');
+  if (!modal) return;
+
+  const curMonthEl = document.getElementById('backup-current-month');
+  if (curMonthEl) curMonthEl.textContent = currentMonth || 'August 2026';
+
+  await renderBackupsRows();
+  modal.classList.add('active');
+}
+
+async function renderBackupsRows() {
+  const tbody = document.getElementById('backups-table-body');
+  if (!tbody) return;
+
+  tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:1.5rem; color:#64748b;">⏳ Loading backups from database...</td></tr>`;
+  try {
+    const res = await fetch('/api/backups');
+    const data = await res.json();
+    const backups = data.backups || [];
+
+    if (backups.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="6" style="text-align:center; padding:2rem; color:#64748b;">
+            <div style="font-size:1.1rem; margin-bottom:0.4rem;">📭 No snapshots archived yet</div>
+            <div style="font-size:0.8rem; color:#94a3b8;">Click <strong>"➕ Create Backup Snapshot Now"</strong> to store your first archive, or delete a month (it auto-archives safely).</div>
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    let html = '';
+    backups.forEach((b, idx) => {
+      const isAuto = b.backup_type === 'auto_pre_delete';
+      const badge = isAuto 
+        ? `<span class="pill-badge" style="background:#fef3c7; color:#b45309; font-weight:700;">🛡️ Pre-Delete Archive</span>`
+        : `<span class="pill-badge" style="background:#e0f2fe; color:#0369a1; font-weight:700;">💾 Manual Snapshot</span>`;
+
+      html += `
+        <tr style="border-bottom: 1px solid #f1f5f9;">
+          <td style="text-align: center; color: #94a3b8; font-weight: 600; padding: 0.65rem 0.5rem;">${idx + 1}</td>
+          <td style="padding: 0.65rem 0.75rem;">
+            <div style="font-weight: 700; color: #0f172a;">${b.backup_name}</div>
+            <div style="margin-top: 3px;">${badge}</div>
+          </td>
+          <td style="padding: 0.65rem 0.75rem; font-weight: 600; color: #1e3a8a;">${b.month_year}</td>
+          <td style="padding: 0.65rem 0.75rem; text-align: center; font-weight: 700; color: #047857;">${b.record_count} staff</td>
+          <td style="padding: 0.65rem 0.75rem; color: #64748b; font-size: 0.78rem;">${b.created_at}</td>
+          <td style="padding: 0.65rem 0.75rem; text-align: center;">
+            <div style="display: flex; gap: 0.4rem; justify-content: center; align-items: center;">
+              <button class="btn-row-action" style="padding: 0.32rem 0.65rem; font-size: 0.75rem; background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; font-weight: 700;" onclick="handleRestoreBackup(${b.id}, '${b.month_year}')" title="Restore this month into active database">
+                ↺ Restore Month
+              </button>
+              <a href="/api/backups/${b.id}/download" class="btn-row-action btn-row-slip" style="padding: 0.32rem 0.65rem; font-size: 0.75rem; text-decoration: none; display: inline-flex; align-items: center; gap: 2px;" download title="Download full JSON dataset">
+                ⬇️ JSON
+              </a>
+              <button class="btn-row-action btn-row-revert" style="padding: 0.32rem 0.5rem; font-size: 0.75rem; background: #fee2e2; color: #dc2626; border: 1px solid #fecaca;" onclick="handleDeleteBackup(${b.id})" title="Delete this backup snapshot">
+                🗑️
+              </button>
+            </div>
+          </td>
+        </tr>
+      `;
+    });
+    tbody.innerHTML = html;
+  } catch (err) {
+    console.error('Error fetching backups:', err);
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:1.5rem; color:#dc2626;">Error loading backups: ${err.message}</td></tr>`;
+  }
+}
+
+async function handleCreateBackupNow() {
+  const target = currentMonth || 'August 2026';
+  showToast(`⏳ Archiving backup for ${target}...`);
+  try {
+    const res = await fetch('/api/backups/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ month_year: target })
+    });
+    const data = await res.json();
+    if (res.ok && data.status === 'success') {
+      showToast(`✅ Successfully created backup snapshot for ${target}!`);
+      await renderBackupsRows();
+    } else {
+      alert('Backup failed: ' + (data.message || 'Unknown error'));
+    }
+  } catch (err) {
+    console.error('Backup error:', err);
+    alert('Error creating backup: ' + err.message);
+  }
+}
+
+async function handleRestoreBackup(backupId, monthYear) {
+  const confirmMsg = `Are you sure you want to restore backup #${backupId} for "${monthYear}"?\n\nThis will re-populate all employee attendance records, punch logs, and salary profiles for that month!`;
+  if (!confirm(confirmMsg)) return;
+
+  showToast(`⏳ Restoring backup for ${monthYear}...`);
+  try {
+    const res = await fetch('/api/backups/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ backup_id: backupId })
+    });
+    const data = await res.json();
+    if (res.ok && data.status === 'success') {
+      showToast(`✅ Successfully restored ${monthYear}!`);
+      document.getElementById('modal-database-backups').classList.remove('active');
+      currentMonth = monthYear;
+      await loadMonths();
+      await loadData();
+    } else {
+      alert('Restore failed: ' + (data.message || 'Unknown error'));
+    }
+  } catch (err) {
+    console.error('Restore error:', err);
+    alert('Error restoring backup: ' + err.message);
+  }
+}
+
+async function handleDeleteBackup(backupId) {
+  if (!confirm('Are you sure you want to delete this backup snapshot?')) return;
+  try {
+    const res = await fetch('/api/backups/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ backup_id: backupId })
+    });
+    const data = await res.json();
+    if (res.ok && data.status === 'success') {
+      showToast('🗑️ Backup deleted.');
+      await renderBackupsRows();
+    } else {
+      alert('Delete backup failed: ' + (data.message || 'Unknown error'));
+    }
+  } catch (err) {
+    alert('Error: ' + err.message);
   }
 }
