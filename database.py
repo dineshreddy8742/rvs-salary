@@ -722,9 +722,7 @@ def delete_employee(emp_code: str) -> dict:
 
 PROTECTED_INSTITUTIONAL_STAFF = {
     '101', '707', '900', '1060', '1015', '1019', '1021', '4001', '1030',
-    'SHAJAHAN', 'SHIVA_DRIVER', '914', '917', '582', '581', '528', '6014',
-    '1014', '1007', '1013', '1042', '538', '350', '1048', '523', '544',
-    '507', '424', '214_ELEC'
+    'SHAJAHAN', 'SHIVA_DRIVER'
 }
 
 def get_enrolled_staff_list(month_year: str = "August -2026", manual_only: bool = True) -> list:

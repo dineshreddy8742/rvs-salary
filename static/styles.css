@@ -4211,9 +4211,11 @@ html, body {
    BULK STAFF ENROLLMENT & EXCEL IMPORT STYLES
    ========================================================================== */
 
+#modal-add-staff .modal-window,
 #add-staff-modal-window {
-  max-width: 1040px !important;
+  max-width: 1080px !important;
   width: 95vw !important;
+  min-height: 580px !important;
 }
 
 .manage-badge-indicator {
