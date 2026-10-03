@@ -862,7 +862,7 @@ NON_BIOMETRIC_STAFF = {
     'SHIVA_DRIVER': {'name': 'Shiva', 'dept': 'Transport', 'desig': 'Principal Diver', 'title': '🚘 Executive Protocol Duty', 'desc': 'Principal Driver — Institutional executive transit schedule'},
 }
 
-def seed_from_engine(engine, month_year: str = "August 2026", overwrite: bool = False):
+def seed_from_engine(engine, month_year: str = "August 2026", overwrite: bool = False, progress_callback = None):
     """Populate database from an AttendanceEngine instance, preserving master profiles for manual staff."""
     month_year = normalize_month_year(month_year)
     conn = get_db()
@@ -906,24 +906,47 @@ def seed_from_engine(engine, month_year: str = "August 2026", overwrite: bool = 
     CHUNK_SIZE = 250
 
     def _flush_chunk(e_b, m_b, l_b):
-        if e_b:
-            cursor.executemany("""
-            INSERT OR REPLACE INTO employees (emp_code, name, designation, department, annual_cl_quota, annual_od_quota, attendance_policy, is_manual)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, e_b)
-        if m_b:
-            cursor.executemany("""
-            INSERT OR REPLACE INTO monthly_records 
-            (emp_code, month_year, name, designation, department, biometric_days, holiday, availed_leaves, sv_od, total_pay_days, remarks, needs_review, missed_punches_json, absent_days_json, late_punches_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, m_b)
-        if l_b:
-            cursor.executemany("""
-            INSERT OR REPLACE INTO daily_logs (emp_code, month_year, day_num, date_str, in_time, out_time, duration, status, override_status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, l_b)
+        import time
+        for attempt in range(4):
+            try:
+                if e_b:
+                    # Sort deterministically by emp_code to eliminate deadlock during concurrent transactions
+                    sorted_e = sorted(e_b, key=lambda x: str(x[0]))
+                    cursor.executemany("""
+                    INSERT OR REPLACE INTO employees (emp_code, name, designation, department, annual_cl_quota, annual_od_quota, attendance_policy, is_manual)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """, sorted_e)
+                if m_b:
+                    sorted_m = sorted(m_b, key=lambda x: str(x[0]))
+                    cursor.executemany("""
+                    INSERT OR REPLACE INTO monthly_records 
+                    (emp_code, month_year, name, designation, department, biometric_days, holiday, availed_leaves, sv_od, total_pay_days, remarks, needs_review, missed_punches_json, absent_days_json, late_punches_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, sorted_m)
+                if l_b:
+                    sorted_l = sorted(l_b, key=lambda x: (str(x[0]), int(x[2])))
+                    cursor.executemany("""
+                    INSERT OR REPLACE INTO daily_logs (emp_code, month_year, day_num, date_str, in_time, out_time, duration, status, override_status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, sorted_l)
+                conn.commit()
+                break
+            except Exception as e:
+                err_s = str(e).lower()
+                if ('deadlock' in err_s or 'lock' in err_s) and attempt < 3:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
+                    time.sleep(0.35 * (attempt + 1))
+                    continue
+                raise e
+
+    total_emps_count = len(engine.employees)
+    processed_count = 0
 
     for emp_code, emp in engine.employees.items():
+        processed_count += 1
         ec_str = str(emp_code).strip()
         existing = master_emps.get(ec_str)
         name_l = str(emp.get('name', '')).lower()
@@ -1005,33 +1028,41 @@ def seed_from_engine(engine, month_year: str = "August 2026", overwrite: bool = 
 
         if len(emp_batch) >= CHUNK_SIZE:
             _flush_chunk(emp_batch, mon_batch, log_batch)
+            if progress_callback:
+                progress_callback(processed_count, total_emps_count, f"Saving staff & biometric punches ({processed_count} of {total_emps_count})...")
             emp_batch.clear()
             mon_batch.clear()
             log_batch.clear()
 
     if emp_batch:
         _flush_chunk(emp_batch, mon_batch, log_batch)
+        if progress_callback:
+            progress_callback(total_emps_count, total_emps_count, f"Finalizing staff attendance ledgers ({total_emps_count} of {total_emps_count})...")
         emp_batch.clear()
         mon_batch.clear()
         log_batch.clear()
 
     # Also ensure any reference metadata employees (like Principal 101) exist
-    if hasattr(engine, 'reference_metadata'):
+    if hasattr(engine, 'reference_metadata') and engine.reference_metadata:
+        ref_emp_batch = []
+        ref_mon_batch = []
         for ec, meta in engine.reference_metadata.items():
-            cursor.execute("SELECT COUNT(*) as cnt FROM employees WHERE emp_code = ?", (ec,))
-            if cursor.fetchone()['cnt'] == 0:
-                is_principal = 'principal' in str(meta.get('designation', '')).lower() or ec == '101'
+            ec_s = str(ec).strip()
+            if ec_s not in master_emps:
+                is_principal = 'principal' in str(meta.get('designation', '')).lower() or ec_s == '101'
                 pol = 'exempt_full' if is_principal else 'standard'
-                cursor.execute("""
-                INSERT OR REPLACE INTO employees (emp_code, name, designation, department, annual_cl_quota, annual_od_quota, attendance_policy, is_manual)
-                VALUES (?, ?, ?, ?, 12.0, 15.0, ?, 1)
-                """, (ec, meta['name'], meta['designation'], meta['dept'], pol))
+                ref_emp_batch.append((ec_s, meta.get('name', 'Staff'), meta.get('designation', 'Staff'), meta.get('dept', 'General'), 12.0, 15.0, pol, 1))
+                ref_mon_batch.append((
+                    ec_s, month_year,
+                    meta.get('name', 'Staff'), meta.get('designation', 'Staff'), meta.get('dept', 'General'),
+                    bio_days, holidays, None, None, m_days,
+                    "Full Attendance (VIP / Principal)" if is_principal else "Reference Staff",
+                    0, '[]', '[]', '[]'
+                ))
+                master_emps[ec_s] = True
 
-                cursor.execute("""
-                INSERT OR REPLACE INTO monthly_records 
-                (emp_code, month_year, biometric_days, holiday, availed_leaves, sv_od, total_pay_days, remarks, needs_review)
-                VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, 0)
-                """, (ec, month_year, bio_days, holidays, m_days, "Full Attendance (VIP / Principal)" if is_principal else "Reference Staff"))
+        if ref_emp_batch or ref_mon_batch:
+            _flush_chunk(ref_emp_batch, ref_mon_batch, [])
 
     conn.commit()
     conn.close()

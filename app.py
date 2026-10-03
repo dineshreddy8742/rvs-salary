@@ -548,23 +548,17 @@ def _bg_process_upload(job_id: str, save_path: str, user_month: str, orig_filena
         final_month = database.normalize_month_year(engine.detected_month_year or user_month or 'August 2026')
         total_emps = len(engine.employees)
 
-        UPLOAD_JOBS[job_id] = {
-            'status': 'processing',
-            'progress': 75,
-            'month_name': final_month,
-            'total_staff': total_emps,
-            'message': f'Analyzing attendance & policy rules for {total_emps} staff ({final_month})...'
-        }
+        def on_seed_progress(curr, total, msg):
+            pct = 45 + int((curr / max(1, total)) * 50)  # Maps 45% -> 95%
+            UPLOAD_JOBS[job_id] = {
+                'status': 'processing',
+                'progress': min(96, pct),
+                'month_name': final_month,
+                'total_staff': total_emps,
+                'message': msg
+            }
 
-        database.seed_from_engine(engine, final_month, overwrite=True)
-
-        UPLOAD_JOBS[job_id] = {
-            'status': 'processing',
-            'progress': 92,
-            'month_name': final_month,
-            'total_staff': total_emps,
-            'message': f'Finalizing database ledgers for {final_month}...'
-        }
+        database.seed_from_engine(engine, final_month, overwrite=True, progress_callback=on_seed_progress)
 
         del engine
         gc.collect()
@@ -588,7 +582,10 @@ def _bg_process_upload(job_id: str, save_path: str, user_month: str, orig_filena
     finally:
         if save_path and os.path.exists(save_path):
             try:
-                os.remove(save_path)
+                import tempfile
+                # Only delete if it's inside the system temp directory
+                if os.path.commonpath([save_path, tempfile.gettempdir()]) == tempfile.gettempdir():
+                    os.remove(save_path)
             except Exception:
                 pass
 

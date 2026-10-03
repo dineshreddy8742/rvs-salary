@@ -374,6 +374,7 @@ function setupEventListeners() {
   if (btnCloseUpload && uploadModal) {
     btnCloseUpload.addEventListener('click', () => {
       uploadModal.style.display = 'none';
+      uploadModal.classList.remove('active');
       if (fileInput) fileInput.value = '';
     });
   }
@@ -398,6 +399,7 @@ function setupEventListeners() {
     if (uploadFooter) uploadFooter.style.display = 'none';
     uploadModal.style.opacity = '1';
     uploadModal.style.display = 'flex';
+    uploadModal.classList.add('active');
   }
 
   function updateUploadProgress(percent, statusText, detailText, detectedMonth) {
@@ -437,6 +439,7 @@ function setupEventListeners() {
       uploadModal.style.opacity = '0';
       setTimeout(() => {
         uploadModal.style.display = 'none';
+        uploadModal.classList.remove('active');
         uploadModal.style.opacity = '1';
         if (fileInput) fileInput.value = '';
         if (onDone) onDone();
@@ -2135,13 +2138,17 @@ function openPinModal() {
   document.getElementById('btn-change-pin').style.display = '';
   _updatePinDots();
   modal.classList.add('active');
+  modal.style.display = 'flex';
   // Keyboard support
   document.addEventListener('keydown', _pinKeyboardHandler);
 }
 
 function closePinModal() {
   const modal = document.getElementById('modal-salary-pin');
-  if (modal) modal.classList.remove('active');
+  if (modal) {
+    modal.classList.remove('active');
+    modal.style.display = 'none';
+  }
   _pinBuffer = '';
   document.removeEventListener('keydown', _pinKeyboardHandler);
 }
@@ -2488,6 +2495,8 @@ function renderTable() {
     deptCounts[e.department] = (deptCounts[e.department] || 0) + 1;
   });
 
+  const frag = document.createDocumentFragment();
+
   filtered.forEach(emp => {
     if (showDeptHeader && emp.department !== lastDept) {
       lastDept = emp.department;
@@ -2501,7 +2510,7 @@ function renderTable() {
             ${count} Staff
           </span>
         </td>`;
-      tbody.appendChild(deptRow);
+      frag.appendChild(deptRow);
     }
 
     const tr = document.createElement('tr');
@@ -2882,8 +2891,10 @@ function renderTable() {
       `;
     }
 
-    tbody.appendChild(tr);
+    frag.appendChild(tr);
   });
+
+  tbody.appendChild(frag);
 }
 
 // Inline Edit Handler for Attendance Fields (CL / OD)
@@ -4126,13 +4137,6 @@ function showToast(msg) {
 // 1. UNIFIED 360° MASTER PROFILE, ATTENDANCE & SALARY EDITOR
 // -----------------------------------------------------------------------------
 function openEditPackageModal(empCode) {
-  // Block edit modal salary sections when locked — redirect to PIN
-  if (!showSalaryColumns) {
-    showToast('🔒 Unlock salary to access the full edit panel');
-    openPinModal();
-    return;
-  }
-
   const emp = unifiedRecords.find(e => String(e.emp_code) === String(empCode)) || 
               allSalaryRecords.find(e => String(e.emp_code) === String(empCode));
   if (!emp) return;
@@ -4185,7 +4189,11 @@ function openEditPackageModal(empCode) {
   const btnRevertModal = document.getElementById('btn-revert-from-modal');
   if (btnRevertModal) {
     btnRevertModal.onclick = () => {
-      document.getElementById('modal-employee-package').classList.remove('active');
+      const pM = document.getElementById('modal-employee-package');
+      if (pM) {
+        pM.classList.remove('active');
+        pM.style.display = 'none';
+      }
       revertToOriginal(emp.emp_code);
     };
   }
@@ -4193,8 +4201,12 @@ function openEditPackageModal(empCode) {
   // Recalculate preview immediately
   updateModalLivePreview();
 
-  // Show Modal
-  document.getElementById('modal-employee-package').classList.add('active');
+  // Show Modal directly & smoothly
+  const modal = document.getElementById('modal-employee-package');
+  if (modal) {
+    modal.classList.add('active');
+    modal.style.display = 'flex';
+  }
 }
 
 // Live calculation preview inside modal as user changes days, base, arrears, or deductions

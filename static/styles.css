@@ -1750,11 +1750,11 @@ input:checked + .slider-circle:before { transform: translateX(16px); }
   display: none;
   align-items: center;
   justify-content: center;
-  z-index: 100;
+  z-index: 10000 !important;
   padding: 1.5rem;
 }
 .modal-overlay.active {
-  display: flex;
+  display: flex !important;
 }
 
 .modal-window {
@@ -4821,6 +4821,25 @@ html, body {
 /* ==========================================================================
    BIOMETRIC UPLOAD PROGRESS POPUP
    ========================================================================== */
+#modal-upload-progress {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  z-index: 99999 !important;
+  background-color: rgba(15, 23, 42, 0.75) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+#modal-upload-progress.active {
+  display: flex !important;
+}
+
 .upload-progress-card {
   width: 500px;
   max-width: 92vw;
