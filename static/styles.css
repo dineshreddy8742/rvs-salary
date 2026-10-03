@@ -4211,10 +4211,22 @@ html, body {
    BULK STAFF ENROLLMENT & EXCEL IMPORT STYLES
    ========================================================================== */
 
-#add-staff-modal-window.modal-wide-mode {
-  max-width: 1100px;
-  width: 95vw;
-  transition: max-width 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+#add-staff-modal-window {
+  max-width: 1040px !important;
+  width: 95vw !important;
+}
+
+.manage-badge-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  color: #334155;
+  font-weight: 500;
 }
 
 .staff-modal-tabs-wrap {

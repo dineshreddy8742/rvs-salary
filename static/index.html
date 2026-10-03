@@ -771,65 +771,64 @@
       <div class="modal-content-area" style="padding-top: 0.85rem;">
         <!-- TAB 1: SINGLE STAFF FORM -->
         <div id="tab-content-single-staff">
-          <form id="form-add-staff" class="add-staff-form">
-            <div class="form-row">
-              <div class="form-field">
-                <label>Employee Code: *</label>
-                <input type="text" id="add-emp-code" placeholder="e.g. 101, V-102" required>
-              </div>
-              <div class="form-field">
-                <label>Full Name: *</label>
-                <input type="text" id="add-emp-name" placeholder="e.g. Dr. M. Mohan Babu" required>
+          <div class="bulk-staff-hero-strip" style="background: linear-gradient(135deg, #f0fdf4 0%, #eff6ff 100%); border-color: #bbf7d0;">
+            <div class="bulk-hero-info">
+              <div class="bulk-hero-title">👤 Individual Staff Enrollment</div>
+              <div class="bulk-hero-desc">
+                Add an individual faculty member, administrative officer, visiting professor, or contractor. Once enrolled, their profile and monthly payroll are computed automatically.
               </div>
             </div>
+          </div>
 
-            <div class="form-row">
-              <div class="form-field">
-                <label>Designation:</label>
-                <input type="text" id="add-emp-desig" placeholder="e.g. Principal / Visiting Professor" value="Professor">
-              </div>
-              <div class="form-field">
-                <label>Department:</label>
-                <input type="text" id="add-emp-dept" placeholder="e.g. Administration, CE, CSE" value="Administration">
-              </div>
+          <form id="form-add-staff" class="add-staff-form" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.15rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 14px; padding: 1.25rem;">
+            <div class="form-field">
+              <label>Employee Code: *</label>
+              <input type="text" id="add-emp-code" placeholder="e.g. 101, V-102" required>
+            </div>
+            <div class="form-field">
+              <label>Full Name: *</label>
+              <input type="text" id="add-emp-name" placeholder="e.g. Dr. M. Mohan Babu" required>
+            </div>
+            <div class="form-field">
+              <label>Designation:</label>
+              <input type="text" id="add-emp-desig" placeholder="e.g. Principal / Visiting Professor" value="Professor">
             </div>
 
-            <div class="form-row">
-              <div class="form-field">
-                <label>Staff Category: *</label>
-                <select id="add-emp-category" class="form-select">
-                  <option value="Teaching">Teaching Faculty</option>
-                  <option value="Non-Teaching">Non-Teaching Staff</option>
-                  <option value="Transport">Transport / Drivers</option>
-                  <option value="Security">Security & Water</option>
-                  <option value="Attender">Attender</option>
-                  <option value="Management">Management Staff</option>
-                </select>
-              </div>
-              <div class="form-field">
-                <label>Monthly Base Package (₹):</label>
-                <input type="number" id="add-emp-base-salary" placeholder="e.g. 35000" step="100" min="0" value="25000">
-              </div>
+            <div class="form-field">
+              <label>Department:</label>
+              <input type="text" id="add-emp-dept" placeholder="e.g. Administration, CE, CSE" value="Administration">
+            </div>
+            <div class="form-field">
+              <label>Staff Category: *</label>
+              <select id="add-emp-category" class="form-select">
+                <option value="Teaching">Teaching Faculty</option>
+                <option value="Non-Teaching">Non-Teaching Staff</option>
+                <option value="Transport">Transport / Drivers</option>
+                <option value="Security">Security & Water</option>
+                <option value="Attender">Attender</option>
+                <option value="Management">Management Staff</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label>Monthly Base Package (₹):</label>
+              <input type="number" id="add-emp-base-salary" placeholder="e.g. 35000" step="100" min="0" value="25000">
             </div>
 
             <div class="form-field">
               <label>Attendance Policy: *</label>
               <select id="add-emp-policy" class="form-select">
                 <option value="standard">Standard Biometric (Punch calculation)</option>
-                <option value="exempt_full">👑 Full Attendance (Principal / VIP / 100% Full Pay)</option>
-                <option value="visiting_twice_weekly">Visiting Faculty (2 Days/Week = Full Attendance)</option>
+                <option value="exempt_full">👑 Full Attendance (VIP / 100% Pay)</option>
+                <option value="visiting_twice_weekly">Visiting Faculty (2 Days/Wk = Full Pay)</option>
               </select>
             </div>
-
-            <div class="form-row">
-              <div class="form-field">
-                <label>Annual CL Quota (Days):</label>
-                <input type="number" id="add-emp-cl-quota" value="12" step="0.5">
-              </div>
-              <div class="form-field">
-                <label>Base Working Days / Month:</label>
-                <input type="number" id="add-emp-base-days" value="25" step="0.5">
-              </div>
+            <div class="form-field">
+              <label>Annual CL Quota (Days):</label>
+              <input type="number" id="add-emp-cl-quota" value="12" step="0.5">
+            </div>
+            <div class="form-field">
+              <label>Base Working Days / Month:</label>
+              <input type="number" id="add-emp-base-days" value="25" step="0.5">
             </div>
           </form>
         </div>
@@ -979,11 +978,10 @@
           <!-- Top Control Ribbon -->
           <div class="manage-staff-toolbar">
             <div class="manage-filter-group">
-              <label class="manage-scope-toggle">
-                <input type="checkbox" id="manage-staff-manual-only" checked>
-                <span>Show Uploaded / Manual Staff Only (<strong id="manage-manual-count-badge">0</strong>)</span>
-              </label>
-              <input type="text" id="manage-staff-search" class="bulk-search-box" placeholder="Search by name, code, dept..." style="min-width: 220px;">
+              <div class="manage-badge-indicator">
+                <span>📁 Uploaded Test Staff (<strong id="manage-manual-count-badge">0</strong>)</span>
+              </div>
+              <input type="text" id="manage-staff-search" class="bulk-search-box" placeholder="Search uploaded staff by name, code, dept..." style="min-width: 250px;">
             </div>
 
             <div class="manage-actions-group">

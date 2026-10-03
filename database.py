@@ -698,6 +698,8 @@ def delete_database_backup(backup_id: int) -> dict:
 def delete_employee(emp_code: str) -> dict:
     """Permanently delete an employee from master, monthly records, salary profiles, and punch logs."""
     emp_code = str(emp_code).strip()
+    if emp_code in PROTECTED_INSTITUTIONAL_STAFF:
+        return {'status': 'error', 'message': f'Cannot delete permanent institutional staff member ({emp_code}).'}
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT name, department FROM employees WHERE emp_code = ?", (emp_code,))
@@ -718,8 +720,15 @@ def delete_employee(emp_code: str) -> dict:
         'name': name
     }
 
+PROTECTED_INSTITUTIONAL_STAFF = {
+    '101', '707', '900', '1060', '1015', '1019', '1021', '4001', '1030',
+    'SHAJAHAN', 'SHIVA_DRIVER', '914', '917', '582', '581', '528', '6014',
+    '1014', '1007', '1013', '1042', '538', '350', '1048', '523', '544',
+    '507', '424', '214_ELEC'
+}
+
 def get_enrolled_staff_list(month_year: str = "August -2026", manual_only: bool = True) -> list:
-    """Return list of enrolled staff members (manual/uploaded or full roster) with current month details."""
+    """Return list of enrolled staff members (strictly user-added / uploaded test staff only)."""
     month_year = normalize_month_year(month_year)
     conn = get_db()
     cursor = conn.cursor()
@@ -732,38 +741,39 @@ def get_enrolled_staff_list(month_year: str = "August -2026", manual_only: bool 
     FROM employees e
     LEFT JOIN salary_profiles sp ON e.emp_code = sp.emp_code
     LEFT JOIN monthly_records mr ON e.emp_code = mr.emp_code AND mr.month_year = ?
+    WHERE e.is_manual = 1
+    ORDER BY e.emp_code DESC
     """
-    if manual_only:
-        query += " WHERE e.is_manual = 1 ORDER BY e.emp_code DESC"
-    else:
-        query += " ORDER BY e.emp_code ASC"
-
     cursor.execute(query, (month_year,))
     rows = cursor.fetchall()
     conn.close()
 
     result = []
     for r in rows:
+        ec = str(r['emp_code']).strip()
+        if ec in PROTECTED_INSTITUTIONAL_STAFF:
+            continue
         result.append({
-            'emp_code': str(r['emp_code']),
+            'emp_code': ec,
             'name': str(r['name'] or ''),
             'designation': str(r['designation'] or 'Staff'),
             'department': str(r['department'] or 'Administration'),
             'category': str(r['category'] or 'Non-Teaching'),
             'base_salary': float(r['base_salary'] or 0.0),
             'attendance_policy': str(r['attendance_policy'] or 'standard'),
-            'is_manual': bool(r['is_manual']),
+            'is_manual': True,
             'total_pay_days': float(r['total_pay_days']) if r['total_pay_days'] is not None else None,
             'remarks': str(r['remarks'] or '')
         })
     return result
 
 def bulk_delete_employees(emp_codes: list) -> dict:
-    """Permanently delete multiple employees in a single transaction."""
+    """Permanently delete multiple employees in a single transaction (excluding protected institutional staff)."""
     if not emp_codes:
         return {'status': 'success', 'deleted_count': 0, 'deleted_codes': []}
 
     cleaned_codes = [str(c).strip() for c in emp_codes if str(c).strip()]
+    cleaned_codes = [c for c in cleaned_codes if c not in PROTECTED_INSTITUTIONAL_STAFF]
     if not cleaned_codes:
         return {'status': 'success', 'deleted_count': 0, 'deleted_codes': []}
 
@@ -787,11 +797,11 @@ def bulk_delete_employees(emp_codes: list) -> dict:
     }
 
 def delete_all_manual_employees() -> dict:
-    """Permanently delete all manually added / uploaded staff records."""
+    """Permanently delete all user-added / uploaded test staff records (excluding protected institutional staff)."""
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT emp_code FROM employees WHERE is_manual = 1")
-    codes = [r['emp_code'] for r in cursor.fetchall()]
+    codes = [r['emp_code'] for r in cursor.fetchall() if r['emp_code'] not in PROTECTED_INSTITUTIONAL_STAFF]
     conn.close()
 
     if not codes:

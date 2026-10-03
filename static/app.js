@@ -482,18 +482,15 @@ function setupEventListeners() {
       if (tabBtnBulk) tabBtnBulk.classList.add('active');
       if (tabContentBulk) tabContentBulk.style.display = 'block';
       if (footerBulk) footerBulk.style.display = 'flex';
-      if (addStaffWindow) addStaffWindow.classList.add('modal-wide-mode');
     } else if (mode === 'manage') {
       if (tabBtnManage) tabBtnManage.classList.add('active');
       if (tabContentManage) tabContentManage.style.display = 'block';
       if (footerManage) footerManage.style.display = 'flex';
-      if (addStaffWindow) addStaffWindow.classList.add('modal-wide-mode');
       loadEnrolledStaffList();
     } else {
       if (tabBtnSingle) tabBtnSingle.classList.add('active');
       if (tabContentSingle) tabContentSingle.style.display = 'block';
       if (footerSingle) footerSingle.style.display = 'flex';
-      if (addStaffWindow) addStaffWindow.classList.remove('modal-wide-mode');
     }
   }
 
@@ -926,20 +923,19 @@ function setupEventListeners() {
     const tbody = document.getElementById('manage-staff-tbody');
     const emptyState = document.getElementById('manage-staff-empty');
     const tableContainer = document.getElementById('manage-table-container');
-    const manualOnly = document.getElementById('manage-staff-manual-only')?.checked !== false;
 
     if (loading) loading.style.display = 'block';
     if (tableContainer) tableContainer.style.display = 'none';
     if (emptyState) emptyState.style.display = 'none';
 
     try {
-      const res = await fetch(`/api/added-staff?month=${encodeURIComponent(currentMonth)}&manual_only=${manualOnly}`);
+      const res = await fetch(`/api/added-staff?month=${encodeURIComponent(currentMonth)}&manual_only=true`);
       const data = await res.json();
       if (loading) loading.style.display = 'none';
 
       if (data.status === 'success') {
         currentEnrolledStaff = data.staff || [];
-        const count = data.manual_count !== undefined ? data.manual_count : currentEnrolledStaff.filter(s => s.is_manual).length;
+        const count = currentEnrolledStaff.length;
         const badgeTab = document.getElementById('tab-badge-manage-count');
         const badgeToolbar = document.getElementById('manage-manual-count-badge');
         if (badgeTab) badgeTab.textContent = count;
