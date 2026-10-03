@@ -96,14 +96,6 @@ class PgCursorProxy:
         sample_params = seq_of_params[0] if seq_of_params else None
         translated = self._translate_sql(sql, sample_params)
         import psycopg2.extras
-        # Use high-speed execute_values for multi-row INSERTs to prevent TLS timeouts and SSL errors
-        if 'VALUES' in translated.upper() and 'INSERT' in translated.upper():
-            val_sql = re.sub(r'VALUES\s*\([^)]+\)', 'VALUES %s', translated, flags=re.I)
-            try:
-                psycopg2.extras.execute_values(self._cur, val_sql, seq_of_params, page_size=5000)
-                return
-            except Exception as e:
-                print(f"[DB] execute_values fallback: {e}")
         try:
             psycopg2.extras.execute_batch(self._cur, translated, seq_of_params, page_size=500)
         except Exception as e:
@@ -262,8 +254,20 @@ def get_db():
         if _pg_pool:
             try:
                 raw_conn = _pg_pool.getconn()
+                is_stale = False
                 if getattr(raw_conn, 'closed', 0) != 0:
-                    _pg_pool.putconn(raw_conn, close=True)
+                    is_stale = True
+                else:
+                    try:
+                        with raw_conn.cursor() as test_cur:
+                            test_cur.execute("SELECT 1")
+                    except Exception:
+                        is_stale = True
+                if is_stale:
+                    try:
+                        _pg_pool.putconn(raw_conn, close=True)
+                    except Exception:
+                        pass
                     raw_conn = _pg_pool.getconn()
                 raw_conn.cursor_factory = psycopg2.extras.DictCursor
                 return PgConnectionProxy(raw_conn, _pg_pool)
@@ -275,7 +279,7 @@ def get_db():
                 except Exception:
                     pass
         try:
-            direct_conn = psycopg2.connect(SUPABASE_DB_URL)
+            direct_conn = psycopg2.connect(SUPABASE_DB_URL, connect_timeout=10)
             direct_conn.cursor_factory = psycopg2.extras.DictCursor
             return PgConnectionProxy(direct_conn, None)
         except Exception as e:
@@ -1702,16 +1706,19 @@ def create_or_update_manual_employee(emp_data: dict, current_month: str = "Augus
     return get_employee_portfolio(emp_code)
 
 def bulk_create_or_update_manual_employees(staff_list: list, current_month: str = "August -2026") -> dict:
-    """Batch enroll multiple staff members (10, 50, 100+) in one atomic transaction."""
+    """Batch enroll multiple staff members (10, 50, 100, 1000+) in one fast atomic operation."""
     current_month = normalize_month_year(current_month)
     conn = get_db()
     cursor = conn.cursor()
     m_days = float(payroll_engine.get_days_in_month_str(current_month) or 31)
 
     added_count = 0
-    updated_codes = []
     dept_counts = {}
     cat_counts = {}
+
+    emp_tuples = []
+    prof_tuples = []
+    monthly_tuples = []
 
     for emp_data in staff_list:
         emp_code = str(emp_data.get('emp_code', '')).strip()
@@ -1743,18 +1750,11 @@ def bulk_create_or_update_manual_employees(staff_list: list, current_month: str 
         account_no = str(emp_data.get('account_no', '')).strip()
         ifsc_code = str(emp_data.get('ifsc_code', '')).strip()
 
-        # 1. Employees Master
-        cursor.execute("""
-        INSERT OR REPLACE INTO employees (emp_code, name, designation, department, annual_cl_quota, annual_od_quota, attendance_policy, is_manual)
-        VALUES (?, ?, ?, ?, ?, 15.0, ?, 1)
-        """, (emp_code, name, desig, dept, quota, policy))
+        # 1. Employees Master tuple
+        emp_tuples.append((emp_code, name, desig, dept, quota, 15.0, policy, 1))
 
-        # 2. Salary Profiles
-        cursor.execute("""
-        INSERT OR REPLACE INTO salary_profiles 
-        (emp_code, name, category, designation, department, base_salary, bank_name, account_no, ifsc_code)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (emp_code, name, category, desig, dept, base_sal, bank_name, account_no, ifsc_code))
+        # 2. Salary Profiles tuple
+        prof_tuples.append((emp_code, name, category, desig, dept, base_sal, bank_name, account_no, ifsc_code))
 
         # 3. Determine Attendance & Pay Days
         if policy == 'exempt_full':
@@ -1779,27 +1779,85 @@ def bulk_create_or_update_manual_employees(staff_list: list, current_month: str 
             remarks = "👤 Bulk Added Staff\nRegular roster staff member"
             needs_review = 0
 
-        # 4. Monthly Records
-        cursor.execute("""
-        INSERT OR REPLACE INTO monthly_records 
-        (emp_code, month_year, name, designation, department, biometric_days, holiday, availed_leaves, sv_od, total_pay_days, remarks, needs_review, base_salary)
-        VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?)
-        """, (emp_code, current_month, name, desig, dept, bio_days, holiday, total_pay, remarks, needs_review, base_sal))
+        # In-memory instant salary calculation (0 DB queries overhead)
+        prof_dict = {
+            'emp_code': emp_code,
+            'name': name,
+            'category': category,
+            'base_salary': base_sal,
+            'default_arrears': 0.0,
+            'epf_amount': 0.0,
+            'default_bus': 0.0,
+            'default_mess': 0.0,
+            'default_hostel_eb': 0.0
+        }
+        overrides = {
+            'base_salary': base_sal,
+            'arrears': 0.0,
+            'epf_deduction': 0.0,
+            'it_deduction': 0.0,
+            'bus_deduction': 0.0,
+            'mess_deduction': 0.0,
+            'hostel_eb_deduction': 0.0,
+            'other_deductions': 0.0,
+            'pt_deduction': None,
+            'wf_deduction': None
+        }
+        sal_res = payroll_engine.calculate_salary_for_profile(prof_dict, int(m_days), total_pay, overrides)
+
+        monthly_tuples.append((
+            emp_code, current_month, name, desig, dept, bio_days, holiday, total_pay, remarks, needs_review,
+            sal_res.get('base_salary', base_sal),
+            sal_res.get('earned_basic', 0.0),
+            sal_res.get('da', 0.0),
+            sal_res.get('hra', 0.0),
+            sal_res.get('arrears', 0.0),
+            sal_res.get('gross_salary', 0.0),
+            sal_res.get('pt', 0.0),
+            sal_res.get('wf', 0.0),
+            sal_res.get('epf', 0.0),
+            sal_res.get('it', 0.0),
+            sal_res.get('bus_deduction', 0.0),
+            sal_res.get('mess_deduction', 0.0),
+            sal_res.get('hostel_eb_deduction', 0.0),
+            sal_res.get('other_deductions', 0.0),
+            sal_res.get('total_deductions', 0.0),
+            sal_res.get('net_salary', 0.0)
+        ))
 
         added_count += 1
-        updated_codes.append(emp_code)
         dept_counts[dept] = dept_counts.get(dept, 0) + 1
         cat_counts[category] = cat_counts.get(category, 0) + 1
 
+    # Execute in clean batches
+    CHUNK_SIZE = 250
+    for i in range(0, len(emp_tuples), CHUNK_SIZE):
+        emp_chunk = emp_tuples[i:i + CHUNK_SIZE]
+        prof_chunk = prof_tuples[i:i + CHUNK_SIZE]
+        mon_chunk = monthly_tuples[i:i + CHUNK_SIZE]
+
+        cursor.executemany("""
+        INSERT OR REPLACE INTO employees 
+        (emp_code, name, designation, department, annual_cl_quota, annual_od_quota, attendance_policy, is_manual)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, emp_chunk)
+
+        cursor.executemany("""
+        INSERT OR REPLACE INTO salary_profiles 
+        (emp_code, name, category, designation, department, base_salary, bank_name, account_no, ifsc_code)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, prof_chunk)
+
+        cursor.executemany("""
+        INSERT OR REPLACE INTO monthly_records 
+        (emp_code, month_year, name, designation, department, biometric_days, holiday, total_pay_days, remarks, needs_review,
+         base_salary, earned_basic, earned_da, earned_hra, arrears, gross_salary, pt_deduction, wf_deduction, epf_deduction,
+         it_deduction, bus_deduction, mess_deduction, hostel_eb_deduction, other_deductions, total_deductions, net_salary)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, mon_chunk)
+
     conn.commit()
     conn.close()
-
-    # Recalculate monthly salaries
-    for code in updated_codes:
-        try:
-            recalculate_monthly_salary(code, current_month)
-        except Exception as e:
-            print(f"[BULK SALARY CALC WARNING] {code}: {e}")
 
     return {
         'status': 'success',

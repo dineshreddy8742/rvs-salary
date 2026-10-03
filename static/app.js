@@ -849,31 +849,52 @@ function setupEventListeners() {
       if (!confirmed) return;
 
       btnExecuteBulk.disabled = true;
-      btnExecuteBulk.innerHTML = `<span>⏳ Enrolling ${validRecords.length} Staff...</span>`;
+      const CHUNK_SIZE = 150;
+      const total = validRecords.length;
+      let totalAdded = 0;
 
       try {
-        const res = await fetch('/api/bulk-staff-import', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            employees: validRecords,
-            month_year: currentMonth
-          })
-        });
-        const data = await res.json();
+        for (let i = 0; i < total; i += CHUNK_SIZE) {
+          const chunk = validRecords.slice(i, i + CHUNK_SIZE);
+          const chunkEnd = Math.min(i + CHUNK_SIZE, total);
+          btnExecuteBulk.innerHTML = `<span>⏳ Enrolling ${chunkEnd}/${total} Staff...</span>`;
 
-        if (data.status === 'success') {
-          showToast(`✔ Successfully enrolled ${data.added_count} staff members to roster!`);
-          closeStaffModal();
-          resetBulkStaffView();
-          await loadData();
-        } else {
-          alert('Error during bulk import: ' + (data.message || 'Unknown error'));
-          btnExecuteBulk.disabled = false;
-          btnExecuteBulk.innerHTML = `<span>🚀 Import & Add to Roster</span> <span class="btn-badge-count">${validRecords.length}</span>`;
+          const res = await fetch('/api/bulk-staff-import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              employees: chunk,
+              month_year: currentMonth
+            })
+          });
+
+          let data;
+          try {
+            data = await res.json();
+          } catch (jsonErr) {
+            const raw = await res.text().catch(() => '');
+            throw new Error(`Server returned HTTP ${res.status}: ${raw.slice(0, 180) || res.statusText}`);
+          }
+
+          if (!res.ok || data.status !== 'success') {
+            throw new Error(data.message || `Server error during import (HTTP ${res.status})`);
+          }
+
+          totalAdded += (data.added_count || chunk.length);
         }
+
+        showToast(`✔ Successfully enrolled ${totalAdded} staff members to roster!`);
+        closeStaffModal();
+        resetBulkStaffView();
+        await loadData();
       } catch (err) {
-        alert('Network or server error while executing bulk import.');
+        console.error('Bulk staff import error:', err);
+        alert('Bulk Import Error: ' + (err.message || 'Network or server communication failure'));
+        if (totalAdded > 0) {
+          showToast(`⚠️ Partially enrolled ${totalAdded} of ${total} staff.`);
+          await loadData();
+        }
+      } finally {
         btnExecuteBulk.disabled = false;
         btnExecuteBulk.innerHTML = `<span>🚀 Import & Add to Roster</span> <span class="btn-badge-count">${validRecords.length}</span>`;
       }
