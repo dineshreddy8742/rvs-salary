@@ -532,21 +532,39 @@ def _bg_process_upload(job_id: str, save_path: str, user_month: str, orig_filena
     try:
         UPLOAD_JOBS[job_id] = {
             'status': 'processing',
-            'progress': 25,
-            'message': 'Parsing biometric machine Excel sheets...'
+            'progress': 20,
+            'message': 'Initializing biometric machine parser...'
         }
         ref_file = REF_FILE if os.path.exists(REF_FILE) else None
-        engine = AttendanceEngine(save_path, ref_file, month_year=user_month if user_month and user_month.lower() != 'auto' else None)
+        
+        UPLOAD_JOBS[job_id] = {
+            'status': 'processing',
+            'progress': 40,
+            'message': 'Reading machine sheets and extracting employee punch logs...'
+        }
+        
+        target_m = user_month if user_month and user_month.lower() != 'auto' else None
+        engine = AttendanceEngine(save_path, ref_file, month_year=target_m)
         final_month = database.normalize_month_year(engine.detected_month_year or user_month or 'August 2026')
         total_emps = len(engine.employees)
 
         UPLOAD_JOBS[job_id] = {
             'status': 'processing',
-            'progress': 60,
-            'message': f'Analyzing {total_emps} staff punches and updating database...'
+            'progress': 75,
+            'month_name': final_month,
+            'total_staff': total_emps,
+            'message': f'Analyzing attendance & policy rules for {total_emps} staff ({final_month})...'
         }
 
         database.seed_from_engine(engine, final_month, overwrite=True)
+
+        UPLOAD_JOBS[job_id] = {
+            'status': 'processing',
+            'progress': 92,
+            'month_name': final_month,
+            'total_staff': total_emps,
+            'message': f'Finalizing database ledgers for {final_month}...'
+        }
 
         del engine
         gc.collect()
@@ -564,6 +582,7 @@ def _bg_process_upload(job_id: str, save_path: str, user_month: str, orig_filena
         traceback.print_exc()
         UPLOAD_JOBS[job_id] = {
             'status': 'error',
+            'progress': 100,
             'message': f'Failed to process file: {str(e)}'
         }
     finally:

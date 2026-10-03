@@ -1885,6 +1885,45 @@
         <button class="btn-secondary-pill" id="btn-done-cash-denom">Close</button>
       </div>
     </div>
+  <!-- ===== BIOMETRIC UPLOAD PROGRESS MODAL ===== -->
+  <div class="modal-overlay" id="modal-upload-progress" style="display: none;">
+    <div class="modal-card upload-progress-card">
+      <!-- Icon & Status Header -->
+      <div class="upload-progress-header">
+        <div class="upload-icon-bubble pulse-anim" id="upload-progress-icon-wrap">
+          <span id="upload-progress-icon">☁️</span>
+        </div>
+        <div class="upload-progress-title-block">
+          <h3 class="upload-progress-title" id="upload-progress-title">Uploading Biometric Dump</h3>
+          <p class="upload-progress-subtitle" id="upload-progress-subtitle">Reading machine attendance dump...</p>
+        </div>
+      </div>
+
+      <!-- Percentage & Track Bar -->
+      <div class="upload-progress-body">
+        <div class="upload-progress-stats">
+          <span class="upload-status-badge" id="upload-status-badge">Uploading</span>
+          <span class="upload-percentage-label" id="upload-percentage-label">0%</span>
+        </div>
+
+        <div class="upload-progress-track">
+          <div class="upload-progress-fill" id="upload-progress-fill" style="width: 0%;"></div>
+        </div>
+
+        <div class="upload-progress-detail" id="upload-progress-detail">
+          Uploading raw biometric records to server...
+        </div>
+
+        <div class="upload-detected-month-chip" id="upload-detected-month-chip" style="display: none;">
+          📅 Detected Month: <strong id="upload-detected-month-val">September 2026</strong> (from biometric machine punch timestamps)
+        </div>
+      </div>
+
+      <!-- Dismiss Button for Errors -->
+      <div class="upload-progress-footer" id="upload-progress-footer" style="display: none;">
+        <button type="button" class="btn-secondary-pill" id="btn-close-upload-modal">Dismiss</button>
+      </div>
+    </div>
   </div>
 
   <!-- Toast Notification -->

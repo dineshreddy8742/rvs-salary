@@ -204,7 +204,7 @@ class AttendanceEngine:
                         'manual_od_override': None,
                         'manual_holiday_override': hol_count,
                         'manual_biometric_override': bio_count,
-                        'manual_remarks_override': '🏛️ Executive Biometric Exemption\nInstitutional Head / Principal — Governing Body Biometric Exemption' if code == '101' else '👑 Executive Full Pay Approval\nInstitutional waiver approved — 100% full salary credited'
+                        'manual_remarks_override': '🏛️ Executive Biometric Exemption\nInstitutional Head / Principal — Governing Body Biometric Exemption' if ec == '101' else '👑 Executive Full Pay Approval\nInstitutional waiver approved — 100% full salary credited'
                     }
 
         self.employees = parsed_emps

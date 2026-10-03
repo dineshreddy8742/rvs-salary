@@ -355,8 +355,115 @@ function setupEventListeners() {
     });
   }
 
-  // Upload file trigger
+  // --- Biometric File Upload with Live Percentage Popup & Auto-Dismiss ---
   const fileInput = document.getElementById('file-input');
+  const uploadModal = document.getElementById('modal-upload-progress');
+  const uploadTitle = document.getElementById('upload-progress-title');
+  const uploadSubtitle = document.getElementById('upload-progress-subtitle');
+  const uploadIcon = document.getElementById('upload-progress-icon');
+  const uploadIconWrap = document.getElementById('upload-progress-icon-wrap');
+  const uploadBadge = document.getElementById('upload-status-badge');
+  const uploadPct = document.getElementById('upload-percentage-label');
+  const uploadFill = document.getElementById('upload-progress-fill');
+  const uploadDetail = document.getElementById('upload-progress-detail');
+  const uploadMonthChip = document.getElementById('upload-detected-month-chip');
+  const uploadMonthVal = document.getElementById('upload-detected-month-val');
+  const uploadFooter = document.getElementById('upload-progress-footer');
+  const btnCloseUpload = document.getElementById('btn-close-upload-modal');
+
+  if (btnCloseUpload && uploadModal) {
+    btnCloseUpload.addEventListener('click', () => {
+      uploadModal.style.display = 'none';
+      if (fileInput) fileInput.value = '';
+    });
+  }
+
+  function showUploadPopup(fileName, fileSizeStr) {
+    if (!uploadModal) return;
+    if (uploadTitle) uploadTitle.textContent = 'Uploading Biometric Dump';
+    if (uploadSubtitle) uploadSubtitle.textContent = `${fileName} (${fileSizeStr})`;
+    if (uploadIcon) uploadIcon.textContent = '☁️';
+    if (uploadIconWrap) uploadIconWrap.className = 'upload-icon-bubble pulse-anim';
+    if (uploadBadge) {
+      uploadBadge.textContent = 'Uploading';
+      uploadBadge.className = 'upload-status-badge';
+    }
+    if (uploadPct) uploadPct.textContent = '0%';
+    if (uploadFill) {
+      uploadFill.style.width = '0%';
+      uploadFill.className = 'upload-progress-fill';
+    }
+    if (uploadDetail) uploadDetail.textContent = 'Transferring file to server...';
+    if (uploadMonthChip) uploadMonthChip.style.display = 'none';
+    if (uploadFooter) uploadFooter.style.display = 'none';
+    uploadModal.style.opacity = '1';
+    uploadModal.style.display = 'flex';
+  }
+
+  function updateUploadProgress(percent, statusText, detailText, detectedMonth) {
+    if (!uploadModal) return;
+    const clamped = Math.min(100, Math.max(0, Math.round(percent)));
+    if (uploadFill) uploadFill.style.width = `${clamped}%`;
+    if (uploadPct) uploadPct.textContent = `${clamped}%`;
+    if (statusText && uploadBadge) uploadBadge.textContent = statusText;
+    if (detailText && uploadDetail) uploadDetail.textContent = detailText;
+    if (detectedMonth && uploadMonthChip && uploadMonthVal) {
+      uploadMonthVal.textContent = detectedMonth;
+      uploadMonthChip.style.display = 'inline-flex';
+    }
+  }
+
+  function completeUploadSuccess(successMsg, detectedMonth, onDone) {
+    if (!uploadModal) {
+      if (onDone) onDone();
+      return;
+    }
+    updateUploadProgress(100, 'Completed', successMsg, detectedMonth);
+    if (uploadIcon) uploadIcon.textContent = '✅';
+    if (uploadIconWrap) uploadIconWrap.className = 'upload-icon-bubble success-state';
+    if (uploadBadge) {
+      uploadBadge.textContent = 'Completed';
+      uploadBadge.className = 'upload-status-badge badge-success';
+    }
+    if (uploadFill) {
+      uploadFill.style.width = '100%';
+      uploadFill.className = 'upload-progress-fill fill-success';
+    }
+    if (uploadTitle) uploadTitle.textContent = 'Attendance Imported Successfully!';
+    
+    // Auto-dismiss smoothly after 1.8 seconds per user preference
+    setTimeout(() => {
+      uploadModal.style.transition = 'opacity 0.4s ease';
+      uploadModal.style.opacity = '0';
+      setTimeout(() => {
+        uploadModal.style.display = 'none';
+        uploadModal.style.opacity = '1';
+        if (fileInput) fileInput.value = '';
+        if (onDone) onDone();
+      }, 400);
+    }, 1800);
+  }
+
+  function showUploadError(errMsg) {
+    if (!uploadModal) {
+      alert(`Upload Error: ${errMsg}`);
+      return;
+    }
+    if (uploadIcon) uploadIcon.textContent = '⚠️';
+    if (uploadIconWrap) uploadIconWrap.className = 'upload-icon-bubble error-state';
+    if (uploadBadge) {
+      uploadBadge.textContent = 'Failed';
+      uploadBadge.className = 'upload-status-badge badge-error';
+    }
+    if (uploadFill) {
+      uploadFill.className = 'upload-progress-fill fill-error';
+    }
+    if (uploadTitle) uploadTitle.textContent = 'Upload Processing Failed';
+    if (uploadDetail) uploadDetail.textContent = errMsg || 'Unable to process biometric file. Please check format and retry.';
+    if (uploadFooter) uploadFooter.style.display = 'flex';
+    if (fileInput) fileInput.value = '';
+  }
+
   document.getElementById('btn-upload-trigger').addEventListener('click', () => {
     fileInput.click();
   });
@@ -365,44 +472,50 @@ function setupEventListeners() {
     const file = e.target.files[0];
     if (!file) return;
 
+    const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
+    const sizeStr = `${sizeMb} MB`;
+    showUploadPopup(file.name, sizeStr);
+
     const formData = new FormData();
     formData.append('file', file);
     formData.append('month_name', 'auto');
 
-    showToast(`⏳ Uploading ${file.name} (${(file.size / (1024 * 1024)).toFixed(2)} MB)...`);
-    try {
-      const res = await fetch('/api/upload', { method: 'POST', body: formData });
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/upload', true);
+
+    // Track client upload transmission progress (0% - 35%)
+    xhr.upload.onprogress = (evt) => {
+      if (evt.lengthComputable) {
+        const netPct = Math.round((evt.loaded / evt.total) * 35);
+        updateUploadProgress(netPct, 'Uploading', `Transferring file (${(evt.loaded / (1024 * 1024)).toFixed(2)} MB of ${sizeStr})...`);
+      }
+    };
+
+    xhr.onload = () => {
       let data = null;
-      let rawText = '';
       try {
-        const text = await res.text();
-        rawText = text;
-        data = JSON.parse(text);
-      } catch (jsonErr) {
-        if (res.status === 401) {
-          alert('Session expired. Please log in again.');
-          window.location.href = '/login';
+        data = JSON.parse(xhr.responseText);
+      } catch (err) {
+        if (xhr.status === 401) {
+          showUploadError('Session expired. Please log in again.');
+          setTimeout(() => { window.location.href = '/login'; }, 1500);
           return;
         }
-        console.error('Server non-JSON response:', rawText);
-        throw new Error(
-          res.status === 500
-            ? 'Server memory/timeout error (HTTP 500). Please check your connection and retry.'
-            : `Server returned HTTP ${res.status}: ${res.statusText || 'Upload failed'}`
-        );
-      }
-
-      if (!res.ok || !data) {
-        alert('Upload Error: ' + ((data && data.message) || res.statusText || 'Failed to process file'));
+        showUploadError(xhr.status === 500 ? 'Server timeout/memory error (HTTP 500). Please retry.' : `Server error (${xhr.status})`);
         return;
       }
 
-      // Handle async background processing job
+      if (xhr.status >= 400 || !data || data.status === 'error') {
+        showUploadError(data?.message || `Upload failed with HTTP ${xhr.status}`);
+        return;
+      }
+
+      // Asynchronous background worker job
       if (data.status === 'processing' && data.job_id) {
         const jobId = data.job_id;
-        showToast(`⚡ ${data.message || 'File uploaded. Processing biometric attendance...'}`);
+        updateUploadProgress(40, 'Processing', 'Analyzing biometric machine punch records...');
 
-        // Poll job status every 1.2s until complete
+        // Poll job status every 1s
         const pollStatus = async () => {
           try {
             const sRes = await fetch(`/api/upload/status/${jobId}`);
@@ -410,45 +523,54 @@ function setupEventListeners() {
             const sData = await sRes.json();
 
             if (sData.status === 'processing') {
-              showToast(`⏳ [${sData.progress || 30}%] ${sData.message || 'Processing attendance records...'}`);
-              setTimeout(pollStatus, 1200);
+              const prog = sData.progress || 50;
+              updateUploadProgress(prog, 'Processing', sData.message || 'Processing attendance records...', sData.month_name);
+              setTimeout(pollStatus, 1000);
             } else if (sData.status === 'success') {
-              currentMonth = sData.month_name || currentMonth;
-              showToast(`✅ Successfully loaded ${sData.total_staff || ''} staff for ${currentMonth}!`);
-              await loadMonths();
-              const select = document.getElementById('month-select');
-              if (select) select.value = currentMonth;
-              await loadData();
+              const finalM = sData.month_name || currentMonth;
+              const msg = `Successfully analyzed & stored ${sData.total_staff || ''} staff records for ${finalM}.`;
+              completeUploadSuccess(msg, finalM, async () => {
+                currentMonth = finalM;
+                showToast(`✅ Successfully loaded ${sData.total_staff || ''} staff for ${currentMonth}!`);
+                await loadMonths();
+                const select = document.getElementById('month-select');
+                if (select) select.value = currentMonth;
+                await loadData();
+              });
             } else {
-              alert('Upload Error: ' + (sData.message || 'Processing failed'));
+              showUploadError(sData.message || 'Biometric analysis failed.');
             }
           } catch (pollErr) {
             console.error('Polling error:', pollErr);
-            setTimeout(pollStatus, 2000);
+            setTimeout(pollStatus, 1800);
           }
         };
 
-        setTimeout(pollStatus, 1000);
+        setTimeout(pollStatus, 800);
         return;
       }
 
-      // Handle synchronous response (if completed directly)
+      // Direct synchronous response fallback
       if (data.status === 'success') {
-        currentMonth = data.month_name || currentMonth;
-        showToast(`✅ Successfully loaded ${data.total_staff || ''} staff for ${currentMonth}!`);
-        await loadMonths();
-        const select = document.getElementById('month-select');
-        if (select) select.value = currentMonth;
-        await loadData();
+        const finalM = data.month_name || currentMonth;
+        completeUploadSuccess(data.message || `Loaded records for ${finalM}`, finalM, async () => {
+          currentMonth = finalM;
+          showToast(`✅ Successfully loaded ${data.total_staff || ''} staff for ${currentMonth}!`);
+          await loadMonths();
+          const select = document.getElementById('month-select');
+          if (select) select.value = currentMonth;
+          await loadData();
+        });
       } else {
-        alert('Upload Error: ' + (data.message || 'Failed to process file'));
+        showUploadError(data.message || 'Unexpected response status');
       }
-    } catch (err) {
-      console.error('Upload error:', err);
-      alert('Upload failed: ' + (err.message || 'Connection error.'));
-    } finally {
-      fileInput.value = '';
-    }
+    };
+
+    xhr.onerror = () => {
+      showUploadError('Network connection lost during file transmission. Please check connection and retry.');
+    };
+
+    xhr.send(formData);
   });
 
   // Add Staff Modal (Single & Bulk Excel/CSV Import)
