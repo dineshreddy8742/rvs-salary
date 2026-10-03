@@ -125,23 +125,7 @@ def auth_logout():
 def index():
     if not session.get('logged_in'):
         return redirect('/login')
-    react_dist = os.path.join(os.path.dirname(__file__), 'frontend', 'dist')
-    if os.path.exists(os.path.join(react_dist, 'index.html')):
-        return send_from_directory(react_dist, 'index.html')
     return send_from_directory('static', 'index.html')
-
-@app.route('/legacy')
-def legacy_index():
-    if not session.get('logged_in'):
-        return redirect('/login')
-    return send_from_directory('static', 'index.html')
-
-@app.route('/assets/<path:filename>')
-def serve_react_assets(filename):
-    react_assets = os.path.join(os.path.dirname(__file__), 'frontend', 'dist', 'assets')
-    if os.path.exists(os.path.join(react_assets, filename)):
-        return send_from_directory(react_assets, filename)
-    return send_from_directory('static', filename)
 # Initialize database & salary profiles
 database.init_db()
 if os.path.exists('database'):
