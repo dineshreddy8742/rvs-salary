@@ -714,6 +714,87 @@ def delete_employee(emp_code: str) -> dict:
         'name': name
     }
 
+def get_enrolled_staff_list(month_year: str = "August -2026", manual_only: bool = True) -> list:
+    """Return list of enrolled staff members (manual/uploaded or full roster) with current month details."""
+    month_year = normalize_month_year(month_year)
+    conn = get_db()
+    cursor = conn.cursor()
+
+    query = """
+    SELECT 
+        e.emp_code, e.name, e.designation, e.department, e.attendance_policy, e.is_manual,
+        sp.category, sp.base_salary, sp.bank_name, sp.account_no, sp.ifsc_code,
+        mr.total_pay_days, mr.biometric_days, mr.remarks
+    FROM employees e
+    LEFT JOIN salary_profiles sp ON e.emp_code = sp.emp_code
+    LEFT JOIN monthly_records mr ON e.emp_code = mr.emp_code AND mr.month_year = ?
+    """
+    if manual_only:
+        query += " WHERE e.is_manual = 1 ORDER BY e.emp_code DESC"
+    else:
+        query += " ORDER BY e.emp_code ASC"
+
+    cursor.execute(query, (month_year,))
+    rows = cursor.fetchall()
+    conn.close()
+
+    result = []
+    for r in rows:
+        result.append({
+            'emp_code': str(r['emp_code']),
+            'name': str(r['name'] or ''),
+            'designation': str(r['designation'] or 'Staff'),
+            'department': str(r['department'] or 'Administration'),
+            'category': str(r['category'] or 'Non-Teaching'),
+            'base_salary': float(r['base_salary'] or 0.0),
+            'attendance_policy': str(r['attendance_policy'] or 'standard'),
+            'is_manual': bool(r['is_manual']),
+            'total_pay_days': float(r['total_pay_days']) if r['total_pay_days'] is not None else None,
+            'remarks': str(r['remarks'] or '')
+        })
+    return result
+
+def bulk_delete_employees(emp_codes: list) -> dict:
+    """Permanently delete multiple employees in a single transaction."""
+    if not emp_codes:
+        return {'status': 'success', 'deleted_count': 0, 'deleted_codes': []}
+
+    cleaned_codes = [str(c).strip() for c in emp_codes if str(c).strip()]
+    if not cleaned_codes:
+        return {'status': 'success', 'deleted_count': 0, 'deleted_codes': []}
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    params = [(c,) for c in cleaned_codes]
+    cursor.executemany("DELETE FROM daily_logs WHERE emp_code = ?", params)
+    cursor.executemany("DELETE FROM monthly_records WHERE emp_code = ?", params)
+    cursor.executemany("DELETE FROM salary_profiles WHERE emp_code = ?", params)
+    cursor.executemany("DELETE FROM employees WHERE emp_code = ?", params)
+
+    conn.commit()
+    conn.close()
+
+    return {
+        'status': 'success',
+        'message': f'Successfully deleted {len(cleaned_codes)} staff member(s).',
+        'deleted_count': len(cleaned_codes),
+        'deleted_codes': cleaned_codes
+    }
+
+def delete_all_manual_employees() -> dict:
+    """Permanently delete all manually added / uploaded staff records."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT emp_code FROM employees WHERE is_manual = 1")
+    codes = [r['emp_code'] for r in cursor.fetchall()]
+    conn.close()
+
+    if not codes:
+        return {'status': 'success', 'deleted_count': 0, 'message': 'No manual/uploaded staff found to delete.'}
+
+    return bulk_delete_employees(codes)
+
 def delete_month_data(month_year: str) -> dict:
     """Delete all monthly records and daily logs for the specified month, after creating an automatic archive."""
     month_year = normalize_month_year(month_year)

@@ -755,6 +755,16 @@
             <span>Bulk Excel / CSV Import</span>
             <span class="tab-badge-pill">10 - 100+ Staff</span>
           </button>
+          <button type="button" class="staff-modal-tab-btn" id="tab-btn-manage-staff">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              <line x1="10" y1="11" x2="10" y2="17"></line>
+              <line x1="14" y1="11" x2="14" y2="17"></line>
+            </svg>
+            <span>Manage / Delete Staff</span>
+            <span class="tab-badge-pill tab-badge-delete" id="tab-badge-manage-count">0</span>
+          </button>
         </div>
       </div>
 
@@ -963,6 +973,71 @@
             </div>
           </div>
         </div>
+
+        <!-- TAB 3: MANAGE / DELETE ADDED STAFF -->
+        <div id="tab-content-manage-staff" style="display: none;">
+          <!-- Top Control Ribbon -->
+          <div class="manage-staff-toolbar">
+            <div class="manage-filter-group">
+              <label class="manage-scope-toggle">
+                <input type="checkbox" id="manage-staff-manual-only" checked>
+                <span>Show Uploaded / Manual Staff Only (<strong id="manage-manual-count-badge">0</strong>)</span>
+              </label>
+              <input type="text" id="manage-staff-search" class="bulk-search-box" placeholder="Search by name, code, dept..." style="min-width: 220px;">
+            </div>
+
+            <div class="manage-actions-group">
+              <button type="button" class="btn-delete-selected-batch" id="btn-delete-selected-staff" disabled>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+                <span>Delete Selected (<span id="delete-selected-counter">0</span>)</span>
+              </button>
+              <button type="button" class="btn-delete-all-manual" id="btn-delete-all-manual-staff" title="Permanently delete all manually added / uploaded test staff members">
+                <span>⚠️ Delete All Uploaded Staff</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Loading state for manage tab -->
+          <div class="bulk-staff-loading" id="manage-staff-loading" style="display: none;">
+            <div class="loading-spinner"></div>
+            <div class="loading-label">Loading enrolled staff members...</div>
+          </div>
+
+          <!-- Table Container -->
+          <div class="bulk-table-scroll-container" id="manage-table-container">
+            <table class="bulk-preview-table" id="manage-staff-table">
+              <thead>
+                <tr>
+                  <th style="width: 38px; text-align: center;">
+                    <input type="checkbox" id="manage-select-all-checkbox" title="Select all visible staff">
+                  </th>
+                  <th style="width: 95px;">Emp Code</th>
+                  <th>Full Name</th>
+                  <th>Designation</th>
+                  <th>Department</th>
+                  <th>Category</th>
+                  <th style="text-align: right;">Base Package</th>
+                  <th>Policy</th>
+                  <th style="width: 80px; text-align: center;">Origin</th>
+                  <th style="width: 70px; text-align: center;">Action</th>
+                </tr>
+              </thead>
+              <tbody id="manage-staff-tbody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Empty State -->
+          <div id="manage-staff-empty" style="display: none; text-align: center; padding: 2.5rem 1rem; color: #64748b;">
+            <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">👥</div>
+            <div style="font-weight: 700; font-size: 0.95rem; color: #1e293b;">No Uploaded Staff Members Found</div>
+            <div style="font-size: 0.8rem; margin-top: 4px;">Use the Single Staff Entry or Bulk Excel Import tabs to add staff.</div>
+          </div>
+        </div>
       </div>
 
       <!-- Single Tab Footer -->
@@ -987,6 +1062,14 @@
             <span class="btn-badge-count" id="btn-import-count-badge">0</span>
           </button>
         </div>
+      </div>
+
+      <!-- Manage Tab Footer -->
+      <div class="modal-footer-bar" id="footer-manage-staff" style="display: none; justify-content: space-between;">
+        <div style="font-size: 0.8rem; color: #64748b; display: flex; align-items: center; gap: 6px;">
+          <span>Showing <strong id="manage-footer-visible-count">0</strong> staff member(s)</span>
+        </div>
+        <button class="btn-secondary-pill" id="btn-close-manage-tab">Close</button>
       </div>
     </div>
   </div>

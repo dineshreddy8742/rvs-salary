@@ -928,6 +928,41 @@ def delete_employee_api():
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+@app.route('/api/added-staff', methods=['GET'])
+def get_added_staff_api():
+    """Return all manual/uploaded staff records or full roster with deletion capability."""
+    month_year = request.args.get('month', 'August 2026')
+    manual_only = request.args.get('manual_only', 'true').lower() == 'true'
+    try:
+        staff = database.get_enrolled_staff_list(month_year=month_year, manual_only=manual_only)
+        manual_staff = [s for s in staff if s.get('is_manual')] if not manual_only else staff
+        return jsonify({
+            'status': 'success',
+            'staff': staff,
+            'count': len(staff),
+            'manual_count': len(manual_staff)
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/employees/bulk-delete', methods=['POST'])
+def bulk_delete_employees_api():
+    """Delete multiple employees or all manual/uploaded test employees in batch."""
+    data = request.json or {}
+    delete_all_manual = bool(data.get('delete_all_manual'))
+    emp_codes = data.get('emp_codes', [])
+
+    try:
+        if delete_all_manual:
+            res = database.delete_all_manual_employees()
+        elif emp_codes:
+            res = database.bulk_delete_employees(emp_codes)
+        else:
+            return jsonify({'status': 'error', 'message': 'No employee codes provided to delete.'}), 400
+        return jsonify(res)
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 @app.route('/api/backups', methods=['GET'])
 def list_backups_api():
     """Return all database backup archives."""

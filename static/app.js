@@ -456,12 +456,16 @@ function setupEventListeners() {
   const addStaffWindow = document.getElementById('add-staff-modal-window');
   const tabBtnSingle = document.getElementById('tab-btn-single-staff');
   const tabBtnBulk = document.getElementById('tab-btn-bulk-staff');
+  const tabBtnManage = document.getElementById('tab-btn-manage-staff');
   const tabContentSingle = document.getElementById('tab-content-single-staff');
   const tabContentBulk = document.getElementById('tab-content-bulk-staff');
+  const tabContentManage = document.getElementById('tab-content-manage-staff');
   const footerSingle = document.getElementById('footer-single-staff');
   const footerBulk = document.getElementById('footer-bulk-staff');
+  const footerManage = document.getElementById('footer-manage-staff');
 
   let parsedBulkStaffRows = [];
+  let currentEnrolledStaff = [];
 
   function escapeHtmlStr(str) {
     return String(str || '').replace(/[&<>"']/g, m => ({
@@ -470,20 +474,24 @@ function setupEventListeners() {
   }
 
   function switchStaffEnrollmentTab(mode) {
+    [tabBtnSingle, tabBtnBulk, tabBtnManage].forEach(b => b && b.classList.remove('active'));
+    [tabContentSingle, tabContentBulk, tabContentManage].forEach(c => c && (c.style.display = 'none'));
+    [footerSingle, footerBulk, footerManage].forEach(f => f && (f.style.display = 'none'));
+
     if (mode === 'bulk') {
-      if (tabBtnSingle) tabBtnSingle.classList.remove('active');
       if (tabBtnBulk) tabBtnBulk.classList.add('active');
-      if (tabContentSingle) tabContentSingle.style.display = 'none';
       if (tabContentBulk) tabContentBulk.style.display = 'block';
-      if (footerSingle) footerSingle.style.display = 'none';
       if (footerBulk) footerBulk.style.display = 'flex';
       if (addStaffWindow) addStaffWindow.classList.add('modal-wide-mode');
+    } else if (mode === 'manage') {
+      if (tabBtnManage) tabBtnManage.classList.add('active');
+      if (tabContentManage) tabContentManage.style.display = 'block';
+      if (footerManage) footerManage.style.display = 'flex';
+      if (addStaffWindow) addStaffWindow.classList.add('modal-wide-mode');
+      loadEnrolledStaffList();
     } else {
-      if (tabBtnBulk) tabBtnBulk.classList.remove('active');
       if (tabBtnSingle) tabBtnSingle.classList.add('active');
-      if (tabContentBulk) tabContentBulk.style.display = 'none';
       if (tabContentSingle) tabContentSingle.style.display = 'block';
-      if (footerBulk) footerBulk.style.display = 'none';
       if (footerSingle) footerSingle.style.display = 'flex';
       if (addStaffWindow) addStaffWindow.classList.remove('modal-wide-mode');
     }
@@ -491,9 +499,12 @@ function setupEventListeners() {
 
   if (tabBtnSingle) tabBtnSingle.addEventListener('click', () => switchStaffEnrollmentTab('single'));
   if (tabBtnBulk) tabBtnBulk.addEventListener('click', () => switchStaffEnrollmentTab('bulk'));
+  if (tabBtnManage) tabBtnManage.addEventListener('click', () => switchStaffEnrollmentTab('manage'));
 
   document.getElementById('btn-add-staff-modal').addEventListener('click', () => {
     addStaffModal.classList.add('active');
+    // Pre-fetch count for badge
+    refreshManageStaffBadge();
   });
 
   const closeStaffModal = () => {
@@ -867,6 +878,256 @@ function setupEventListeners() {
         btnExecuteBulk.innerHTML = `<span>🚀 Import & Add to Roster</span> <span class="btn-badge-count">${validRecords.length}</span>`;
       }
     });
+  }
+
+  // =========================================================================
+  // MANAGE / DELETE ADDED STAFF LOGIC
+  // =========================================================================
+
+  async function refreshManageStaffBadge() {
+    try {
+      const res = await fetch(`/api/added-staff?month=${encodeURIComponent(currentMonth)}&manual_only=true`);
+      const data = await res.json();
+      if (data.status === 'success') {
+        const count = data.manual_count || data.count || 0;
+        const badgeTab = document.getElementById('tab-badge-manage-count');
+        const badgeToolbar = document.getElementById('manage-manual-count-badge');
+        if (badgeTab) badgeTab.textContent = count;
+        if (badgeToolbar) badgeToolbar.textContent = count;
+      }
+    } catch (e) {
+      // silent
+    }
+  }
+
+  async function loadEnrolledStaffList() {
+    const loading = document.getElementById('manage-staff-loading');
+    const tbody = document.getElementById('manage-staff-tbody');
+    const emptyState = document.getElementById('manage-staff-empty');
+    const tableContainer = document.getElementById('manage-table-container');
+    const manualOnly = document.getElementById('manage-staff-manual-only')?.checked !== false;
+
+    if (loading) loading.style.display = 'block';
+    if (tableContainer) tableContainer.style.display = 'none';
+    if (emptyState) emptyState.style.display = 'none';
+
+    try {
+      const res = await fetch(`/api/added-staff?month=${encodeURIComponent(currentMonth)}&manual_only=${manualOnly}`);
+      const data = await res.json();
+      if (loading) loading.style.display = 'none';
+
+      if (data.status === 'success') {
+        currentEnrolledStaff = data.staff || [];
+        const count = data.manual_count !== undefined ? data.manual_count : currentEnrolledStaff.filter(s => s.is_manual).length;
+        const badgeTab = document.getElementById('tab-badge-manage-count');
+        const badgeToolbar = document.getElementById('manage-manual-count-badge');
+        if (badgeTab) badgeTab.textContent = count;
+        if (badgeToolbar) badgeToolbar.textContent = count;
+        renderEnrolledStaffTable();
+      } else {
+        alert('Error loading staff list: ' + data.message);
+      }
+    } catch (err) {
+      if (loading) loading.style.display = 'none';
+      console.error('Error fetching added staff:', err);
+    }
+  }
+
+  function renderEnrolledStaffTable() {
+    const tbody = document.getElementById('manage-staff-tbody');
+    const emptyState = document.getElementById('manage-staff-empty');
+    const tableContainer = document.getElementById('manage-table-container');
+    const footerCount = document.getElementById('manage-footer-visible-count');
+    const searchVal = (document.getElementById('manage-staff-search')?.value || '').toLowerCase().trim();
+
+    if (!tbody) return;
+
+    const filtered = currentEnrolledStaff.filter(s => {
+      if (!searchVal) return true;
+      const haystack = `${s.emp_code} ${s.name} ${s.designation} ${s.department} ${s.category}`.toLowerCase();
+      return haystack.includes(searchVal);
+    });
+
+    if (footerCount) footerCount.textContent = filtered.length;
+
+    if (filtered.length === 0) {
+      if (tableContainer) tableContainer.style.display = 'none';
+      if (emptyState) emptyState.style.display = 'block';
+      updateSelectedDeleteState();
+      return;
+    }
+
+    if (emptyState) emptyState.style.display = 'none';
+    if (tableContainer) tableContainer.style.display = 'block';
+
+    const policyLabels = {
+      'standard': 'Standard Biometric',
+      'exempt_full': '👑 Full Pay (VIP)',
+      'visiting_twice_weekly': 'Visiting (2d/wk)'
+    };
+
+    tbody.innerHTML = filtered.map(s => {
+      const originBadge = s.is_manual
+        ? `<span class="badge-origin-manual">Uploaded / Test</span>`
+        : `<span class="badge-origin-system">Base Roster</span>`;
+
+      const formattedSalary = s.base_salary ? '₹' + Number(s.base_salary).toLocaleString('en-IN') : '₹0';
+
+      return `<tr data-emp-code="${escapeHtmlStr(s.emp_code)}">
+        <td style="text-align: center;">
+          <input type="checkbox" class="manage-emp-checkbox" value="${escapeHtmlStr(s.emp_code)}">
+        </td>
+        <td><strong>${escapeHtmlStr(s.emp_code)}</strong></td>
+        <td style="font-weight: 600; color: #1e293b;">${escapeHtmlStr(s.name)}</td>
+        <td>${escapeHtmlStr(s.designation)}</td>
+        <td><span class="chip-dept" style="padding: 1px 6px;">${escapeHtmlStr(s.department)}</span></td>
+        <td><span class="chip-cat" style="padding: 1px 6px;">${escapeHtmlStr(s.category)}</span></td>
+        <td style="text-align: right; font-weight: 700; color: #047857;">${formattedSalary}</td>
+        <td><span style="font-size: 0.72rem;">${policyLabels[s.attendance_policy] || s.attendance_policy}</span></td>
+        <td style="text-align: center;">${originBadge}</td>
+        <td style="text-align: center;">
+          <button type="button" class="btn-row-del" onclick="deleteSingleEnrolledStaff('${escapeHtmlStr(s.emp_code)}', '${escapeHtmlStr(s.name.replace(/'/g, "\\'"))}')" title="Permanently delete this staff member">
+            🗑️ Delete
+          </button>
+        </td>
+      </tr>`;
+    }).join('');
+
+    tbody.querySelectorAll('.manage-emp-checkbox').forEach(chk => {
+      chk.addEventListener('change', updateSelectedDeleteState);
+    });
+
+    const selectAllChk = document.getElementById('manage-select-all-checkbox');
+    if (selectAllChk) selectAllChk.checked = false;
+    updateSelectedDeleteState();
+  }
+
+  function updateSelectedDeleteState() {
+    const checkboxes = document.querySelectorAll('.manage-emp-checkbox:checked');
+    const btnDelSelected = document.getElementById('btn-delete-selected-staff');
+    const counterSpan = document.getElementById('delete-selected-counter');
+    const count = checkboxes.length;
+
+    if (counterSpan) counterSpan.textContent = count;
+    if (btnDelSelected) {
+      btnDelSelected.disabled = count === 0;
+    }
+  }
+
+  window.deleteSingleEnrolledStaff = async function(empCode, name) {
+    if (!confirm(`Are you sure you want to permanently delete ${name} (${empCode})?\n\nThis will remove this record completely.`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/employee/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emp_code: empCode })
+      });
+      const data = await res.json();
+      if (data.status === 'success') {
+        showToast(`✔ Deleted ${name} (${empCode})`);
+        await loadEnrolledStaffList();
+        await loadData();
+      } else {
+        alert('Delete failed: ' + data.message);
+      }
+    } catch (err) {
+      alert('Network error while deleting staff member');
+    }
+  };
+
+  const btnDelSelected = document.getElementById('btn-delete-selected-staff');
+  if (btnDelSelected) {
+    btnDelSelected.addEventListener('click', async () => {
+      const selectedCodes = Array.from(document.querySelectorAll('.manage-emp-checkbox:checked')).map(c => c.value);
+      if (selectedCodes.length === 0) return;
+
+      if (!confirm(`Are you sure you want to permanently delete these ${selectedCodes.length} selected staff member(s)?`)) {
+        return;
+      }
+
+      btnDelSelected.disabled = true;
+      btnDelSelected.innerHTML = `<span>⏳ Deleting ${selectedCodes.length}...</span>`;
+
+      try {
+        const res = await fetch('/api/employees/bulk-delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ emp_codes: selectedCodes })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+          showToast(`✔ Successfully deleted ${data.deleted_count} staff member(s)`);
+          await loadEnrolledStaffList();
+          await loadData();
+        } else {
+          alert('Error during deletion: ' + data.message);
+        }
+      } catch (err) {
+        alert('Network error while deleting staff members');
+      } finally {
+        updateSelectedDeleteState();
+      }
+    });
+  }
+
+  const btnDelAllManual = document.getElementById('btn-delete-all-manual-staff');
+  if (btnDelAllManual) {
+    btnDelAllManual.addEventListener('click', async () => {
+      const confirmed = confirm("⚠️ Are you sure you want to delete ALL manually uploaded/added test staff members?\n\nThis will clean up all test records.");
+      if (!confirmed) return;
+
+      btnDelAllManual.disabled = true;
+      btnDelAllManual.innerHTML = `<span>⏳ Deleting Test Staff...</span>`;
+
+      try {
+        const res = await fetch('/api/employees/bulk-delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ delete_all_manual: true })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+          showToast(`✔ Deleted ${data.deleted_count} uploaded test staff member(s)!`);
+          await loadEnrolledStaffList();
+          await loadData();
+        } else {
+          alert('Error during deletion: ' + data.message);
+        }
+      } catch (err) {
+        alert('Network error deleting test staff');
+      } finally {
+        btnDelAllManual.disabled = false;
+        btnDelAllManual.innerHTML = `<span>⚠️ Delete All Uploaded Staff</span>`;
+      }
+    });
+  }
+
+  const selectAllChk = document.getElementById('manage-select-all-checkbox');
+  if (selectAllChk) {
+    selectAllChk.addEventListener('change', (e) => {
+      document.querySelectorAll('.manage-emp-checkbox').forEach(chk => {
+        chk.checked = e.target.checked;
+      });
+      updateSelectedDeleteState();
+    });
+  }
+
+  const manualOnlyChk = document.getElementById('manage-staff-manual-only');
+  if (manualOnlyChk) {
+    manualOnlyChk.addEventListener('change', loadEnrolledStaffList);
+  }
+
+  const manageSearchInput = document.getElementById('manage-staff-search');
+  if (manageSearchInput) {
+    manageSearchInput.addEventListener('input', renderEnrolledStaffTable);
+  }
+
+  const btnCloseManage = document.getElementById('btn-close-manage-tab');
+  if (btnCloseManage) {
+    btnCloseManage.addEventListener('click', closeStaffModal);
   }
 
   // Bulk Slips Modal
