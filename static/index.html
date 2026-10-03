@@ -558,7 +558,174 @@
         </label>
         <span class="toggle-text">Active Staff Only</span>
       </div>
+
+      <!-- Bulk Attendance Override Button -->
+      <button id="btn-open-bulk-override" class="bulk-override-trigger-btn" title="Bulk Attendance Override — Apply Full/Half Present to selected employees">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></svg>
+        <span>🛠️ Bulk Override</span>
+      </button>
     </section>
+
+    <!-- ===== BULK ATTENDANCE OVERRIDE MODAL ===== -->
+    <div class="modal-overlay" id="bulk-override-modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="bulk-override-title">
+      <div class="modal-box bulk-override-modal-box">
+        <!-- Header -->
+        <div class="modal-header" style="background: linear-gradient(135deg,#1e3a8a,#3b82f6); border-radius: 14px 14px 0 0; padding: 1.1rem 1.4rem; display:flex; align-items:center; justify-content:space-between;">
+          <div style="display:flex; align-items:center; gap:0.6rem;">
+            <span style="font-size:1.3rem;">🛠️</span>
+            <div>
+              <div id="bulk-override-title" style="font-size:1rem; font-weight:800; color:#fff; letter-spacing:0.02em;">Bulk Attendance Override</div>
+              <div style="font-size:0.72rem; color:#bfdbfe; margin-top:1px;">Apply Full / Half Present to groups of employees</div>
+            </div>
+          </div>
+          <button onclick="closeBulkOverrideModal()" style="background:rgba(255,255,255,0.15); border:none; border-radius:8px; color:#fff; width:30px; height:30px; font-size:1.1rem; cursor:pointer; display:flex; align-items:center; justify-content:center;">✕</button>
+        </div>
+
+        <div class="modal-body" style="padding:1.2rem 1.4rem; display:flex; flex-direction:column; gap:1rem;">
+
+          <!-- STEP 1: WHO -->
+          <div class="bov-section">
+            <div class="bov-section-label">📌 STEP 1 — Who to apply to?</div>
+            <div class="bov-radio-group" id="bov-scope-group">
+              <label class="bov-radio-card active" data-scope="all">
+                <input type="radio" name="bov-scope" value="all" checked>
+                <span class="bov-radio-icon">👥</span>
+                <span class="bov-radio-text">All Employees</span>
+              </label>
+              <label class="bov-radio-card" data-scope="department">
+                <input type="radio" name="bov-scope" value="department">
+                <span class="bov-radio-icon">🏢</span>
+                <span class="bov-radio-text">By Department</span>
+              </label>
+              <label class="bov-radio-card" data-scope="manual">
+                <input type="radio" name="bov-scope" value="manual">
+                <span class="bov-radio-icon">☑️</span>
+                <span class="bov-radio-text">Manually Selected</span>
+              </label>
+            </div>
+            <!-- Department picker — shown only when 'By Department' is selected -->
+            <div id="bov-dept-picker" style="display:none; margin-top:0.5rem;">
+              <label style="font-size:0.78rem; font-weight:600; color:#475569; margin-bottom:3px; display:block;">Select Department:</label>
+              <select id="bov-dept-select" class="bov-select">
+                <option value="all">All Departments</option>
+              </select>
+            </div>
+            <!-- Manual selection info -->
+            <div id="bov-manual-info" style="display:none; margin-top:0.5rem; background:#f0fdf4; border:1px solid #86efac; border-radius:8px; padding:0.5rem 0.7rem; font-size:0.78rem; color:#166534;">
+              ✅ <span id="bov-manual-count">0</span> employees selected in the table below. Use checkboxes to select.
+            </div>
+          </div>
+
+          <!-- STEP 2: PUNCH FILTER -->
+          <div class="bov-section">
+            <div class="bov-section-label">🔍 STEP 2 — Filter by biometric punch type?</div>
+            <div class="bov-radio-group" id="bov-punch-group">
+              <label class="bov-radio-card active" data-punch="all">
+                <input type="radio" name="bov-punch" value="all" checked>
+                <span class="bov-radio-icon">📋</span>
+                <span class="bov-radio-text">All (no filter)</span>
+              </label>
+              <label class="bov-radio-card" data-punch="no_punch">
+                <input type="radio" name="bov-punch" value="no_punch">
+                <span class="bov-radio-icon">🔴</span>
+                <span class="bov-radio-text">No biometric at all</span>
+              </label>
+              <label class="bov-radio-card" data-punch="morning_only">
+                <input type="radio" name="bov-punch" value="morning_only">
+                <span class="bov-radio-icon">🌅</span>
+                <span class="bov-radio-text">Morning punch only</span>
+              </label>
+              <label class="bov-radio-card" data-punch="evening_only">
+                <input type="radio" name="bov-punch" value="evening_only">
+                <span class="bov-radio-icon">🌆</span>
+                <span class="bov-radio-text">Evening punch only</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- STEP 3: WHAT ACTION -->
+          <div class="bov-section">
+            <div class="bov-section-label">✅ STEP 3 — What to apply?</div>
+            <div class="bov-radio-group" id="bov-action-group">
+              <label class="bov-radio-card active" data-action="full_present">
+                <input type="radio" name="bov-action" value="full_present" checked>
+                <span class="bov-radio-icon">🟢</span>
+                <div>
+                  <span class="bov-radio-text">Full Present</span>
+                  <div style="font-size:0.7rem; color:#64748b;">Full month pay &amp; waiver</div>
+                </div>
+              </label>
+              <label class="bov-radio-card" data-action="half_present">
+                <input type="radio" name="bov-action" value="half_present">
+                <span class="bov-radio-icon">🟡</span>
+                <div>
+                  <span class="bov-radio-text">Half Present</span>
+                  <div style="font-size:0.7rem; color:#64748b;">Half month pay &amp; waiver</div>
+                </div>
+              </label>
+              <label class="bov-radio-card" data-action="specific_dates">
+                <input type="radio" name="bov-action" value="specific_dates">
+                <span class="bov-radio-icon">📅</span>
+                <div>
+                  <span class="bov-radio-text">Specific Dates</span>
+                  <div style="font-size:0.7rem; color:#64748b;">Pick 1–31 days from calendar</div>
+                </div>
+              </label>
+            </div>
+
+            <!-- Calendar — shown only when Specific Dates is selected -->
+            <div id="bov-calendar-wrapper" style="display:none; margin-top:0.7rem;">
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.5rem;">
+                <span id="bov-cal-month-label" style="font-size:0.82rem; font-weight:700; color:#1e3a8a;"></span>
+                <div style="display:flex; gap:0.4rem;">
+                  <button type="button" id="bov-cal-select-all" onclick="bovCalSelectAll()" style="font-size:0.72rem; padding:2px 8px; border:1.5px solid #3b82f6; background:#eff6ff; color:#1e3a8a; border-radius:6px; cursor:pointer; font-weight:700;">Select All</button>
+                  <button type="button" id="bov-cal-clear" onclick="bovCalClear()" style="font-size:0.72rem; padding:2px 8px; border:1.5px solid #e2e8f0; background:#f8fafc; color:#64748b; border-radius:6px; cursor:pointer; font-weight:600;">Clear</button>
+                </div>
+              </div>
+              <!-- Day-of-week headers -->
+              <div class="bov-cal-grid" id="bov-cal-grid">
+                <!-- Filled by JS -->
+              </div>
+              <div style="font-size:0.72rem; color:#64748b; margin-top:0.4rem;">
+                <span id="bov-cal-selected-count" style="font-weight:700; color:#1e3a8a;">0</span> date(s) selected
+                <span id="bov-cal-selected-list" style="color:#475569;"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- PREVIEW BOX -->
+          <div id="bov-preview-box" style="background:#f8fafc; border:1.5px solid #e2e8f0; border-radius:10px; padding:0.8rem 1rem; font-size:0.82rem; color:#334155; line-height:1.6;">
+            <strong>📊 Summary Preview:</strong><br>
+            <span id="bov-preview-text">Applying <b>Full Present (31 days)</b> to <b>All Employees</b> with <b>All punch types</b> in <b id="bov-preview-month">—</b></span>
+          </div>
+
+          <!-- PROGRESS INDICATOR (shown during apply) -->
+          <div id="bov-progress-wrapper" style="display:none; margin-top:0.8rem; background:linear-gradient(135deg, #f0fdf4, #eff6ff); border:1.5px solid #bfdbfe; border-radius:10px; padding:0.9rem 1rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem;">
+              <span id="bov-progress-status" style="font-size:0.82rem; font-weight:700; color:#1e3a8a;">⚙️ Applying override...</span>
+              <span id="bov-progress-pct" style="font-size:0.95rem; font-weight:800; color:#2563eb;">0%</span>
+            </div>
+            <div style="width:100%; height:10px; background:#dbeafe; border-radius:999px; overflow:hidden;">
+              <div id="bov-progress-bar" style="width:0%; height:100%; background:linear-gradient(90deg, #3b82f6, #10b981); border-radius:999px; transition:width 0.2s ease;"></div>
+            </div>
+            <div style="font-size:0.73rem; color:#64748b; margin-top:0.4rem; display:flex; justify-content:space-between;">
+              <span id="bov-progress-subtext">Filtering employees & calculating pay...</span>
+              <span id="bov-progress-detail" style="font-weight:600; color:#0f766e;">Please wait</span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Footer Buttons -->
+        <div style="padding:0.9rem 1.4rem; border-top:1px solid #e2e8f0; display:flex; gap:0.7rem; justify-content:flex-end; background:#f8fafc; border-radius:0 0 14px 14px;">
+          <button onclick="closeBulkOverrideModal()" style="padding:0.5rem 1.1rem; border:1.5px solid #cbd5e1; background:#fff; color:#475569; border-radius:8px; font-weight:600; font-size:0.85rem; cursor:pointer;">Cancel</button>
+          <button id="btn-apply-bulk-override" onclick="applyBulkOverride()" style="padding:0.5rem 1.4rem; background:linear-gradient(135deg,#1e3a8a,#3b82f6); color:#fff; border:none; border-radius:8px; font-weight:700; font-size:0.85rem; cursor:pointer; display:flex; align-items:center; gap:0.4rem;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            Apply Override
+          </button>
+        </div>
+      </div>
+    </div>
 
 
     <!-- Mobile Table Swipe Hint -->

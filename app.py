@@ -437,6 +437,43 @@ def bulk_revert():
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+@app.route('/api/bulk-attendance-override', methods=['POST'])
+def bulk_attendance_override():
+    """Bulk override attendance for selected employees by punch filter, department, or manual list."""
+    data = request.json or {}
+    month_year = data.get('month_year', 'August 2026')
+    action = data.get('action', 'full_present')       # full_present | half_present | specific_dates
+    scope = data.get('scope', 'all')                   # all | department | manual
+    department = data.get('department', None)          # dept name if scope=department
+    emp_codes = data.get('emp_codes', [])              # list if scope=manual
+    punch_filter = data.get('punch_filter', 'all')     # all | no_punch | morning_only | evening_only
+    selected_days = data.get('selected_days', [])      # list of day nums [1-31] if action=specific_dates
+
+    try:
+        result = database.bulk_attendance_override(
+            month_year=month_year,
+            action=action,
+            scope=scope,
+            department=department,
+            emp_codes=emp_codes,
+            punch_filter=punch_filter,
+            selected_days=selected_days
+        )
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/recalculate-month', methods=['POST'])
+def recalculate_month():
+    """Recalculate attendance and payroll for all staff in a month using unified calculation."""
+    data = request.json or {}
+    month_year = data.get('month_year', 'August 2026')
+    try:
+        result = database.recalculate_month_attendance_and_salaries(month_year)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 @app.route('/api/update-employee', methods=['POST'])
 def update_employee():
     """Option 1: Inline edit for leaves, OD, holiday, or biometric days."""

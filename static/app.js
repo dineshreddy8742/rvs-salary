@@ -1726,8 +1726,8 @@ async function loadData() {
   }
   try {
     const [resAtt, resSal] = await Promise.all([
-      fetch(`/api/data?month=${encodeURIComponent(currentMonth)}&active_only=${activeOnly}`),
-      fetch(`/api/salary/data?month=${encodeURIComponent(currentMonth)}&active_only=${activeOnly}`)
+      fetch(`/api/data?month=${encodeURIComponent(currentMonth)}&active_only=${activeOnly}&_t=${Date.now()}`, { cache: 'no-store' }),
+      fetch(`/api/salary/data?month=${encodeURIComponent(currentMonth)}&active_only=${activeOnly}&_t=${Date.now()}`, { cache: 'no-store' })
     ]);
 
     const dataAtt = await resAtt.json();
@@ -1754,16 +1754,31 @@ async function loadData() {
   }
 }
 
+// Helper to determine exact days in active month string (e.g. "September 2026" -> 30)
+function getDaysInActiveMonth(monthStr) {
+  if (!monthStr) return 30;
+  const parts = String(monthStr).trim().split(/\s+/);
+  const monthNames = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+  const mIdx = monthNames.indexOf(parts[0].toLowerCase());
+  const yr = parseInt(parts[1]) || new Date().getFullYear();
+  if (mIdx >= 0) {
+    return new Date(yr, mIdx + 1, 0).getDate();
+  }
+  return 30;
+}
+
 // Merge Attendance & Salary data by emp_code into a Single Master Model
 function buildUnifiedRecords(attStats, salStats) {
   const salMap = new Map();
   allSalaryRecords.forEach(s => salMap.set(String(s.emp_code), s));
 
+  const fallbackDays = getDaysInActiveMonth(currentMonth);
+
   unifiedRecords = allEmployees.map(att => {
     const code = String(att.emp_code);
     const sal = salMap.get(code) || {};
 
-    const monthDays = att.days_in_month || sal.days_in_month || 31;
+    const monthDays = att.days_in_month || sal.days_in_month || fallbackDays;
     const payDays = (sal.total_pay_days !== undefined && sal.total_pay_days !== null) 
                     ? Number(sal.total_pay_days) 
                     : (att.total_pay_days !== undefined ? Number(att.total_pay_days) : monthDays);
@@ -5270,3 +5285,318 @@ async function handleDeleteBackup(backupId) {
     alert('Error: ' + err.message);
   }
 }
+
+// =============================================
+// BULK ATTENDANCE OVERRIDE MODAL
+// =============================================
+
+let bovSelectedCodes = new Set();  // manual emp selection
+let bovSelectedDays  = new Set();  // specific date numbers (1-31)
+
+// ---- Calendar helpers ----
+function bovBuildCalendar() {
+  const grid = document.getElementById('bov-cal-grid');
+  const label = document.getElementById('bov-cal-month-label');
+  if (!grid) return;
+
+  // Parse month from currentMonth e.g. "August 2026"
+  const parts = (currentMonth || '').split(' ');
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const mIdx = monthNames.indexOf(parts[0]);
+  const yr   = parseInt(parts[1]) || new Date().getFullYear();
+  const daysInMonth = mIdx >= 0 ? new Date(yr, mIdx + 1, 0).getDate() : 31;
+  const firstDay    = mIdx >= 0 ? new Date(yr, mIdx, 1).getDay() : 0; // 0=Sun
+
+  if (label) label.textContent = currentMonth || '';
+
+  // Day headers
+  const dayHeaders = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  grid.innerHTML = dayHeaders.map(d => `<div class="bov-cal-day-header">${d}</div>`).join('');
+
+  // Empty cells before first day
+  for (let i = 0; i < firstDay; i++) {
+    grid.innerHTML += `<div class="bov-cal-day empty"></div>`;
+  }
+
+  // Day cells
+  for (let d = 1; d <= daysInMonth; d++) {
+    const sel = bovSelectedDays.has(d) ? 'selected' : '';
+    grid.innerHTML += `<div class="bov-cal-day ${sel}" data-day="${d}" onclick="bovToggleDay(${d})">${d}</div>`;
+  }
+
+  bovUpdateCalInfo();
+}
+
+function bovToggleDay(day) {
+  if (bovSelectedDays.has(day)) {
+    bovSelectedDays.delete(day);
+  } else {
+    bovSelectedDays.add(day);
+  }
+  // Update cell style
+  const cell = document.querySelector(`.bov-cal-day[data-day="${day}"]`);
+  if (cell) cell.classList.toggle('selected', bovSelectedDays.has(day));
+  bovUpdateCalInfo();
+  updateBovPreview();
+}
+
+function bovCalSelectAll() {
+  const parts = (currentMonth || '').split(' ');
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const mIdx = monthNames.indexOf(parts[0]);
+  const yr   = parseInt(parts[1]) || new Date().getFullYear();
+  const daysInMonth = mIdx >= 0 ? new Date(yr, mIdx + 1, 0).getDate() : 31;
+  bovSelectedDays.clear();
+  for (let d = 1; d <= daysInMonth; d++) bovSelectedDays.add(d);
+  document.querySelectorAll('.bov-cal-day:not(.empty)').forEach(c => c.classList.add('selected'));
+  bovUpdateCalInfo();
+  updateBovPreview();
+}
+
+function bovCalClear() {
+  bovSelectedDays.clear();
+  document.querySelectorAll('.bov-cal-day').forEach(c => c.classList.remove('selected'));
+  bovUpdateCalInfo();
+  updateBovPreview();
+}
+
+function bovUpdateCalInfo() {
+  const countEl = document.getElementById('bov-cal-selected-count');
+  const listEl  = document.getElementById('bov-cal-selected-list');
+  if (countEl) countEl.textContent = bovSelectedDays.size;
+  if (listEl) {
+    const sorted = Array.from(bovSelectedDays).sort((a,b) => a - b);
+    listEl.textContent = sorted.length ? ' — Days: ' + sorted.join(', ') : '';
+  }
+}
+
+// ---- Open / Close ----
+function openBulkOverrideModal() {
+  const modal = document.getElementById('bulk-override-modal');
+  if (!modal) return;
+
+  // Populate department dropdown from current data
+  const bovDeptSelect = document.getElementById('bov-dept-select');
+  if (bovDeptSelect) {
+    const depts = Array.from(new Set(unifiedRecords.map(e => e.department).filter(Boolean))).sort();
+    bovDeptSelect.innerHTML = '<option value="all">All Departments</option>';
+    depts.forEach(d => {
+      const o = document.createElement('option');
+      o.value = d; o.textContent = d;
+      bovDeptSelect.appendChild(o);
+    });
+    bovDeptSelect.addEventListener('change', updateBovPreview);
+  }
+
+  // Set preview month
+  const pm = document.getElementById('bov-preview-month');
+  if (pm) pm.textContent = currentMonth || '—';
+
+  // Reset radio selections
+  document.querySelectorAll('input[name="bov-scope"]').forEach(r => { if (r.value === 'all') r.checked = true; });
+  document.querySelectorAll('input[name="bov-punch"]').forEach(r => { if (r.value === 'all') r.checked = true; });
+  document.querySelectorAll('input[name="bov-action"]').forEach(r => { if (r.value === 'full_present') r.checked = true; });
+  document.querySelectorAll('.bov-radio-card').forEach(c => {
+    const radio = c.querySelector('input[type="radio"]');
+    c.classList.toggle('active', radio && radio.checked);
+  });
+
+  // Reset state
+  bovSelectedCodes = new Set();
+  bovSelectedDays  = new Set();
+  updateBovManualCount();
+  document.getElementById('bov-dept-picker').style.display = 'none';
+  document.getElementById('bov-manual-info').style.display = 'none';
+  document.getElementById('bov-calendar-wrapper').style.display = 'none';
+
+  // Reset progress bar
+  const pw = document.getElementById('bov-progress-wrapper');
+  if (pw) pw.style.display = 'none';
+
+  updateBovPreview();
+  modal.style.display = 'flex';
+}
+
+function closeBulkOverrideModal() {
+  const modal = document.getElementById('bulk-override-modal');
+  if (modal) modal.style.display = 'none';
+  const pw = document.getElementById('bov-progress-wrapper');
+  if (pw) pw.style.display = 'none';
+}
+
+function updateBovManualCount() {
+  const el = document.getElementById('bov-manual-count');
+  if (el) el.textContent = bovSelectedCodes.size;
+}
+
+function updateBovPreview() {
+  const scope  = (document.querySelector('input[name="bov-scope"]:checked') || {}).value || 'all';
+  const punch  = (document.querySelector('input[name="bov-punch"]:checked') || {}).value || 'all';
+  const action = (document.querySelector('input[name="bov-action"]:checked') || {}).value || 'full_present';
+  const dept   = document.getElementById('bov-dept-select') ? document.getElementById('bov-dept-select').value : 'all';
+
+  const curDays = getDaysInActiveMonth(currentMonth);
+  let actionLabel;
+  if (action === 'full_present') actionLabel = `Full Present (${curDays} days)`;
+  else if (action === 'half_present') actionLabel = `Half Present (${curDays / 2} days)`;
+  else {
+    const cnt = bovSelectedDays.size;
+    actionLabel = cnt > 0 ? `Present for ${cnt} selected day(s)` : 'Specific Dates (none selected yet)';
+  }
+
+  const scopeLabel = scope === 'all' ? 'All Employees'
+    : scope === 'department' ? `Department: ${dept === 'all' ? 'All' : dept}`
+    : `${bovSelectedCodes.size} Manually Selected`;
+
+  const punchLabel = { all: 'All punch types', no_punch: 'No biometric', morning_only: 'Morning punch only', evening_only: 'Evening punch only' }[punch] || punch;
+
+  const preview = document.getElementById('bov-preview-text');
+  if (preview) {
+    preview.innerHTML = `Applying <b>${actionLabel}</b> to <b>${scopeLabel}</b> with <b>${punchLabel}</b> in <b>${currentMonth || '—'}</b>`;
+  }
+}
+
+// Wire up radio card clicks
+document.addEventListener('DOMContentLoaded', () => {
+  const openBtn = document.getElementById('btn-open-bulk-override');
+  if (openBtn) openBtn.addEventListener('click', openBulkOverrideModal);
+
+  ['bov-scope-group', 'bov-punch-group', 'bov-action-group'].forEach(groupId => {
+    const group = document.getElementById(groupId);
+    if (!group) return;
+    group.addEventListener('click', (e) => {
+      const card = e.target.closest('.bov-radio-card');
+      if (!card) return;
+      const radio = card.querySelector('input[type="radio"]');
+      if (!radio) return;
+      radio.checked = true;
+      group.querySelectorAll('.bov-radio-card').forEach(c => c.classList.remove('active'));
+      card.classList.add('active');
+
+      if (groupId === 'bov-scope-group') {
+        document.getElementById('bov-dept-picker').style.display = radio.value === 'department' ? 'block' : 'none';
+        document.getElementById('bov-manual-info').style.display = radio.value === 'manual' ? 'block' : 'none';
+      }
+
+      if (groupId === 'bov-action-group') {
+        const calWrapper = document.getElementById('bov-calendar-wrapper');
+        if (radio.value === 'specific_dates') {
+          calWrapper.style.display = 'block';
+          bovSelectedDays.clear();
+          bovBuildCalendar();
+        } else {
+          calWrapper.style.display = 'none';
+          bovSelectedDays.clear();
+        }
+      }
+
+      updateBovPreview();
+    });
+  });
+
+  const modal = document.getElementById('bulk-override-modal');
+  if (modal) {
+    modal.addEventListener('click', (e) => { if (e.target === modal) closeBulkOverrideModal(); });
+  }
+});
+
+// ---- Apply ----
+async function applyBulkOverride() {
+  const scope  = (document.querySelector('input[name="bov-scope"]:checked') || {}).value || 'all';
+  const punch  = (document.querySelector('input[name="bov-punch"]:checked') || {}).value || 'all';
+  const action = (document.querySelector('input[name="bov-action"]:checked') || {}).value || 'full_present';
+  const dept   = document.getElementById('bov-dept-select') ? document.getElementById('bov-dept-select').value : 'all';
+
+  if (scope === 'manual' && bovSelectedCodes.size === 0) {
+    showToast('⚠️ Please select employees from the table first!', 'warning'); return;
+  }
+  if (action === 'specific_dates' && bovSelectedDays.size === 0) {
+    showToast('⚠️ Please select at least one date from the calendar!', 'warning'); return;
+  }
+
+  const curDays = getDaysInActiveMonth(currentMonth);
+  let actionLabel;
+  if (action === 'full_present') actionLabel = `Full Present (${curDays} days)`;
+  else if (action === 'half_present') actionLabel = `Half Present (${curDays / 2} days)`;
+  else actionLabel = `Present for days: ${Array.from(bovSelectedDays).sort((a,b)=>a-b).join(', ')}`;
+
+  if (!confirm(`Apply ${actionLabel} in ${currentMonth}?\n\nThis will override attendance and recalculate salary.`)) return;
+
+  const btn = document.getElementById('btn-apply-bulk-override');
+  const progressWrapper = document.getElementById('bov-progress-wrapper');
+  const progressBar     = document.getElementById('bov-progress-bar');
+  const progressPct     = document.getElementById('bov-progress-pct');
+  const progressStatus  = document.getElementById('bov-progress-status');
+  const progressSub     = document.getElementById('bov-progress-subtext');
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Applying…'; }
+  if (progressWrapper) progressWrapper.style.display = 'block';
+
+  let currentPct = 10;
+  function setProgress(pct, statusText, subText) {
+    if (progressBar) progressBar.style.width = pct + '%';
+    if (progressPct) progressPct.textContent = pct + '%';
+    if (progressStatus && statusText) progressStatus.textContent = statusText;
+    if (progressSub && subText) progressSub.textContent = subText;
+  }
+
+  setProgress(10, '🔍 Filtering target employees...', 'Checking scope and biometric punch filters');
+
+  // Progressive timer to show smooth percentage advancement while server processes
+  let timerStep = 0;
+  const progressInterval = setInterval(() => {
+    timerStep++;
+    if (timerStep === 1) {
+      setProgress(35, '📋 Updating attendance records...', 'Setting override days for matched staff');
+    } else if (timerStep === 2) {
+      setProgress(60, '💰 Recalculating salaries...', 'Computing basic, DA, HRA, and deductions');
+    } else if (timerStep === 3) {
+      setProgress(82, '💾 Saving monthly payroll...', 'Applying changes to database roster');
+    } else if (timerStep > 3 && currentPct < 94) {
+      currentPct += 2;
+      setProgress(currentPct, '⏳ Finalizing updates...', 'Almost finished');
+    }
+  }, 350);
+
+  try {
+    const payload = {
+      month_year:    currentMonth,
+      action,
+      scope,
+      department:    dept === 'all' ? null : dept,
+      emp_codes:     scope === 'manual' ? Array.from(bovSelectedCodes) : [],
+      punch_filter:  punch,
+      selected_days: action === 'specific_dates' ? Array.from(bovSelectedDays).sort((a,b) => a-b) : []
+    };
+
+    const res  = await fetch('/api/bulk-attendance-override', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    clearInterval(progressInterval);
+
+    if (data.status === 'success') {
+      setProgress(100, '✅ Completed successfully!', `Updated ${data.updated_count} employees`);
+      await new Promise(r => setTimeout(r, 450));
+      closeBulkOverrideModal();
+      showToast(`✅ ${actionLabel} applied to ${data.updated_count} employees in ${currentMonth}!`, 'success');
+      await loadData();
+    } else {
+      clearInterval(progressInterval);
+      setProgress(0, '❌ Failed', data.message || 'Error occurred');
+      showToast('❌ Error: ' + (data.message || 'Unknown error'), 'error');
+    }
+  } catch (err) {
+    clearInterval(progressInterval);
+    setProgress(0, '❌ Network Error', err.message);
+    showToast('❌ Network error: ' + err.message, 'error');
+  } finally {
+    clearInterval(progressInterval);
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Apply Override';
+    }
+  }
+}
+

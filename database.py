@@ -1559,6 +1559,7 @@ def get_month_records(month_year: str, active_only: bool = True, reference_codes
         if (od_val is None or od_val == 0.0) and lm['od_days']:
             od_val = float(len(lm['od_days']))
 
+        m_days_count = int(payroll_engine.get_days_in_month_str(month_year) or 31)
         results.append({
             'emp_code': ec,
             'name': r['name'],
@@ -1566,6 +1567,8 @@ def get_month_records(month_year: str, active_only: bool = True, reference_codes
             'department': r['department'],
             'attendance_policy': r['attendance_policy'],
             'is_manual': bool(r['is_manual']),
+            'month_days': m_days_count,
+            'days_in_month': m_days_count,
             'biometric_days': r['biometric_days'],
             'holiday': r['holiday'],
             'availed_leaves': cl_val,
@@ -1905,40 +1908,210 @@ def bulk_create_or_update_manual_employees(staff_list: list, current_month: str 
         'category_counts': cat_counts
     }
 
+def get_month_holidays_count(cursor, month_year: str) -> float:
+    """Accurately count distinct institutional holidays for a month from daily_logs, or compute dynamically."""
+    month_year = normalize_month_year(month_year)
+    cursor.execute("""
+    SELECT COUNT(DISTINCT day_num) as cnt 
+    FROM daily_logs 
+    WHERE month_year = ? AND status LIKE '%Holiday%'
+    """, (month_year,))
+    h_row = cursor.fetchone()
+    if h_row and h_row['cnt'] and float(h_row['cnt']) > 0:
+        return float(h_row['cnt'])
+    # Dynamic calendar fallback
+    m_days = float(payroll_engine.get_days_in_month_str(month_year) or 30)
+    import calendar
+    import datetime
+    y, m = 2026, 8
+    for p in month_year.split():
+        if p.isdigit() and len(p) == 4: y = int(p)
+        for m_idx in range(1, 13):
+            if calendar.month_name[m_idx].lower() == p.lower(): m = m_idx
+    sundays = {d for d in range(1, int(m_days) + 1) if datetime.date(y, m, d).weekday() == 6}
+    fest_hol = {26} if m == 8 else set()
+    return float(len(sundays.union(fest_hol)))
+
+def evaluate_employee_attendance_from_logs(ec: str, logs: list, e_data: dict, m_days: float, month_holidays: float):
+    """
+    Unified Single Source of Truth for employee monthly attendance calculation.
+    Guarantees 100% mathematical consistency between remarks, deductions, and total pay days.
+    Deduction rule:
+      total_deductions = len(abs_list) * 1.0 + len(mis_list) * 0.5 + len(half_list) * 0.5
+      total_pay_days   = max(0.0, m_days - total_deductions)
+      biometric_days   = max(0.0, total_pay_days - hol - cl_count - od_count)
+    """
+    policy = (e_data.get('attendance_policy') or 'standard')
+    dept = (e_data.get('department') or '').lower()
+    desig = (e_data.get('designation') or '').lower()
+    is_sec = 'security' in dept or 'security' in desig or 'watchman' in desig or 'watch man' in desig or 'water man' in desig or 'water woman' in desig
+
+    # Collect overridden days (days admin specifically approved as Present)
+    overridden_days = sorted(list({int(d['day_num']) for d in logs if (d.get('override_status') or '').upper() == 'PRESENT' and d.get('day_num') is not None}))
+
+    if policy == 'exempt_full':
+        total = m_days
+        pres = max(0.0, m_days - month_holidays)
+        hol = month_holidays
+        abs_list = []
+        mis_list = []
+        half_list = []
+        rem = "Full Attendance (VIP / Principal)"
+        needs_rev = 0
+        return pres, hol, 0.0, 0.0, total, abs_list, mis_list, half_list, rem, needs_rev
+
+    if is_sec:
+        hol = 2.0
+        duty_days = 0.0
+        cl_count = 0.0
+        od_count = 0.0
+        abs_list = []
+        
+        for d in logs:
+            dn = int(d['day_num']) if d.get('day_num') is not None else 0
+            ov = (d.get('override_status') or '').upper()
+            st = (d.get('status') or '').upper()
+            in_t = (d.get('in_time') or '').strip()
+            out_t = (d.get('out_time') or '').strip()
+            eff = ov if ov else st
+            
+            if 'CL' in eff or 'LEAVE' in eff:
+                if '1/2' in eff: cl_count += 0.5
+                else: cl_count += 1.0
+            elif 'OD' in eff or 'ON DUTY' in eff:
+                od_count += 1.0
+            elif ov == 'PRESENT' or in_t or out_t or 'PRESENT' in eff:
+                if '1/2' in eff: duty_days += 0.5
+                else: duty_days += 1.0
+            elif 'ABSENT' in eff and 'HOLIDAY' not in eff:
+                abs_list.append(dn)
+                
+        duty = duty_days + cl_count + od_count
+        if duty >= 28.0:
+            total = m_days
+            biometric_days = max(0.0, total - hol - cl_count - od_count)
+            rem = f"Specific Days Present by Admin Override (Days: {', '.join(str(x) for x in overridden_days)})" if overridden_days else ""
+            needs_rev = 0
+            unexcused = []
+        elif duty > 0:
+            shortfall = 28.0 - duty
+            total = max(0.0, m_days - shortfall)
+            biometric_days = duty_days
+            unexcused = abs_list[-int(shortfall):] if shortfall > 0 else []
+            rem_parts = []
+            if overridden_days:
+                rem_parts.append(f"Specific Days Present by Admin Override (Days: {', '.join(str(x) for x in overridden_days)})")
+            if unexcused:
+                rem_parts.append(f"ab-{','.join(str(x) for x in unexcused)}")
+            rem = ", ".join(rem_parts)
+            needs_rev = 1 if unexcused else 0
+        else:
+            total = 0.0
+            biometric_days = 0.0
+            rem = "No Biometric Records"
+            needs_rev = 0
+            unexcused = []
+            
+        return biometric_days, hol, cl_count, od_count, total, unexcused, [], [], rem, needs_rev
+
+    # Standard / Teaching / Academic / General Staff
+    hol = month_holidays
+    cl_count = 0.0
+    od_count = 0.0
+    abs_list = []
+    mis_list = []
+    half_list = []
+
+    for d in logs:
+        dn = int(d['day_num']) if d.get('day_num') is not None else 0
+        ov = (d.get('override_status') or '').upper()
+        st = (d.get('status') or '').upper()
+        eff = ov if ov else st
+
+        # If day is overridden to Present by admin, it is 100% EXCUSED (no deduction!)
+        if ov == 'PRESENT':
+            continue
+
+        if 'HOLIDAY' in eff:
+            continue
+
+        if 'CL' in eff or 'LEAVE' in eff:
+            if '1/2' in eff:
+                cl_count += 0.5
+            else:
+                cl_count += 1.0
+        elif 'OD' in eff or 'ON DUTY' in eff:
+            od_count += 1.0
+        elif 'NO OUTPUNCH' in eff or 'NO OUT PUNCH' in eff:
+            mis_list.append(f"{dn}(0.5)")
+        elif '1/2' in eff or 'HALF' in eff:
+            half_list.append(f"{dn}(1/2)")
+        elif 'ABSENT' in eff:
+            abs_list.append(dn)
+
+    total_deductions = len(abs_list) * 1.0 + len(mis_list) * 0.5 + len(half_list) * 0.5
+    total = max(0.0, m_days - total_deductions)
+    pres = max(0.0, total - hol - cl_count - od_count)
+
+    rem_parts = []
+    if overridden_days:
+        rem_parts.append(f"Specific Days Present by Admin Override (Days: {', '.join(str(x) for x in overridden_days)})")
+    if abs_list:
+        rem_parts.append(f"ab-{','.join(str(x) for x in abs_list)}")
+    if mis_list:
+        rem_parts.append(f"{len(mis_list)} no out punch")
+    if half_list:
+        rem_parts.append(", ".join(half_list))
+
+    rem = ", ".join(rem_parts)
+    needs_rev = 1 if (abs_list or mis_list or half_list) else 0
+
+    return pres, hol, cl_count, od_count, total, abs_list, mis_list, half_list, rem, needs_rev
+
 def set_employee_policy(emp_code: str, policy: str, month_year: str = "August -2026"):
     """Update policy for an employee and recalculate monthly pay days if exempt."""
+    month_year = normalize_month_year(month_year)
     conn = get_db()
     cursor = conn.cursor()
 
     cursor.execute("UPDATE employees SET attendance_policy = ? WHERE emp_code = ?", (policy, emp_code))
 
+    m_days = float(payroll_engine.get_days_in_month_str(month_year) or 30)
+    month_holidays = get_month_holidays_count(cursor, month_year)
+    bio_days = max(0.0, m_days - month_holidays)
+
     if policy in ('exempt_full', 'visiting_twice_weekly'):
         remarks = "Full Attendance (VIP / Exempt)" if policy == 'exempt_full' else "Full Attendance (Visiting Schedule)"
         cursor.execute("""
         UPDATE monthly_records
-        SET biometric_days = 25.0, holiday = 6.0, total_pay_days = 31.0, remarks = ?, needs_review = 0
+        SET biometric_days = ?, holiday = ?, total_pay_days = ?, remarks = ?, needs_review = 0
         WHERE emp_code = ? AND month_year = ?
-        """, (remarks, emp_code, month_year))
+        """, (bio_days, month_holidays, m_days, remarks, emp_code, month_year))
 
     conn.commit()
     conn.close()
 
 def grant_full_attendance(emp_code: str, month_year: str):
-    """1-Click button to give an employee 31 full pay days for the current month."""
+    """1-Click button to give an employee full pay days for the current month."""
+    month_year = normalize_month_year(month_year)
     conn = get_db()
     cursor = conn.cursor()
 
+    m_days = float(payroll_engine.get_days_in_month_str(month_year) or 30)
+    month_holidays = get_month_holidays_count(cursor, month_year)
+    bio_days = max(0.0, m_days - month_holidays)
+
     cursor.execute("""
     UPDATE monthly_records
-    SET biometric_days = 25.0, holiday = 6.0, total_pay_days = 31.0, remarks = 'Full Attendance Granted by HR', needs_review = 0
+    SET biometric_days = ?, holiday = ?, total_pay_days = ?, remarks = 'Full Attendance Granted by HR', needs_review = 0
     WHERE emp_code = ? AND month_year = ?
-    """, (emp_code, month_year))
+    """, (bio_days, month_holidays, m_days, emp_code, month_year))
 
     conn.commit()
     conn.close()
 
     try:
-        recalculate_monthly_salary(emp_code, month_year, 31.0)
+        recalculate_monthly_salary(emp_code, month_year, m_days, int(m_days))
     except Exception as e:
         print(f"Error recalculating salary: {e}")
 
@@ -1950,6 +2123,7 @@ def revert_employee_to_original(emp_code: str, month_year: str) -> dict:
     - Clears monthly salary overrides in monthly_records (base_salary, arrears, other_deductions).
     - Recalculates salary from master salary profile.
     """
+    month_year = normalize_month_year(month_year)
     conn = get_db()
     cursor = conn.cursor()
 
@@ -1960,95 +2134,26 @@ def revert_employee_to_original(emp_code: str, month_year: str) -> dict:
     WHERE emp_code = ? AND month_year = ?
     """, (emp_code, month_year))
 
-    # 2. Check employee policy
-    cursor.execute("SELECT attendance_policy, is_manual FROM employees WHERE emp_code = ?", (emp_code,))
-    emp_row = cursor.fetchone()
-    policy = emp_row['attendance_policy'] if emp_row else 'standard'
+    m_days = float(payroll_engine.get_days_in_month_str(month_year) or 30)
+    month_holidays = get_month_holidays_count(cursor, month_year)
 
-    # 3. Check daily logs for this employee
+    cursor.execute("SELECT attendance_policy, department, designation FROM employees WHERE emp_code = ?", (emp_code,))
+    e_info = cursor.fetchone()
+    e_data = dict(e_info) if e_info else {}
+
     cursor.execute("""
-    SELECT status, day_num FROM daily_logs 
+    SELECT emp_code, day_num, status, override_status, in_time, out_time
+    FROM daily_logs 
     WHERE emp_code = ? AND month_year = ? 
     ORDER BY day_num ASC
     """, (emp_code, month_year))
     days = cursor.fetchall()
 
-    if policy == 'exempt_full':
-        total = 31.0
-        present_count = 25.0
-        hol = 6.0
-        cl_count = 0.0
-        od_count = 0.0
-        rem_str = "Full Attendance (VIP / Principal)"
-        needs_review = 0
-    elif days:
-        present_count = 0.0
-        cl_count = 0.0
-        od_count = 0.0
-        absent_days = []
-        missed_punches = []
+    pres, hol, cl, od, total, abs_list, mis_list, half_list, rem, needs_rev = evaluate_employee_attendance_from_logs(
+        emp_code, days, e_data, m_days, month_holidays
+    )
 
-        for d in days:
-            st = (d['status'] or '').upper()
-            d_num = d['day_num']
-            if 'CL' in st or 'LEAVE' in st:
-                if '1/2' in st:
-                    cl_count += 0.5
-                    if 'PRESENT' in st: present_count += 0.5
-                else:
-                    cl_count += 1.0
-            elif 'OD' in st or 'ON DUTY' in st:
-                od_count += 1.0
-            elif 'PRESENT' in st:
-                if '1/2' in st: present_count += 0.5
-                else: present_count += 1.0
-            elif 'NO OUTPUNCH' in st or 'NO OUT PUNCH' in st:
-                missed_punches.append(d_num)
-            elif 'ABSENT' in st and 'HOLIDAY' not in st:
-                absent_days.append(d_num)
-
-        cursor.execute("SELECT department, designation FROM employees WHERE emp_code = ?", (emp_code,))
-        e_info = cursor.fetchone()
-        e_dept = (e_info['department'] if e_info else '').lower()
-        e_desig = (e_info['designation'] if e_info else '').lower()
-        is_w = 'security' in e_dept or 'security' in e_desig or 'watchman' in e_desig or 'watch man' in e_desig or 'water man' in e_desig or 'water woman' in e_desig
-
-        if is_w:
-            hol = 2.0
-            missed_punches = []
-            total_duty = present_count + cl_count + od_count
-            if total_duty >= 28.0:
-                total = 31.0
-                rem_str = ""
-                needs_review = 0
-            elif total_duty > 0:
-                shortfall = 28.0 - total_duty
-                total = max(0.0, 31.0 - shortfall)
-                unexcused = absent_days[-int(shortfall):] if shortfall > 0 else []
-                rem_str = f"ab-{','.join(str(d) for d in unexcused)}" if unexcused else ""
-                needs_review = 1 if unexcused else 0
-            else:
-                total = 0.0
-                rem_str = "No Biometric Records"
-                needs_review = 0
-        else:
-            hol = 6.0
-            total = min(31.0, present_count + hol + cl_count + od_count)
-            rem_parts = []
-            if absent_days: rem_parts.append(f"ab-{','.join(str(d) for d in absent_days)}")
-            if missed_punches: rem_parts.append(f"{','.join(str(d) for d in missed_punches)} no out punch")
-            rem_str = ", ".join(rem_parts)
-            needs_review = 1 if (absent_days or missed_punches) else 0
-    else:
-        present_count = 25.0
-        hol = 6.0
-        cl_count = 0.0
-        od_count = 0.0
-        total = 31.0
-        rem_str = ""
-        needs_review = 0
-
-    # 4. Reset monthly_records back to raw
+    # Reset monthly_records back to raw
     cursor.execute("""
     UPDATE monthly_records
     SET biometric_days = ?,
@@ -2056,6 +2161,8 @@ def revert_employee_to_original(emp_code: str, month_year: str) -> dict:
         availed_leaves = ?,
         sv_od = ?,
         total_pay_days = ?,
+        absent_days_json = ?,
+        missed_punches_json = ?,
         remarks = ?,
         needs_review = ?,
         base_salary = NULL,
@@ -2067,13 +2174,15 @@ def revert_employee_to_original(emp_code: str, month_year: str) -> dict:
         it_deduction = 0.0
     WHERE emp_code = ? AND month_year = ?
     """, (
-        present_count,
+        pres,
         hol,
-        cl_count if cl_count > 0 else None,
-        od_count if od_count > 0 else None,
+        cl if cl > 0 else None,
+        od if od > 0 else None,
         total,
-        rem_str,
-        needs_review,
+        json.dumps(abs_list),
+        json.dumps(mis_list),
+        rem,
+        needs_rev,
         emp_code,
         month_year
     ))
@@ -2081,14 +2190,15 @@ def revert_employee_to_original(emp_code: str, month_year: str) -> dict:
     conn.commit()
     conn.close()
 
-    # 5. Recalculate salary with baseline profile
-    recalculate_monthly_salary(emp_code, month_year, total)
+    # Recalculate salary with baseline profile
+    recalculate_monthly_salary(emp_code, month_year, total, int(m_days))
     return get_employee_portfolio(emp_code)
 
 def bulk_revert_to_original(month_year: str, scope: str = 'all', department: Optional[str] = None, category: Optional[str] = None) -> dict:
     """
     Bulk reverts multiple employees back to raw original biometric data.
     """
+    month_year = normalize_month_year(month_year)
     conn = get_db()
     cursor = conn.cursor()
 
@@ -2105,7 +2215,7 @@ def bulk_revert_to_original(month_year: str, scope: str = 'all', department: Opt
 
     reverted_codes = []
     for r in rows:
-        ec = r['emp_code']
+        ec = str(r['emp_code'])
         dept = r['department']
         cat = r['category'] or 'Non-Teaching'
 
@@ -2123,8 +2233,273 @@ def bulk_revert_to_original(month_year: str, scope: str = 'all', department: Opt
         'reverted_count': len(reverted_codes)
     }
 
+def bulk_attendance_override(
+    month_year: str,
+    action: str = 'full_present',
+    scope: str = 'all',
+    department: Optional[str] = None,
+    emp_codes: list = None,
+    punch_filter: str = 'all',
+    selected_days: list = None
+) -> dict:
+    """
+    Bulk override attendance for employees.
+    action: 'full_present' = full month | 'half_present' = half month | 'specific_dates' = selected_days count
+    scope: 'all' | 'department' | 'manual'
+    punch_filter: 'all' | 'no_punch' | 'morning_only' | 'evening_only'
+    selected_days: list of day numbers [1, 2, 29, 30] for specific_dates action
+    """
+    month_year = normalize_month_year(month_year)
+    conn = get_db()
+    cursor = conn.cursor()
+
+    m_days = float(payroll_engine.get_days_in_month_str(month_year) or 30)
+    month_holidays = get_month_holidays_count(cursor, month_year)
+
+    # Step 1: get all employees in this month
+    cursor.execute("""
+    SELECT m.emp_code, e.department
+    FROM monthly_records m
+    JOIN employees e ON m.emp_code = e.emp_code
+    WHERE m.month_year = ?
+    """, (month_year,))
+    all_rows = cursor.fetchall()
+
+    # Step 2: filter by scope
+    candidates = []
+    for r in all_rows:
+        ec = str(r['emp_code'])
+        dept = r['department'] or ''
+        if scope == 'department' and department and department != 'all' and dept != department:
+            continue
+        if scope == 'manual' and emp_codes and ec not in [str(x) for x in emp_codes]:
+            continue
+        candidates.append(ec)
+
+    # Step 3: filter by punch type
+    if punch_filter == 'all':
+        filtered_codes = candidates
+    else:
+        if action == 'specific_dates' and selected_days:
+            # Check punch filters specifically on the selected override dates
+            query_sql = f"""
+            SELECT emp_code,
+                   MAX(CASE WHEN in_time IS NOT NULL AND TRIM(in_time) != '' THEN 1 ELSE 0 END) AS has_in,
+                   MAX(CASE WHEN out_time IS NOT NULL AND TRIM(out_time) != '' THEN 1 ELSE 0 END) AS has_out
+            FROM daily_logs
+            WHERE month_year = ? AND day_num IN ({','.join(['?'] * len(selected_days))})
+            GROUP BY emp_code
+            """
+            cursor.execute(query_sql, [month_year] + list(selected_days))
+        else:
+            cursor.execute("""
+            SELECT emp_code,
+                   MAX(CASE WHEN in_time IS NOT NULL AND TRIM(in_time) != '' THEN 1 ELSE 0 END) AS has_in,
+                   MAX(CASE WHEN out_time IS NOT NULL AND TRIM(out_time) != '' THEN 1 ELSE 0 END) AS has_out
+            FROM daily_logs
+            WHERE month_year = ?
+            GROUP BY emp_code
+            """, (month_year,))
+        punch_map = {str(r['emp_code']): (bool(r['has_in']), bool(r['has_out'])) for r in cursor.fetchall()}
+
+        filtered_codes = []
+        for ec in candidates:
+            has_in, has_out = punch_map.get(ec, (False, False))
+            if punch_filter == 'no_punch':
+                if has_in or has_out:
+                    continue
+            elif punch_filter == 'morning_only':
+                if not (has_in and not has_out):
+                    continue
+            elif punch_filter == 'evening_only':
+                if not (has_out and not has_in):
+                    continue
+            filtered_codes.append(ec)
+
+    if not filtered_codes:
+        conn.close()
+        return {
+            'status': 'success',
+            'month_year': month_year,
+            'action': action,
+            'punch_filter': punch_filter,
+            'updated_count': 0,
+            'emp_codes': []
+        }
+
+    filtered_set = set(filtered_codes)
+
+    # Step 4: apply action
+    if action == 'specific_dates':
+        selected_days = selected_days or []
+        # 4a. Update daily_logs for selected days for these filtered employees
+        if len(filtered_codes) == len(all_rows) and scope == 'all' and punch_filter == 'all':
+            cursor.execute(f"""
+            UPDATE daily_logs
+            SET override_status = 'Present'
+            WHERE month_year = ? AND day_num IN ({','.join(['?'] * len(selected_days))})
+            """, [month_year] + list(selected_days))
+        else:
+            log_updates = [(ec, month_year, d) for d in selected_days for ec in filtered_codes]
+            cursor.executemany("""
+            UPDATE daily_logs
+            SET override_status = 'Present'
+            WHERE emp_code = ? AND month_year = ? AND day_num = ?
+            """, log_updates)
+
+        # 4b. Re-evaluate attendance from daily_logs for all filtered employees
+        cursor.execute("""
+        SELECT emp_code, day_num, status, override_status, in_time, out_time
+        FROM daily_logs
+        WHERE month_year = ?
+        ORDER BY emp_code, day_num ASC
+        """, (month_year,))
+        all_logs = cursor.fetchall()
+
+        from collections import defaultdict
+        emp_logs = defaultdict(list)
+        for r in all_logs:
+            ec_s = str(r['emp_code'])
+            if ec_s in filtered_set:
+                emp_logs[ec_s].append(r)
+
+        cursor.execute("SELECT emp_code, department, designation, attendance_policy FROM employees")
+        emp_info = {str(r['emp_code']): dict(r) for r in cursor.fetchall()}
+
+        monthly_updates = []
+        for ec in filtered_codes:
+            logs = emp_logs.get(ec, [])
+            e_data = emp_info.get(ec, {})
+            pres, hol, cl, od, total, abs_list, mis_list, half_list, rem, needs_rev = evaluate_employee_attendance_from_logs(
+                ec, logs, e_data, m_days, month_holidays
+            )
+            monthly_updates.append((
+                pres, hol, cl if cl > 0 else None, od if od > 0 else None, total,
+                json.dumps(abs_list), json.dumps(mis_list),
+                rem, needs_rev,
+                ec, month_year
+            ))
+
+        cursor.executemany("""
+        UPDATE monthly_records
+        SET biometric_days = ?, holiday = ?, availed_leaves = ?, sv_od = ?, total_pay_days = ?,
+            absent_days_json = ?, missed_punches_json = ?,
+            remarks = ?, needs_review = ?
+        WHERE emp_code = ? AND month_year = ?
+        """, monthly_updates)
+
+    else:
+        if action == 'full_present':
+            total = m_days
+            holiday = month_holidays
+            bio_days = max(0.0, m_days - month_holidays)
+            remark = 'Full Attendance Granted by Admin Override'
+            # Also update daily_logs for these employees so absent is cleared
+            dl_updates = [(ec, month_year) for ec in filtered_codes]
+            cursor.executemany("""
+            UPDATE daily_logs
+            SET override_status = 'Present'
+            WHERE emp_code = ? AND month_year = ? AND (status LIKE '%Absent%' OR status LIKE '%No OutPunch%')
+            """, dl_updates)
+        else:  # half_present
+            total = round(m_days / 2.0, 1)
+            holiday = round(month_holidays / 2.0, 1)
+            bio_days = max(0.0, total - holiday)
+            remark = 'Half Attendance Granted by Admin Override'
+
+        # Batch update monthly_records attendance
+        update_tuples = [(bio_days, holiday, total, '[]', '[]', remark, 0, ec, month_year) for ec in filtered_codes]
+        cursor.executemany("""
+        UPDATE monthly_records
+        SET biometric_days = ?, holiday = ?, total_pay_days = ?,
+            absent_days_json = ?, missed_punches_json = ?,
+            remarks = ?, needs_review = ?
+        WHERE emp_code = ? AND month_year = ?
+        """, update_tuples)
+
+    # Step 5: Fast batch recalculate salary for all updated employees
+    cursor.execute("""
+    SELECT m.emp_code, m.total_pay_days, m.base_salary, m.arrears,
+           m.epf_deduction, m.it_deduction, m.bus_deduction, m.mess_deduction,
+           m.hostel_eb_deduction, m.other_deductions, m.pt_deduction, m.wf_deduction,
+           p.base_salary as prof_base, p.category as prof_category, p.epf_amount as prof_epf,
+           p.default_bus as prof_bus, p.default_mess as prof_mess, p.default_hostel_eb as prof_hostel,
+           p.default_arrears as prof_arrears,
+           e.name, e.department, e.designation
+    FROM monthly_records m
+    LEFT JOIN salary_profiles p ON m.emp_code = p.emp_code
+    JOIN employees e ON m.emp_code = e.emp_code
+    WHERE m.month_year = ?
+    """, (month_year,))
+    all_recs = cursor.fetchall()
+
+    salary_updates = []
+    for r in all_recs:
+        ec = str(r['emp_code'])
+        if ec not in filtered_set:
+            continue
+        try:
+            cat = payroll_engine.determine_employee_category(r['department'], r['designation'], r['prof_category'])
+            prof = {
+                'emp_code': ec,
+                'name': r['name'],
+                'category': cat,
+                'base_salary': float(r['prof_base'] or 0.0),
+                'default_arrears': float(r['prof_arrears'] or 0.0),
+                'epf_amount': float(r['prof_epf'] or 0.0),
+                'default_bus': float(r['prof_bus'] or 0.0),
+                'default_mess': float(r['prof_mess'] or 0.0),
+                'default_hostel_eb': float(r['prof_hostel'] or 0.0)
+            }
+            overrides = {
+                'base_salary': r['base_salary'] if r['base_salary'] is not None else prof.get('base_salary'),
+                'arrears': r['arrears'] or 0.0,
+                'epf_deduction': r['epf_deduction'] if r['epf_deduction'] is not None else prof.get('epf_amount', 0.0),
+                'it_deduction': r['it_deduction'] or 0.0,
+                'bus_deduction': r['bus_deduction'] if r['bus_deduction'] is not None else prof.get('default_bus', 0.0),
+                'mess_deduction': r['mess_deduction'] if r['mess_deduction'] is not None else prof.get('default_mess', 0.0),
+                'hostel_eb_deduction': r['hostel_eb_deduction'] if r['hostel_eb_deduction'] is not None else prof.get('default_hostel_eb', 0.0),
+                'other_deductions': r['other_deductions'] or 0.0,
+                'pt_deduction': r['pt_deduction'],
+                'wf_deduction': r['wf_deduction']
+            }
+            emp_pay_days = float(r['total_pay_days'] if r['total_pay_days'] is not None else m_days)
+            res = payroll_engine.calculate_salary_for_profile(prof, m_days, emp_pay_days, overrides)
+            salary_updates.append((
+                res['base_salary'], res['earned_basic'], res['da'], res['hra'], res['arrears'],
+                res['gross_salary'], res['pt'], res['wf'], res['epf'],
+                res['it'], res['bus_deduction'], res['mess_deduction'], res['hostel_eb_deduction'],
+                res['other_deductions'], res['total_deductions'], res['net_salary'],
+                ec, month_year
+            ))
+        except Exception as e:
+            print(f"Batch salary recalc error for {ec}: {e}")
+
+    if salary_updates:
+        cursor.executemany("""
+        UPDATE monthly_records
+        SET base_salary = ?, earned_basic = ?, earned_da = ?, earned_hra = ?, arrears = ?,
+            gross_salary = ?, pt_deduction = ?, wf_deduction = ?, epf_deduction = ?,
+            it_deduction = ?, bus_deduction = ?, mess_deduction = ?, hostel_eb_deduction = ?,
+            other_deductions = ?, total_deductions = ?, net_salary = ?
+        WHERE emp_code = ? AND month_year = ?
+        """, salary_updates)
+
+    conn.commit()
+    conn.close()
+
+    return {
+        'status': 'success',
+        'month_year': month_year,
+        'action': action,
+        'punch_filter': punch_filter,
+        'updated_count': len(filtered_codes),
+        'emp_codes': filtered_codes
+    }
+
 def update_monthly_field(emp_code: str, month_year: str, field: str, value: Any):
     """Update an inline field (leaves, od, holiday, bio) in SQLite and recalculate Total Pay Days."""
+    month_year = normalize_month_year(month_year)
     conn = get_db()
     cursor = conn.cursor()
 
@@ -2155,20 +2530,22 @@ def update_monthly_field(emp_code: str, month_year: str, field: str, value: Any)
         cursor.execute("UPDATE monthly_records SET biometric_days = ? WHERE emp_code = ? AND month_year = ?", (bio, emp_code, month_year))
 
     # Recalculate total
+    m_days = float(payroll_engine.get_days_in_month_str(month_year) or 30)
     total = bio + hol + (leaves or 0.0) + (od or 0.0)
-    total = min(31.0, total)
+    total = min(m_days, total)
     cursor.execute("UPDATE monthly_records SET total_pay_days = ? WHERE emp_code = ? AND month_year = ?", (total, emp_code, month_year))
 
     conn.commit()
     conn.close()
 
     try:
-        recalculate_monthly_salary(emp_code, month_year, total)
+        recalculate_monthly_salary(emp_code, month_year, total, int(m_days))
     except Exception as e:
         print(f"Error recalculating salary: {e}")
 
 def regularize_day_in_db(emp_code: str, month_year: str, day_num: int, action: str):
-    """Regularize a day in SQLite: update daily_logs, re-sum, and update monthly_records."""
+    """Regularize a day: update daily_logs, re-sum, and update monthly_records."""
+    month_year = normalize_month_year(month_year)
     conn = get_db()
     cursor = conn.cursor()
 
@@ -2186,87 +2563,175 @@ def regularize_day_in_db(emp_code: str, month_year: str, day_num: int, action: s
     UPDATE daily_logs SET override_status = ? WHERE emp_code = ? AND month_year = ? AND day_num = ?
     """, (new_status, emp_code, month_year, day_num))
 
+    m_days = float(payroll_engine.get_days_in_month_str(month_year) or 30)
+    month_holidays = get_month_holidays_count(cursor, month_year)
+
+    cursor.execute("SELECT attendance_policy, department, designation FROM employees WHERE emp_code = ?", (emp_code,))
+    e_info = cursor.fetchone()
+    e_data = dict(e_info) if e_info else {}
+
     # Re-evaluate all days for this employee
-    cursor.execute("SELECT * FROM daily_logs WHERE emp_code = ? AND month_year = ? ORDER BY day_num ASC", (emp_code, month_year))
+    cursor.execute("""
+    SELECT emp_code, day_num, status, override_status, in_time, out_time
+    FROM daily_logs WHERE emp_code = ? AND month_year = ? ORDER BY day_num ASC
+    """, (emp_code, month_year))
     days = cursor.fetchall()
 
-    present_count = 0.0
-    cl_count = 0.0
-    od_count = 0.0
-    absent_days = []
-    missed_punches = []
-
-    for d in days:
-        st = (d['override_status'] or d['status'] or '').upper()
-        d_num = d['day_num']
-        if 'CL' in st or 'LEAVE' in st:
-            if '1/2' in st:
-                cl_count += 0.5
-                if 'PRESENT' in st: present_count += 0.5
-            else:
-                cl_count += 1.0
-        elif 'OD' in st or 'ON DUTY' in st:
-            od_count += 1.0
-        elif 'PRESENT' in st:
-            if '1/2' in st: present_count += 0.5
-            else: present_count += 1.0
-        elif 'NO OUTPUNCH' in st or 'NO OUT PUNCH' in st:
-            missed_punches.append(d_num)
-        elif 'ABSENT' in st and 'HOLIDAY' not in st:
-            absent_days.append(d_num)
-
-    cursor.execute("SELECT department, designation FROM employees WHERE emp_code = ?", (emp_code,))
-    e_info = cursor.fetchone()
-    e_dept = (e_info['department'] if e_info else '').lower()
-    e_desig = (e_info['designation'] if e_info else '').lower()
-    is_w = 'security' in e_dept or 'security' in e_desig or 'watchman' in e_desig or 'watch man' in e_desig or 'water man' in e_desig or 'water woman' in e_desig
-
-    if is_w:
-        hol = 2.0
-        missed_punches = []
-        total_duty = present_count + cl_count + od_count
-        if total_duty >= 28.0:
-            total = 31.0
-            rem_str = ""
-            needs_review_flag = 0
-        elif total_duty > 0:
-            shortfall = 28.0 - total_duty
-            total = max(0.0, 31.0 - shortfall)
-            unexcused = absent_days[-int(shortfall):] if shortfall > 0 else []
-            rem_str = f"ab-{','.join(str(d) for d in unexcused)}" if unexcused else ""
-            needs_review_flag = 1 if unexcused else 0
-        else:
-            total = 0.0
-            rem_str = "No Biometric Records"
-            needs_review_flag = 0
-    else:
-        cursor.execute("SELECT holiday FROM monthly_records WHERE emp_code = ? AND month_year = ?", (emp_code, month_year))
-        h_rec = cursor.fetchone()
-        hol = h_rec['holiday'] if h_rec else 6.0
-
-        total = present_count + hol + cl_count + od_count
-        total = min(31.0, total)
-
-        rem_parts = []
-        if absent_days: rem_parts.append(f"ab-{','.join(str(d) for d in absent_days)}")
-        if missed_punches: rem_parts.append(f"{','.join(str(d) for d in missed_punches)} no out punch")
-        rem_str = ", ".join(rem_parts)
-        needs_review_flag = 1 if (absent_days or missed_punches) else 0
+    pres, hol, cl, od, total, abs_list, mis_list, half_list, rem, needs_rev = evaluate_employee_attendance_from_logs(
+        emp_code, days, e_data, m_days, month_holidays
+    )
 
     cursor.execute("""
     UPDATE monthly_records
-    SET biometric_days = ?, availed_leaves = ?, sv_od = ?, total_pay_days = ?, remarks = ?, needs_review = ?
+    SET biometric_days = ?, holiday = ?, availed_leaves = ?, sv_od = ?, total_pay_days = ?,
+        absent_days_json = ?, missed_punches_json = ?, remarks = ?, needs_review = ?
     WHERE emp_code = ? AND month_year = ?
-    """, (present_count, cl_count if cl_count > 0 else None, od_count if od_count > 0 else None, total, rem_str, needs_review_flag, emp_code, month_year))
+    """, (
+        pres, hol, cl if cl > 0 else None, od if od > 0 else None, total,
+        json.dumps(abs_list), json.dumps(mis_list), rem, needs_rev,
+        emp_code, month_year
+    ))
 
     conn.commit()
     conn.close()
 
     # Recalculate salary with new pay days
     try:
-        recalculate_monthly_salary(emp_code, month_year, total)
+        recalculate_monthly_salary(emp_code, month_year, total, int(m_days))
     except Exception as e:
         print(f"Error recalculating salary for {emp_code}: {e}")
+
+def recalculate_month_attendance_and_salaries(month_year: str) -> dict:
+    """
+    Recalculates attendance and salaries across all employees for a month using unified calculation.
+    Synchronizes daily_logs, monthly_records, remarks, pay days, and net salaries.
+    """
+    month_year = normalize_month_year(month_year)
+    conn = get_db()
+    cursor = conn.cursor()
+
+    m_days = float(payroll_engine.get_days_in_month_str(month_year) or 30)
+    month_holidays = get_month_holidays_count(cursor, month_year)
+
+    cursor.execute("""
+    SELECT emp_code, day_num, status, override_status, in_time, out_time
+    FROM daily_logs
+    WHERE month_year = ?
+    ORDER BY emp_code, day_num ASC
+    """, (month_year,))
+    all_logs = cursor.fetchall()
+
+    from collections import defaultdict
+    emp_logs = defaultdict(list)
+    for r in all_logs:
+        emp_logs[str(r['emp_code'])].append(r)
+
+    cursor.execute("SELECT emp_code, department, designation, attendance_policy FROM employees")
+    emp_info = {str(r['emp_code']): dict(r) for r in cursor.fetchall()}
+
+    cursor.execute("SELECT emp_code FROM monthly_records WHERE month_year = ?", (month_year,))
+    target_codes = [str(r['emp_code']) for r in cursor.fetchall()]
+
+    if not target_codes:
+        conn.close()
+        return {'status': 'success', 'updated_count': 0, 'month_year': month_year}
+
+    monthly_updates = []
+    for ec in target_codes:
+        logs = emp_logs.get(ec, [])
+        e_data = emp_info.get(ec, {})
+        pres, hol, cl, od, total, abs_list, mis_list, half_list, rem, needs_rev = evaluate_employee_attendance_from_logs(
+            ec, logs, e_data, m_days, month_holidays
+        )
+        monthly_updates.append((
+            pres, hol, cl if cl > 0 else None, od if od > 0 else None, total,
+            json.dumps(abs_list), json.dumps(mis_list), rem, needs_rev,
+            ec, month_year
+        ))
+
+    cursor.executemany("""
+    UPDATE monthly_records
+    SET biometric_days = ?, holiday = ?, availed_leaves = ?, sv_od = ?, total_pay_days = ?,
+        absent_days_json = ?, missed_punches_json = ?,
+        remarks = ?, needs_review = ?
+    WHERE emp_code = ? AND month_year = ?
+    """, monthly_updates)
+
+    # Batch recalculate salary for all target codes
+    cursor.execute("""
+    SELECT m.emp_code, m.total_pay_days, m.base_salary, m.arrears,
+           m.epf_deduction, m.it_deduction, m.bus_deduction, m.mess_deduction,
+           m.hostel_eb_deduction, m.other_deductions, m.pt_deduction, m.wf_deduction,
+           p.base_salary as prof_base, p.category as prof_category, p.epf_amount as prof_epf,
+           p.default_bus as prof_bus, p.default_mess as prof_mess, p.default_hostel_eb as prof_hostel,
+           p.default_arrears as prof_arrears,
+           e.name, e.department, e.designation
+    FROM monthly_records m
+    LEFT JOIN salary_profiles p ON m.emp_code = p.emp_code
+    JOIN employees e ON m.emp_code = e.emp_code
+    WHERE m.month_year = ?
+    """, (month_year,))
+    all_recs = cursor.fetchall()
+
+    salary_updates = []
+    for r in all_recs:
+        ec = str(r['emp_code'])
+        try:
+            cat = payroll_engine.determine_employee_category(r['department'], r['designation'], r['prof_category'])
+            prof = {
+                'emp_code': ec,
+                'name': r['name'],
+                'category': cat,
+                'base_salary': float(r['prof_base'] or 0.0),
+                'default_arrears': float(r['prof_arrears'] or 0.0),
+                'epf_amount': float(r['prof_epf'] or 0.0),
+                'default_bus': float(r['prof_bus'] or 0.0),
+                'default_mess': float(r['prof_mess'] or 0.0),
+                'default_hostel_eb': float(r['prof_hostel'] or 0.0)
+            }
+            overrides = {
+                'base_salary': r['base_salary'] if r['base_salary'] is not None else prof.get('base_salary'),
+                'arrears': r['arrears'] or 0.0,
+                'epf_deduction': r['epf_deduction'] if r['epf_deduction'] is not None else prof.get('epf_amount', 0.0),
+                'it_deduction': r['it_deduction'] or 0.0,
+                'bus_deduction': r['bus_deduction'] if r['bus_deduction'] is not None else prof.get('default_bus', 0.0),
+                'mess_deduction': r['mess_deduction'] if r['mess_deduction'] is not None else prof.get('default_mess', 0.0),
+                'hostel_eb_deduction': r['hostel_eb_deduction'] if r['hostel_eb_deduction'] is not None else prof.get('default_hostel_eb', 0.0),
+                'other_deductions': r['other_deductions'] or 0.0,
+                'pt_deduction': r['pt_deduction'],
+                'wf_deduction': r['wf_deduction']
+            }
+            emp_pay_days = float(r['total_pay_days'] if r['total_pay_days'] is not None else m_days)
+            res = payroll_engine.calculate_salary_for_profile(prof, m_days, emp_pay_days, overrides)
+            salary_updates.append((
+                res['base_salary'], res['earned_basic'], res['da'], res['hra'], res['arrears'],
+                res['gross_salary'], res['pt'], res['wf'], res['epf'],
+                res['it'], res['bus_deduction'], res['mess_deduction'], res['hostel_eb_deduction'],
+                res['other_deductions'], res['total_deductions'], res['net_salary'],
+                ec, month_year
+            ))
+        except Exception as e:
+            print(f"Batch salary recalc error for {ec}: {e}")
+
+    if salary_updates:
+        cursor.executemany("""
+        UPDATE monthly_records
+        SET base_salary = ?, earned_basic = ?, earned_da = ?, earned_hra = ?, arrears = ?,
+            gross_salary = ?, pt_deduction = ?, wf_deduction = ?, epf_deduction = ?,
+            it_deduction = ?, bus_deduction = ?, mess_deduction = ?, hostel_eb_deduction = ?,
+            other_deductions = ?, total_deductions = ?, net_salary = ?
+        WHERE emp_code = ? AND month_year = ?
+        """, salary_updates)
+
+    conn.commit()
+    conn.close()
+
+    return {
+        'status': 'success',
+        'month_year': month_year,
+        'updated_count': len(target_codes)
+    }
+
 
 # =============================================================================
 # PAYROLL & SALARY PROFILE MANAGEMENT
@@ -2583,6 +3048,7 @@ def get_month_salary_records(month_year: str, active_only: bool = True, referenc
         tot_ded += ded
         tot_net += net
 
+        m_days_count = int(payroll_engine.get_days_in_month_str(month_year) or 30)
         cat = payroll_engine.determine_employee_category(r['department'], r['designation'], r['category'])
         records.append({
             'emp_code': ec,
@@ -2591,6 +3057,8 @@ def get_month_salary_records(month_year: str, active_only: bool = True, referenc
             'department': r['department'],
             'category': cat,
             'attendance_policy': r['attendance_policy'],
+            'month_days': m_days_count,
+            'days_in_month': m_days_count,
             'total_pay_days': r['total_pay_days'],
             'base_salary': base_sal,
             'earned_basic': r['earned_basic'] or 0.0,
@@ -2616,12 +3084,15 @@ def get_month_salary_records(month_year: str, active_only: bool = True, referenc
 
     departments = sorted(list(set(r['department'] for r in records)))
     categories = sorted(list(set(r['category'] for r in records)))
+    m_days_count = int(payroll_engine.get_days_in_month_str(month_year) or 30)
 
     return {
         'status': 'success',
         'month_year': month_year,
+        'days_in_month': m_days_count,
         'stats': {
             'total_staff': len(records),
+            'days_in_month': m_days_count,
             'total_payroll_budget': round(tot_budget, 2),
             'total_gross_disbursed': round(tot_gross, 2),
             'total_pt_deductions': round(tot_pt, 2),
