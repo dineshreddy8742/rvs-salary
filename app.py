@@ -7,6 +7,8 @@ import uuid
 import time
 import gc
 from flask import Flask, request, jsonify, send_file, send_from_directory, session, redirect, url_for
+import io
+import bulk_staff_service
 import database
 from attendance_engine import AttendanceEngine
 from export_excel import export_to_xls
@@ -303,6 +305,59 @@ def add_manual_employee():
             'message': f'Staff {name} ({emp_code}) added successfully',
             'portfolio': portfolio
         })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/bulk-staff-template', methods=['GET'])
+def download_bulk_staff_template():
+    """Download standardized Excel template for bulk staff onboarding."""
+    try:
+        buffer = bulk_staff_service.generate_staff_excel_template()
+        return send_file(
+            buffer,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name='SVCET_Staff_Enrollment_Template.xlsx'
+        )
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/bulk-staff-preview', methods=['POST'])
+def preview_bulk_staff():
+    """Parse and validate Excel/CSV file or tabular text for bulk staff onboarding."""
+    try:
+        if 'file' in request.files:
+            f = request.files['file']
+            if not f.filename:
+                return jsonify({'status': 'error', 'message': 'No file selected.'}), 400
+            res = bulk_staff_service.parse_and_validate_bulk_staff(f.stream, f.filename)
+            return jsonify(res)
+        
+        # Or JSON payload with text
+        data = request.json or {}
+        text = data.get('text', '').strip()
+        if text:
+            stream = io.StringIO(text)
+            res = bulk_staff_service.parse_and_validate_bulk_staff(stream, 'pasted_data.csv')
+            return jsonify(res)
+            
+        return jsonify({'status': 'error', 'message': 'No file or data provided.'}), 400
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/bulk-staff-import', methods=['POST'])
+def import_bulk_staff():
+    """Batch enroll validated staff records into database and compute initial salaries."""
+    data = request.json or {}
+    employees = data.get('employees', [])
+    month_year = data.get('month_year', 'August 2026')
+
+    if not employees:
+        return jsonify({'status': 'error', 'message': 'No staff records provided for import.'}), 400
+
+    try:
+        result = database.bulk_create_or_update_manual_employees(employees, current_month=month_year)
+        return jsonify(result)
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 

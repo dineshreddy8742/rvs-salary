@@ -451,18 +451,62 @@ function setupEventListeners() {
     }
   });
 
-  // Add Staff Modal
+  // Add Staff Modal (Single & Bulk Excel/CSV Import)
   const addStaffModal = document.getElementById('modal-add-staff');
+  const addStaffWindow = document.getElementById('add-staff-modal-window');
+  const tabBtnSingle = document.getElementById('tab-btn-single-staff');
+  const tabBtnBulk = document.getElementById('tab-btn-bulk-staff');
+  const tabContentSingle = document.getElementById('tab-content-single-staff');
+  const tabContentBulk = document.getElementById('tab-content-bulk-staff');
+  const footerSingle = document.getElementById('footer-single-staff');
+  const footerBulk = document.getElementById('footer-bulk-staff');
+
+  let parsedBulkStaffRows = [];
+
+  function escapeHtmlStr(str) {
+    return String(str || '').replace(/[&<>"']/g, m => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[m]);
+  }
+
+  function switchStaffEnrollmentTab(mode) {
+    if (mode === 'bulk') {
+      if (tabBtnSingle) tabBtnSingle.classList.remove('active');
+      if (tabBtnBulk) tabBtnBulk.classList.add('active');
+      if (tabContentSingle) tabContentSingle.style.display = 'none';
+      if (tabContentBulk) tabContentBulk.style.display = 'block';
+      if (footerSingle) footerSingle.style.display = 'none';
+      if (footerBulk) footerBulk.style.display = 'flex';
+      if (addStaffWindow) addStaffWindow.classList.add('modal-wide-mode');
+    } else {
+      if (tabBtnBulk) tabBtnBulk.classList.remove('active');
+      if (tabBtnSingle) tabBtnSingle.classList.add('active');
+      if (tabContentBulk) tabContentBulk.style.display = 'none';
+      if (tabContentSingle) tabContentSingle.style.display = 'block';
+      if (footerBulk) footerBulk.style.display = 'none';
+      if (footerSingle) footerSingle.style.display = 'flex';
+      if (addStaffWindow) addStaffWindow.classList.remove('modal-wide-mode');
+    }
+  }
+
+  if (tabBtnSingle) tabBtnSingle.addEventListener('click', () => switchStaffEnrollmentTab('single'));
+  if (tabBtnBulk) tabBtnBulk.addEventListener('click', () => switchStaffEnrollmentTab('bulk'));
+
   document.getElementById('btn-add-staff-modal').addEventListener('click', () => {
     addStaffModal.classList.add('active');
   });
-  document.getElementById('btn-close-add-staff').addEventListener('click', () => {
-    addStaffModal.classList.remove('active');
-  });
-  document.getElementById('btn-cancel-add-staff').addEventListener('click', () => {
-    addStaffModal.classList.remove('active');
-  });
 
+  const closeStaffModal = () => {
+    addStaffModal.classList.remove('active');
+  };
+
+  document.getElementById('btn-close-add-staff').addEventListener('click', closeStaffModal);
+  document.getElementById('btn-cancel-add-staff').addEventListener('click', closeStaffModal);
+  if (document.getElementById('btn-cancel-bulk-staff')) {
+    document.getElementById('btn-cancel-bulk-staff').addEventListener('click', closeStaffModal);
+  }
+
+  // Single Staff Submit Handler
   document.getElementById('btn-save-add-staff').addEventListener('click', async (e) => {
     e.preventDefault();
     const code = document.getElementById('add-emp-code').value.trim();
@@ -500,7 +544,7 @@ function setupEventListeners() {
       const data = await res.json();
       if (data.status === 'success') {
         showToast(`✔ Added ${name} (${code}) to roster!`);
-        addStaffModal.classList.remove('active');
+        closeStaffModal();
         document.getElementById('form-add-staff').reset();
         loadData();
       } else {
@@ -510,6 +554,320 @@ function setupEventListeners() {
       alert('Network error adding staff member');
     }
   });
+
+  // Bulk Staff Import Logic
+  const bulkFileInput = document.getElementById('bulk-staff-file-input');
+  const bulkDropzone = document.getElementById('bulk-staff-dropzone');
+  const btnBrowseFile = document.getElementById('btn-browse-bulk-file');
+  const bulkLoading = document.getElementById('bulk-staff-loading');
+  const bulkPreviewWrap = document.getElementById('bulk-preview-wrap');
+  const btnResetBulk = document.getElementById('btn-reset-bulk');
+  const btnExecuteBulk = document.getElementById('btn-execute-bulk-import');
+  const btnImportBadge = document.getElementById('btn-import-count-badge');
+  const bulkSearchInput = document.getElementById('bulk-preview-search');
+  const bulkFilterStatus = document.getElementById('bulk-preview-filter-status');
+
+  // Browse & Dropzone triggers
+  if (btnBrowseFile) {
+    btnBrowseFile.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (bulkFileInput) bulkFileInput.click();
+    });
+  }
+
+  if (bulkDropzone) {
+    bulkDropzone.addEventListener('click', () => {
+      if (bulkFileInput) bulkFileInput.click();
+    });
+
+    bulkDropzone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      bulkDropzone.classList.add('drag-active');
+    });
+
+    bulkDropzone.addEventListener('dragleave', () => {
+      bulkDropzone.classList.remove('drag-active');
+    });
+
+    bulkDropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      bulkDropzone.classList.remove('drag-active');
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        handleBulkStaffFile(e.dataTransfer.files[0]);
+      }
+    });
+  }
+
+  if (bulkFileInput) {
+    bulkFileInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files.length > 0) {
+        handleBulkStaffFile(e.target.files[0]);
+      }
+    });
+  }
+
+  // Paste Text Toggles
+  const btnTogglePaste = document.getElementById('btn-toggle-paste-csv');
+  const bulkPasteContainer = document.getElementById('bulk-paste-container');
+  const btnCancelPaste = document.getElementById('btn-cancel-paste-area');
+  const btnParsePasted = document.getElementById('btn-parse-pasted-text');
+  const bulkPasteText = document.getElementById('bulk-paste-staff-text');
+
+  if (btnTogglePaste && bulkPasteContainer) {
+    btnTogglePaste.addEventListener('click', () => {
+      bulkPasteContainer.style.display = bulkPasteContainer.style.display === 'none' ? 'block' : 'none';
+    });
+  }
+
+  if (btnCancelPaste && bulkPasteContainer) {
+    btnCancelPaste.addEventListener('click', () => {
+      bulkPasteContainer.style.display = 'none';
+      if (bulkPasteText) bulkPasteText.value = '';
+    });
+  }
+
+  if (btnParsePasted) {
+    btnParsePasted.addEventListener('click', async () => {
+      const text = bulkPasteText ? bulkPasteText.value.trim() : '';
+      if (!text) {
+        alert('Please paste some staff rows first.');
+        return;
+      }
+      await processBulkStaffData({ text });
+    });
+  }
+
+  async function handleBulkStaffFile(file) {
+    const validExts = ['.xlsx', '.xls', '.csv'];
+    const fn = file.name.toLowerCase();
+    if (!validExts.some(ext => fn.endsWith(ext))) {
+      alert('Please upload a valid Excel (.xlsx, .xls) or CSV file.');
+      return;
+    }
+    const formData = new FormData();
+    formData.append('file', file);
+    await processBulkStaffData(formData, true);
+  }
+
+  async function processBulkStaffData(payload, isFormData = false) {
+    if (bulkLoading) bulkLoading.style.display = 'block';
+    if (bulkDropzone) bulkDropzone.style.display = 'none';
+    if (bulkPasteContainer) bulkPasteContainer.style.display = 'none';
+    if (bulkPreviewWrap) bulkPreviewWrap.style.display = 'none';
+    if (btnResetBulk) btnResetBulk.style.display = 'none';
+    if (btnExecuteBulk) btnExecuteBulk.disabled = true;
+
+    try {
+      const res = await fetch('/api/bulk-staff-preview', {
+        method: 'POST',
+        headers: isFormData ? {} : { 'Content-Type': 'application/json' },
+        body: isFormData ? payload : JSON.stringify(payload)
+      });
+      const data = await res.json();
+
+      if (bulkLoading) bulkLoading.style.display = 'none';
+
+      if (data.status === 'success') {
+        parsedBulkStaffRows = data.rows || [];
+        renderBulkStaffPreview(data);
+      } else {
+        alert('Error parsing staff file: ' + (data.message || 'Unknown error'));
+        if (bulkDropzone) bulkDropzone.style.display = 'block';
+      }
+    } catch (err) {
+      if (bulkLoading) bulkLoading.style.display = 'none';
+      if (bulkDropzone) bulkDropzone.style.display = 'block';
+      alert('Network or server error while parsing file.');
+    }
+  }
+
+  function renderBulkStaffPreview(data) {
+    const total = data.total_rows || 0;
+    const valid = data.valid_rows || 0;
+    const invalid = data.invalid_rows || 0;
+    const depts = data.departments || {};
+    const cats = data.categories || {};
+    const cols = data.detected_columns || [];
+
+    // Update KPI numbers
+    const kpiTotal = document.getElementById('bulk-kpi-total');
+    const kpiValid = document.getElementById('bulk-kpi-valid');
+    const kpiInvalid = document.getElementById('bulk-kpi-invalid');
+    const cardInvalid = document.getElementById('card-kpi-invalid');
+    const kpiDeptsCount = document.getElementById('bulk-kpi-depts-count');
+
+    if (kpiTotal) kpiTotal.textContent = total;
+    if (kpiValid) kpiValid.textContent = valid;
+    if (kpiInvalid) kpiInvalid.textContent = invalid;
+    if (cardInvalid) cardInvalid.style.display = invalid > 0 ? 'block' : 'none';
+    if (kpiDeptsCount) kpiDeptsCount.textContent = Object.keys(depts).length;
+
+    // Populate Department breakdown chips
+    const deptChipsContainer = document.getElementById('bulk-dept-chips');
+    if (deptChipsContainer) {
+      deptChipsContainer.innerHTML = Object.entries(depts)
+        .sort((a, b) => b[1] - a[1])
+        .map(([d, count]) => `<span class="chip-dept">${escapeHtmlStr(d)}: <strong>${count}</strong></span>`)
+        .join('');
+    }
+
+    // Populate Category breakdown chips
+    const catChipsContainer = document.getElementById('bulk-cat-chips');
+    if (catChipsContainer) {
+      catChipsContainer.innerHTML = Object.entries(cats)
+        .sort((a, b) => b[1] - a[1])
+        .map(([c, count]) => `<span class="chip-cat">${escapeHtmlStr(c)}: <strong>${count}</strong></span>`)
+        .join('');
+    }
+
+    // Populate Detected Columns chips
+    const colChipsContainer = document.getElementById('bulk-col-chips');
+    if (colChipsContainer) {
+      const colLabels = {
+        'emp_code': 'Emp Code', 'name': 'Full Name', 'designation': 'Designation',
+        'department': 'Department', 'category': 'Category', 'base_salary': 'Base Salary',
+        'attendance_policy': 'Policy', 'annual_cl_quota': 'CL Quota', 'biometric_days': 'Working Days',
+        'bank_name': 'Bank', 'account_no': 'Account No', 'ifsc_code': 'IFSC'
+      };
+      colChipsContainer.innerHTML = cols
+        .map(c => `<span class="chip-col">${colLabels[c] || c} ✓</span>`)
+        .join('');
+    }
+
+    // Render Preview Table Rows
+    renderFilteredBulkRows();
+
+    // Enable/Configure Import Button
+    if (btnExecuteBulk) {
+      btnExecuteBulk.disabled = valid === 0;
+    }
+    if (btnImportBadge) {
+      btnImportBadge.textContent = valid;
+    }
+
+    if (btnResetBulk) btnResetBulk.style.display = 'inline-flex';
+    if (bulkPreviewWrap) bulkPreviewWrap.style.display = 'block';
+  }
+
+  function renderFilteredBulkRows() {
+    const tbody = document.getElementById('bulk-preview-tbody');
+    if (!tbody) return;
+
+    const searchTerm = (bulkSearchInput ? bulkSearchInput.value : '').toLowerCase().trim();
+    const statusFilter = bulkFilterStatus ? bulkFilterStatus.value : 'all';
+
+    const filtered = parsedBulkStaffRows.filter(r => {
+      if (statusFilter === 'valid' && !r.is_valid) return false;
+      if (statusFilter === 'invalid' && r.is_valid) return false;
+      if (!searchTerm) return true;
+      const haystack = `${r.emp_code} ${r.name} ${r.designation} ${r.department} ${r.category}`.toLowerCase();
+      return haystack.includes(searchTerm);
+    });
+
+    if (filtered.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="10" style="text-align: center; color: #94a3b8; padding: 1.5rem;">No staff records match current filter.</td></tr>`;
+      return;
+    }
+
+    const policyLabels = {
+      'standard': 'Standard Biometric',
+      'exempt_full': '👑 Full Pay (VIP)',
+      'visiting_twice_weekly': 'Visiting (2d/wk)'
+    };
+
+    tbody.innerHTML = filtered.map(r => {
+      const statusBadge = r.is_valid
+        ? `<span class="bulk-badge-status badge-ok">Ready ✓</span>`
+        : `<span class="bulk-badge-status badge-err" title="${escapeHtmlStr(r.error)}">⚠ Error</span>`;
+
+      const formattedSalary = r.base_salary ? '₹' + Number(r.base_salary).toLocaleString('en-IN') : '₹0';
+      const rowClass = r.is_valid ? '' : 'row-invalid';
+
+      return `<tr class="${rowClass}">
+        <td style="color: #94a3b8; font-weight: 600;">${r.row_num}</td>
+        <td>${statusBadge}</td>
+        <td><strong>${escapeHtmlStr(r.emp_code || '--')}</strong></td>
+        <td style="font-weight: 600; color: #1e293b;">${escapeHtmlStr(r.name || '--')}</td>
+        <td>${escapeHtmlStr(r.designation || 'Staff')}</td>
+        <td><span class="chip-dept" style="padding: 1px 6px;">${escapeHtmlStr(r.department || 'Administration')}</span></td>
+        <td><span class="chip-cat" style="padding: 1px 6px;">${escapeHtmlStr(r.category || 'Non-Teaching')}</span></td>
+        <td style="text-align: right; font-weight: 700; color: #047857;">${formattedSalary}</td>
+        <td><span style="font-size: 0.73rem;">${policyLabels[r.attendance_policy] || r.attendance_policy}</span></td>
+        <td style="text-align: center; color: #475569;">${r.annual_cl_quota || 12}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  if (bulkSearchInput) {
+    bulkSearchInput.addEventListener('input', renderFilteredBulkRows);
+  }
+  if (bulkFilterStatus) {
+    bulkFilterStatus.addEventListener('change', renderFilteredBulkRows);
+  }
+
+  // Reset Bulk View
+  function resetBulkStaffView() {
+    parsedBulkStaffRows = [];
+    if (bulkFileInput) bulkFileInput.value = '';
+    if (bulkPasteText) bulkPasteText.value = '';
+    if (bulkSearchInput) bulkSearchInput.value = '';
+    if (bulkPreviewWrap) bulkPreviewWrap.style.display = 'none';
+    if (bulkPasteContainer) bulkPasteContainer.style.display = 'none';
+    if (btnResetBulk) btnResetBulk.style.display = 'none';
+    if (bulkDropzone) bulkDropzone.style.display = 'block';
+    if (btnExecuteBulk) {
+      btnExecuteBulk.disabled = true;
+      btnExecuteBulk.innerHTML = `<span>🚀 Import & Add to Roster</span> <span class="btn-badge-count" id="btn-import-count-badge">0</span>`;
+    }
+  }
+
+  if (btnResetBulk) {
+    btnResetBulk.addEventListener('click', resetBulkStaffView);
+  }
+
+  // Execute Bulk Import
+  if (btnExecuteBulk) {
+    btnExecuteBulk.addEventListener('click', async () => {
+      const validRecords = parsedBulkStaffRows.filter(r => r.is_valid);
+      if (validRecords.length === 0) {
+        alert('No valid staff records found to import.');
+        return;
+      }
+
+      const confirmed = confirm(`Are you sure you want to add ${validRecords.length} staff member(s) to the ${currentMonth} roster?`);
+      if (!confirmed) return;
+
+      btnExecuteBulk.disabled = true;
+      btnExecuteBulk.innerHTML = `<span>⏳ Enrolling ${validRecords.length} Staff...</span>`;
+
+      try {
+        const res = await fetch('/api/bulk-staff-import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            employees: validRecords,
+            month_year: currentMonth
+          })
+        });
+        const data = await res.json();
+
+        if (data.status === 'success') {
+          showToast(`✔ Successfully enrolled ${data.added_count} staff members to roster!`);
+          closeStaffModal();
+          resetBulkStaffView();
+          await loadData();
+        } else {
+          alert('Error during bulk import: ' + (data.message || 'Unknown error'));
+          btnExecuteBulk.disabled = false;
+          btnExecuteBulk.innerHTML = `<span>🚀 Import & Add to Roster</span> <span class="btn-badge-count">${validRecords.length}</span>`;
+        }
+      } catch (err) {
+        alert('Network or server error while executing bulk import.');
+        btnExecuteBulk.disabled = false;
+        btnExecuteBulk.innerHTML = `<span>🚀 Import & Add to Roster</span> <span class="btn-badge-count">${validRecords.length}</span>`;
+      }
+    });
+  }
 
   // Bulk Slips Modal
   const bulkModal = document.getElementById('modal-bulk-slips');

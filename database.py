@@ -1620,6 +1620,113 @@ def create_or_update_manual_employee(emp_data: dict, current_month: str = "Augus
 
     return get_employee_portfolio(emp_code)
 
+def bulk_create_or_update_manual_employees(staff_list: list, current_month: str = "August -2026") -> dict:
+    """Batch enroll multiple staff members (10, 50, 100+) in one atomic transaction."""
+    current_month = normalize_month_year(current_month)
+    conn = get_db()
+    cursor = conn.cursor()
+    m_days = float(payroll_engine.get_days_in_month_str(current_month) or 31)
+
+    added_count = 0
+    updated_codes = []
+    dept_counts = {}
+    cat_counts = {}
+
+    for emp_data in staff_list:
+        emp_code = str(emp_data.get('emp_code', '')).strip()
+        name = str(emp_data.get('name', '')).strip()
+        if not emp_code or not name:
+            continue
+
+        desig = str(emp_data.get('designation', 'Staff')).strip() or 'Staff'
+        dept = normalize_dept(str(emp_data.get('department', 'Administration')).strip())
+        policy = str(emp_data.get('attendance_policy', 'standard')).strip()
+        if policy not in ['standard', 'exempt_full', 'visiting_twice_weekly']:
+            policy = 'standard'
+
+        try:
+            quota = float(emp_data.get('annual_cl_quota', 12.0) or 12.0)
+        except Exception:
+            quota = 12.0
+
+        category = str(emp_data.get('category', '')).strip()
+        if not category:
+            category = 'Teaching' if any(w in desig.lower() for w in ['prof', 'lecturer', 'faculty', 'hod', 'dean']) else 'Non-Teaching'
+
+        try:
+            base_sal = float(emp_data.get('base_salary', 0.0) or 0.0)
+        except Exception:
+            base_sal = 0.0
+
+        bank_name = str(emp_data.get('bank_name', 'PNB')).strip() or 'PNB'
+        account_no = str(emp_data.get('account_no', '')).strip()
+        ifsc_code = str(emp_data.get('ifsc_code', '')).strip()
+
+        # 1. Employees Master
+        cursor.execute("""
+        INSERT OR REPLACE INTO employees (emp_code, name, designation, department, annual_cl_quota, annual_od_quota, attendance_policy, is_manual)
+        VALUES (?, ?, ?, ?, ?, 15.0, ?, 1)
+        """, (emp_code, name, desig, dept, quota, policy))
+
+        # 2. Salary Profiles
+        cursor.execute("""
+        INSERT OR REPLACE INTO salary_profiles 
+        (emp_code, name, category, designation, department, base_salary, bank_name, account_no, ifsc_code)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (emp_code, name, category, desig, dept, base_sal, bank_name, account_no, ifsc_code))
+
+        # 3. Determine Attendance & Pay Days
+        if policy == 'exempt_full':
+            bio_days = 25.0
+            holiday = 6.0
+            total_pay = m_days
+            remarks = "👑 Executive Full Pay Approval\nInstitutional waiver approved — 100% full salary credited"
+            needs_review = 0
+        elif policy == 'visiting_twice_weekly':
+            bio_days = 8.0
+            holiday = 6.0
+            total_pay = m_days
+            remarks = "🏫 Visiting Faculty Schedule\nTwice weekly academic lectures completed (Full pay waiver)"
+            needs_review = 0
+        else:
+            try:
+                bio_days = float(emp_data.get('biometric_days', 25.0) or 25.0)
+            except Exception:
+                bio_days = 25.0
+            holiday = 6.0
+            total_pay = min(m_days, bio_days + holiday)
+            remarks = "👤 Bulk Added Staff\nRegular roster staff member"
+            needs_review = 0
+
+        # 4. Monthly Records
+        cursor.execute("""
+        INSERT OR REPLACE INTO monthly_records 
+        (emp_code, month_year, name, designation, department, biometric_days, holiday, availed_leaves, sv_od, total_pay_days, remarks, needs_review, base_salary)
+        VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?)
+        """, (emp_code, current_month, name, desig, dept, bio_days, holiday, total_pay, remarks, needs_review, base_sal))
+
+        added_count += 1
+        updated_codes.append(emp_code)
+        dept_counts[dept] = dept_counts.get(dept, 0) + 1
+        cat_counts[category] = cat_counts.get(category, 0) + 1
+
+    conn.commit()
+    conn.close()
+
+    # Recalculate monthly salaries
+    for code in updated_codes:
+        try:
+            recalculate_monthly_salary(code, current_month)
+        except Exception as e:
+            print(f"[BULK SALARY CALC WARNING] {code}: {e}")
+
+    return {
+        'status': 'success',
+        'added_count': added_count,
+        'department_counts': dept_counts,
+        'category_counts': cat_counts
+    }
+
 def set_employee_policy(emp_code: str, policy: str, month_year: str = "August -2026"):
     """Update policy for an employee and recalculate monthly pay days if exempt."""
     conn = get_db()
