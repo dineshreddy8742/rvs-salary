@@ -976,8 +976,6 @@ def seed_from_engine(engine, month_year: str = "August 2026", overwrite: bool = 
             cl_q = 12.0
             od_q = 15.0
 
-        emp_batch.append((ec_str, m_name, m_desig, m_dept, cl_q, od_q, policy, is_manual_val))
-
         summary = engine.calculate_employee_summary(emp)
         
         # 2-line institutional condition remarks
@@ -1009,6 +1007,21 @@ def seed_from_engine(engine, month_year: str = "August 2026", overwrite: bool = 
             od = summary['sv_od']
             remarks = summary['remarks']
             needs_review = 1 if summary['needs_review'] else 0
+
+        # Zero-working-days filter: Exclude employees who did not work at all throughout the month
+        # (0 biometric days, 0 leaves, 0 OD, and no VIP/exempt policy).
+        # These are inactive/former employees lingering in biometric machine dumps.
+        is_zero_working = (
+            policy not in ['exempt_full', 'visiting_twice_weekly'] and
+            ec_str not in vip_full_pay_codes and
+            bio_days_emp <= 0.0 and
+            (leaves is None or float(leaves) <= 0.0) and
+            (od is None or float(od) <= 0.0)
+        )
+        if is_zero_working:
+            continue
+
+        emp_batch.append((ec_str, m_name, m_desig, m_dept, cl_q, od_q, policy, is_manual_val))
 
         mon_batch.append((
             ec_str, month_year,
@@ -1068,6 +1081,65 @@ def seed_from_engine(engine, month_year: str = "August 2026", overwrite: bool = 
     conn.close()
     print(f"Database seeded successfully for {month_year}.")
     apply_principal_rules_to_db(month_year, from_upload=True)
+    purge_zero_working_days_employees(month_year)
+
+def purge_zero_working_days_employees(month_year: Optional[str] = None) -> dict:
+    """
+    Remove all inactive employees who did not work at all throughout the designated month
+    (0 biometric punch days, 0 CL, and 0 OD, and not on official VIP/governing body exemption).
+    These represent former/resigned staff or unassigned records lingering in biometric machines.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    vip_codes = set(NON_BIOMETRIC_STAFF.keys()).union({
+        '101', '707', '1015', '1019', '1021', '4001', '1030', '900', '1060', '1210', 'SHAJAHAN', 'SHIVA_DRIVER'
+    })
+    
+    months = [normalize_month_year(month_year)] if month_year else get_available_months()
+    total_purged = 0
+    purged_by_month = {}
+    
+    for m in months:
+        norm_m = normalize_month_year(m)
+        cursor.execute("""
+            SELECT m.emp_code, e.attendance_policy, m.biometric_days, m.availed_leaves, m.sv_od
+            FROM monthly_records m
+            JOIN employees e ON m.emp_code = e.emp_code
+            WHERE m.month_year = ?
+        """, (norm_m,))
+        rows = cursor.fetchall()
+        
+        to_delete = []
+        for r in rows:
+            ec = str(r['emp_code'])
+            pol = str(r.get('attendance_policy') or 'standard').lower()
+            if pol in ['exempt_full', 'visiting_twice_weekly'] or ec in vip_codes:
+                continue
+            bio = float(r.get('biometric_days') or 0.0)
+            cl = float(r.get('availed_leaves') or 0.0)
+            od = float(r.get('sv_od') or 0.0)
+            if bio <= 0.0 and cl <= 0.0 and od <= 0.0:
+                to_delete.append(ec)
+                
+        if to_delete:
+            chunk_size = 100
+            for i in range(0, len(to_delete), chunk_size):
+                chunk = to_delete[i:i+chunk_size]
+                placeholders = ','.join(['?'] * len(chunk))
+                cursor.execute(f"DELETE FROM monthly_records WHERE month_year = ? AND emp_code IN ({placeholders})", [norm_m] + chunk)
+                cursor.execute(f"DELETE FROM daily_logs WHERE month_year = ? AND emp_code IN ({placeholders})", [norm_m] + chunk)
+            conn.commit()
+            
+        purged_by_month[norm_m] = len(to_delete)
+        total_purged += len(to_delete)
+        
+    conn.close()
+    return {
+        'status': 'success',
+        'total_purged': total_purged,
+        'purged_by_month': purged_by_month
+    }
 
 _PRINCIPAL_RULES_APPLIED = set()
 
@@ -1545,8 +1617,14 @@ def get_month_records(month_year: str, active_only: bool = True, reference_codes
 
     results = []
     is_august = 'august' in month_year.lower()
+    vip_full_pay_codes = set(NON_BIOMETRIC_STAFF.keys()).union({
+        '101', '707', '1015', '1019', '1021', '4001', '1030', '900', '1060', '1210', 'SHAJAHAN', 'SHIVA_DRIVER'
+    })
     for r in rows:
-        ec = r['emp_code']
+        ec = str(r['emp_code'])
+        policy = str(r['attendance_policy'] or 'standard').lower()
+        is_exempt = policy in ['exempt_full', 'visiting_twice_weekly'] or ec in vip_full_pay_codes
+
         if active_only and is_august and reference_codes and ec not in reference_codes and not r['is_manual']:
             continue
 
@@ -1559,6 +1637,14 @@ def get_month_records(month_year: str, active_only: bool = True, reference_codes
         od_val = r['sv_od']
         if (od_val is None or od_val == 0.0) and lm['od_days']:
             od_val = float(len(lm['od_days']))
+
+        bio_val = float(r['biometric_days'] or 0.0)
+        c_val = float(cl_val or 0.0)
+        o_val = float(od_val or 0.0)
+
+        # Omit zero-working-days employees (did not work entire month, 0 punches, 0 leaves, 0 OD, not exempt)
+        if not is_exempt and bio_val <= 0.0 and c_val <= 0.0 and o_val <= 0.0:
+            continue
 
         m_days_count = int(payroll_engine.get_days_in_month_str(month_year) or 31)
         results.append({
@@ -3126,9 +3212,23 @@ def get_month_salary_records(month_year: str, active_only: bool = True, referenc
     tot_net = 0.0
 
     is_august = 'august' in month_year.lower()
+    vip_full_pay_codes = set(NON_BIOMETRIC_STAFF.keys()).union({
+        '101', '707', '1015', '1019', '1021', '4001', '1030', '900', '1060', '1210', 'SHAJAHAN', 'SHIVA_DRIVER'
+    })
     for r in rows:
-        ec = r['emp_code']
+        ec = str(r['emp_code'])
+        policy = str(r['attendance_policy'] or 'standard').lower()
+        is_exempt = policy in ['exempt_full', 'visiting_twice_weekly'] or ec in vip_full_pay_codes
+
         if active_only and is_august and reference_codes and ec not in reference_codes and not r['is_manual']:
+            continue
+
+        bio_val = float(r['biometric_days'] or 0.0)
+        cl_val = float(r['availed_leaves'] or 0.0)
+        od_val = float(r['sv_od'] or 0.0)
+
+        # Omit zero-working-days employees from salary ledger as well
+        if not is_exempt and bio_val <= 0.0 and cl_val <= 0.0 and od_val <= 0.0:
             continue
 
         base_sal = float(r['base_salary'] or 0.0)

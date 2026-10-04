@@ -598,12 +598,13 @@ def _bg_process_upload(job_id: str, save_path: str, user_month: str, orig_filena
         del engine
         gc.collect()
 
+        active_count = len(database.get_month_records(final_month, active_only=False))
         UPLOAD_JOBS[job_id] = {
             'status': 'success',
             'progress': 100,
             'month_name': final_month,
-            'total_staff': total_emps,
-            'message': f'Successfully loaded and analyzed {total_emps} staff from {orig_filename} for {final_month}'
+            'total_staff': active_count,
+            'message': f'Successfully loaded and analyzed {active_count} active staff from {orig_filename} for {final_month}'
         }
     except Exception as e:
         print(f"[Upload Job {job_id}] Error: {e}")
