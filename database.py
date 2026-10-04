@@ -2391,12 +2391,15 @@ def bulk_attendance_override(
         WHERE emp_code = ? AND month_year = ?
         """, monthly_updates)
 
-    else:
+        # Query existing leaves and ODs to keep biometric_days + holiday + cl + od == total
+        s_placeholders = ','.join(['?'] * len(filtered_codes))
+        cursor.execute(f"SELECT emp_code, availed_leaves, sv_od FROM monthly_records WHERE month_year = ? AND emp_code IN ({s_placeholders})", [month_year] + filtered_codes)
+        existing_leaves = {str(r['emp_code']): (float(r['availed_leaves'] or 0.0), float(r['sv_od'] or 0.0)) for r in cursor.fetchall()}
+
         if action == 'full_present':
             total = m_days
             holiday = month_holidays
-            bio_days = max(0.0, m_days - month_holidays)
-            remark = 'Full Attendance Granted by Admin Override'
+            remark = 'Full Attendance Approved by Admin'
             # Also update daily_logs for these employees so absent is cleared
             dl_updates = [(ec, month_year) for ec in filtered_codes]
             cursor.executemany("""
@@ -2407,11 +2410,15 @@ def bulk_attendance_override(
         else:  # half_present
             total = round(m_days / 2.0, 1)
             holiday = round(month_holidays / 2.0, 1)
-            bio_days = max(0.0, total - holiday)
-            remark = 'Half Attendance Granted by Admin Override'
+            remark = 'Half Attendance Approved by Admin'
 
-        # Batch update monthly_records attendance
-        update_tuples = [(bio_days, holiday, total, '[]', '[]', remark, 0, ec, month_year) for ec in filtered_codes]
+        # Batch update monthly_records attendance with exact biometric balance
+        update_tuples = []
+        for ec in filtered_codes:
+            cl, od = existing_leaves.get(ec, (0.0, 0.0))
+            bio_days = max(0.0, total - holiday - cl - od)
+            update_tuples.append((bio_days, holiday, total, '[]', '[]', remark, 0, ec, month_year))
+
         cursor.executemany("""
         UPDATE monthly_records
         SET biometric_days = ?, holiday = ?, total_pay_days = ?,
@@ -3139,7 +3146,19 @@ def update_monthly_salary_field(emp_code: str, month_year: str, field: str, valu
         conn.close()
         raise ValueError(f"Invalid salary field: {field}")
 
-    cursor.execute(f"UPDATE monthly_records SET {col} = ? WHERE emp_code = ? AND month_year = ?", (val_float, emp_code, month_year))
+    if field == 'total_pay_days':
+        cursor.execute("SELECT holiday, availed_leaves, sv_od FROM monthly_records WHERE emp_code = ? AND month_year = ?", (emp_code, month_year))
+        row = cursor.fetchone()
+        if row:
+            hol = float(row['holiday'] or 0.0)
+            cl = float(row['availed_leaves'] or 0.0)
+            od = float(row['sv_od'] or 0.0)
+            new_bio = max(0.0, val_float - hol - cl - od)
+            cursor.execute("UPDATE monthly_records SET total_pay_days = ?, biometric_days = ? WHERE emp_code = ? AND month_year = ?", (val_float, new_bio, emp_code, month_year))
+        else:
+            cursor.execute("UPDATE monthly_records SET total_pay_days = ? WHERE emp_code = ? AND month_year = ?", (val_float, emp_code, month_year))
+    else:
+        cursor.execute(f"UPDATE monthly_records SET {col} = ? WHERE emp_code = ? AND month_year = ?", (val_float, emp_code, month_year))
 
     # Also update salary_profiles if base_salary changed
     if field == 'base_salary' and val_float > 0:
@@ -3262,10 +3281,13 @@ def update_employee_unified_all(emp_code: str, month_year: str, data: Dict[str, 
     leaves = float(data['availed_leaves']) if data.get('availed_leaves') is not None and str(data.get('availed_leaves')).strip() != '' else 0.0
     od = float(data['sv_od']) if data.get('sv_od') is not None and str(data.get('sv_od')).strip() != '' else 0.0
     
+    m_days = float(payroll_engine.get_days_in_month_str(month_year) or 30)
     if data.get('total_pay_days') is not None and str(data.get('total_pay_days')).strip() != '':
         pay_days = float(data['total_pay_days'])
+        if abs((bio + hol + leaves + od) - pay_days) > 0.01:
+            bio = max(0.0, pay_days - hol - leaves - od)
     else:
-        pay_days = min(31.0, bio + hol + leaves + od)
+        pay_days = min(m_days, bio + hol + leaves + od)
 
     # 4. Salary and Deductions
     arrears = float(data.get('arrears', 0.0) or 0.0)

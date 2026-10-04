@@ -5520,7 +5520,7 @@ async function applyBulkOverride() {
   else if (action === 'half_present') actionLabel = `Half Present (${curDays / 2} days)`;
   else actionLabel = `Present for days: ${Array.from(bovSelectedDays).sort((a,b)=>a-b).join(', ')}`;
 
-  if (!confirm(`Apply ${actionLabel} in ${currentMonth}?\n\nThis will override attendance and recalculate salary.`)) return;
+  if (!confirm(`Apply ${actionLabel} in ${currentMonth}?\n\nThis will approve attendance and recalculate salary.`)) return;
 
   const btn = document.getElementById('btn-apply-bulk-override');
   const progressWrapper = document.getElementById('bov-progress-wrapper');
@@ -5529,7 +5529,7 @@ async function applyBulkOverride() {
   const progressStatus  = document.getElementById('bov-progress-status');
   const progressSub     = document.getElementById('bov-progress-subtext');
 
-  if (btn) { btn.disabled = true; btn.textContent = 'Applying…'; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Approving…'; }
   if (progressWrapper) progressWrapper.style.display = 'block';
 
   let currentPct = 10;
@@ -5547,7 +5547,7 @@ async function applyBulkOverride() {
   const progressInterval = setInterval(() => {
     timerStep++;
     if (timerStep === 1) {
-      setProgress(35, '📋 Updating attendance records...', 'Setting override days for matched staff');
+      setProgress(35, '📋 Updating attendance records...', 'Setting approved days for matched staff');
     } else if (timerStep === 2) {
       setProgress(60, '💰 Recalculating salaries...', 'Computing basic, DA, HRA, and deductions');
     } else if (timerStep === 3) {
@@ -5577,10 +5577,10 @@ async function applyBulkOverride() {
     clearInterval(progressInterval);
 
     if (data.status === 'success') {
-      setProgress(100, '✅ Completed successfully!', `Updated ${data.updated_count} employees`);
+      setProgress(100, '✅ Completed successfully!', `Approved for ${data.updated_count} employees`);
       await new Promise(r => setTimeout(r, 450));
       closeBulkOverrideModal();
-      showToast(`✅ ${actionLabel} applied to ${data.updated_count} employees in ${currentMonth}!`, 'success');
+      showToast(`✅ ${actionLabel} approved for ${data.updated_count} employees in ${currentMonth}!`, 'success');
       await loadData();
     } else {
       clearInterval(progressInterval);
@@ -5595,7 +5595,7 @@ async function applyBulkOverride() {
     clearInterval(progressInterval);
     if (btn) {
       btn.disabled = false;
-      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Apply Override';
+      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Apply Approval';
     }
   }
 }
