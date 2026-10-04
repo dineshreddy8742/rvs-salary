@@ -128,6 +128,20 @@ def export_to_xls(employees: List[Dict[str, Any]], output_filepath: str, month_y
         "Total Pay\nDays", "Remarks"
     ]
 
+    # ── Strictly exclude dummy machine test badges and Department 'DEFAULT' ──
+    vip_codes = {'101', '707', '1015', '1019', '1021', '4001', '1030', '900', '1060', '1210', 'SHAJAHAN', 'SHIVA_DRIVER'}
+    employees = [
+        e for e in employees
+        if not (
+            str(e.get('emp_code', '')).strip() not in vip_codes and
+            (
+                str(e.get('department', '')).strip().lower() in ('default', 'none', '') or
+                str(e.get('name', '')).strip() == str(e.get('emp_code', '')).strip() or
+                str(e.get('name', '')).strip().lower() == f"employee {str(e.get('emp_code', '')).strip()}".lower()
+            )
+        )
+    ]
+
     # ── Sort employees dept-wise then by name ──────────────────────────────────
     employees = sorted(employees, key=_sort_key)
 

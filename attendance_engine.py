@@ -326,6 +326,17 @@ class AttendanceEngine:
                 final_name = meta.get('name', emp_name if emp_name else f"Employee {emp_code}")
                 final_desig = meta.get('designation', 'Staff')
 
+                # Skip dummy unassigned test badges and Default department from raw biometric dump
+                dept_clean = final_dept.strip().lower()
+                name_clean = final_name.strip()
+                vip_codes = {'101', '707', '1015', '1019', '1021', '4001', '1030', '900', '1060', '1210', 'SHAJAHAN', 'SHIVA_DRIVER'}
+                if (
+                    emp_code not in self.reference_metadata and
+                    emp_code not in vip_codes and
+                    (dept_clean in ('default', 'none', '') or name_clean == emp_code or name_clean.lower() == f"employee {emp_code}".lower())
+                ):
+                    continue
+
                 # Do not overwrite complete records from a main sheet (e.g. Sheet7) with a duplicate/partial sheet (e.g. Sheet8)
                 if emp_code in target_dict and len(target_dict[emp_code]['days']) >= len(daily_records):
                     pass

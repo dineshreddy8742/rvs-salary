@@ -1008,6 +1008,23 @@ def seed_from_engine(engine, month_year: str = "August 2026", overwrite: bool = 
             remarks = summary['remarks']
             needs_review = 1 if summary['needs_review'] else 0
 
+        # Block dummy machine test cards and Department: DEFAULT
+        # Biometric devices dump unassigned badges / technician test punches under 'Department: DEFAULT'
+        # with employee name equal to employee code. These are NOT actual college employees.
+        dept_clean = str(m_dept).strip().lower()
+        name_clean = str(m_name).strip()
+        is_dummy_card = (
+            policy not in ['exempt_full', 'visiting_twice_weekly'] and
+            ec_str not in vip_full_pay_codes and
+            (
+                dept_clean in ('default', 'none', '') or
+                name_clean == ec_str or
+                name_clean.lower() == f"employee {ec_str}".lower()
+            )
+        )
+        if is_dummy_card:
+            continue
+
         # Zero-working-days filter: Exclude employees who did not work at all throughout the month
         # (0 physical biometric punches, 0 leaves, 0 OD, and no VIP/exempt policy).
         # These are inactive/former employees lingering in biometric machine dumps.
@@ -1087,8 +1104,8 @@ def seed_from_engine(engine, month_year: str = "August 2026", overwrite: bool = 
 def purge_zero_working_days_employees(month_year: Optional[str] = None) -> dict:
     """
     Remove all inactive employees who did not work at all throughout the designated month
-    (0 biometric punch days, 0 CL, and 0 OD, and not on official VIP/governing body exemption).
-    These represent former/resigned staff or unassigned records lingering in biometric machines.
+    (0 biometric punch days, 0 CL, and 0 OD, and not on official VIP/governing body exemption),
+    AS WELL AS all dummy test cards / Department 'DEFAULT' / name == emp_code cards lingering from biometric machines.
     """
     conn = get_db()
     cursor = conn.cursor()
@@ -1104,7 +1121,8 @@ def purge_zero_working_days_employees(month_year: Optional[str] = None) -> dict:
     for m in months:
         norm_m = normalize_month_year(m)
         cursor.execute("""
-            SELECT m.emp_code, e.attendance_policy, m.biometric_days, m.availed_leaves, m.sv_od
+            SELECT m.emp_code, e.name, e.department, m.name as m_name, m.department as m_dept,
+                   e.attendance_policy, m.biometric_days, m.availed_leaves, m.sv_od
             FROM monthly_records m
             JOIN employees e ON m.emp_code = e.emp_code
             WHERE m.month_year = ?
@@ -1129,7 +1147,18 @@ def purge_zero_working_days_employees(month_year: Optional[str] = None) -> dict:
             has_punches = ec in punched_set
             cl = float(r.get('availed_leaves') or 0.0)
             od = float(r.get('sv_od') or 0.0)
-            if not has_punches and cl <= 0.0 and od <= 0.0:
+            
+            # Identify dummy machine test cards and Department: DEFAULT
+            dept_l = str(r.get('m_dept') or r.get('department') or '').strip().lower()
+            name_s = str(r.get('m_name') or r.get('name') or '').strip()
+            is_dummy_card = (
+                dept_l in ('default', 'none', '') or
+                name_s == ec or
+                name_s.lower() == f"employee {ec}".lower()
+            )
+            is_zero_working = (not has_punches and cl <= 0.0 and od <= 0.0)
+
+            if is_dummy_card or is_zero_working:
                 to_delete.append(ec)
                 
         if to_delete:
@@ -1143,6 +1172,14 @@ def purge_zero_working_days_employees(month_year: Optional[str] = None) -> dict:
             
         purged_by_month[norm_m] = len(to_delete)
         total_purged += len(to_delete)
+
+    # Clean up dummy cards from master employees table
+    cursor.execute("""
+        DELETE FROM employees
+        WHERE (LOWER(department) IN ('default', 'none', '') OR name = emp_code OR name LIKE 'Employee %')
+          AND emp_code NOT IN ('101', '707', '1015', '1019', '1021', '4001', '1030', '900', '1060', '1210', 'SHAJAHAN', 'SHIVA_DRIVER')
+    """)
+    conn.commit()
         
     conn.close()
     return {
@@ -1651,6 +1688,12 @@ def get_month_records(month_year: str, active_only: bool = True, reference_codes
         bio_val = float(r['biometric_days'] or 0.0)
         c_val = float(cl_val or 0.0)
         o_val = float(od_val or 0.0)
+
+        # Omit dummy machine cards / Default department (unassigned test cards)
+        dept_lower = str(r['department'] or '').strip().lower()
+        name_str = str(r['name'] or '').strip()
+        if not is_exempt and (dept_lower in ('default', 'none', '') or name_str == ec or name_str.lower() == f"employee {ec}".lower()):
+            continue
 
         # Omit zero-working-days employees (did not work entire month, 0 punches, 0 leaves, 0 OD, not exempt)
         if not is_exempt and bio_val <= 0.0 and c_val <= 0.0 and o_val <= 0.0:
@@ -3236,6 +3279,12 @@ def get_month_salary_records(month_year: str, active_only: bool = True, referenc
         bio_val = float(r['biometric_days'] or 0.0)
         cl_val = float(r['availed_leaves'] or 0.0)
         od_val = float(r['sv_od'] or 0.0)
+
+        # Omit dummy machine cards / Default department (unassigned test cards)
+        dept_lower = str(r['department'] or '').strip().lower()
+        name_str = str(r['name'] or '').strip()
+        if not is_exempt and (dept_lower in ('default', 'none', '') or name_str == ec or name_str.lower() == f"employee {ec}".lower()):
+            continue
 
         # Omit zero-working-days employees from salary ledger as well
         if not is_exempt and bio_val <= 0.0 and cl_val <= 0.0 and od_val <= 0.0:

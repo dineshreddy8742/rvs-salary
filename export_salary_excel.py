@@ -105,6 +105,20 @@ def export_salary_to_xlsx(
 
     INSTITUTION = "Sri Venkateswara College of Engineering & Technology (Autonomous), Chittoor"
 
+    # ── Strictly exclude dummy machine test badges and Department 'DEFAULT' ──
+    vip_codes = {'101', '707', '1015', '1019', '1021', '4001', '1030', '900', '1060', '1210', 'SHAJAHAN', 'SHIVA_DRIVER'}
+    records = [
+        r for r in records
+        if not (
+            str(r.get('emp_code', '')).strip() not in vip_codes and
+            (
+                str(r.get('department', '')).strip().lower() in ('default', 'none', '') or
+                str(r.get('name', '')).strip() == str(r.get('emp_code', '')).strip() or
+                str(r.get('name', '')).strip().lower() == f"employee {str(r.get('emp_code', '')).strip()}".lower()
+            )
+        )
+    ]
+
     # ── Sort all records department-wise then by name ──────────────────────────
     all_sorted = sorted(records, key=_dept_sort_key)
 
