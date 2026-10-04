@@ -740,7 +740,14 @@ class AttendanceEngine:
             total_deductions += 1.0
 
         # Calculate Total Pay Days
-        if doj_day:
+        # Full-Month Absence Protection: If employee had 0 biometric punches, 0 leaves, and 0 OD,
+        # they never attended college and receive 0.0 pay days and 0.0 paid holidays.
+        actual_punches = sum(1 for d in days if (d.get('in_time') or d.get('out_time') or 'present' in str(d.get('status', '')).lower()))
+        if actual_punches == 0 and cl_count == 0 and od_count == 0:
+            total_pay_days = 0.0
+            biometric_days = 0.0
+            holiday = 0.0
+        elif doj_day:
             # Prorated from DOJ
             working_days_in_period = self.num_days - doj_day + 1
             total_pay_days = max(0.0, float(working_days_in_period) - total_deductions)
@@ -753,6 +760,8 @@ class AttendanceEngine:
         # Biometric Days: consistent with total pay days
         if emp.get('manual_biometric_override') is not None:
             biometric_days = float(emp['manual_biometric_override'])
+        elif actual_punches == 0 and cl_count == 0 and od_count == 0:
+            biometric_days = 0.0
         else:
             biometric_days = max(0.0, total_pay_days - holiday - cl_count - od_count)
 

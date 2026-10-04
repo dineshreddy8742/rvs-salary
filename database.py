@@ -1009,12 +1009,13 @@ def seed_from_engine(engine, month_year: str = "August 2026", overwrite: bool = 
             needs_review = 1 if summary['needs_review'] else 0
 
         # Zero-working-days filter: Exclude employees who did not work at all throughout the month
-        # (0 biometric days, 0 leaves, 0 OD, and no VIP/exempt policy).
+        # (0 physical biometric punches, 0 leaves, 0 OD, and no VIP/exempt policy).
         # These are inactive/former employees lingering in biometric machine dumps.
+        punches_count = sum(1 for d in emp.get('days', []) if (d.get('in_time') or d.get('out_time') or 'present' in str(d.get('status', '')).lower()))
         is_zero_working = (
             policy not in ['exempt_full', 'visiting_twice_weekly'] and
             ec_str not in vip_full_pay_codes and
-            bio_days_emp <= 0.0 and
+            punches_count == 0 and
             (leaves is None or float(leaves) <= 0.0) and
             (od is None or float(od) <= 0.0)
         )
@@ -1110,16 +1111,25 @@ def purge_zero_working_days_employees(month_year: Optional[str] = None) -> dict:
         """, (norm_m,))
         rows = cursor.fetchall()
         
+        cursor.execute("""
+            SELECT DISTINCT emp_code
+            FROM daily_logs
+            WHERE month_year = ?
+              AND ((in_time IS NOT NULL AND in_time != '' AND in_time != 'None')
+                   OR (out_time IS NOT NULL AND out_time != '' AND out_time != 'None'))
+        """, (norm_m,))
+        punched_set = {str(r['emp_code']) for r in cursor.fetchall()}
+        
         to_delete = []
         for r in rows:
             ec = str(r['emp_code'])
             pol = str(r.get('attendance_policy') or 'standard').lower()
             if pol in ['exempt_full', 'visiting_twice_weekly'] or ec in vip_codes:
                 continue
-            bio = float(r.get('biometric_days') or 0.0)
+            has_punches = ec in punched_set
             cl = float(r.get('availed_leaves') or 0.0)
             od = float(r.get('sv_od') or 0.0)
-            if bio <= 0.0 and cl <= 0.0 and od <= 0.0:
+            if not has_punches and cl <= 0.0 and od <= 0.0:
                 to_delete.append(ec)
                 
         if to_delete:
