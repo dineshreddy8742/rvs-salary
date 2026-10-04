@@ -2052,9 +2052,21 @@ def evaluate_employee_attendance_from_logs(ec: str, logs: list, e_data: dict, m_
         elif 'ABSENT' in eff:
             abs_list.append(dn)
 
+    if not logs:
+        return 0.0, 0.0, 0.0, 0.0, 0.0, [], [], [], "No Biometric Records", 0
+
     total_deductions = len(abs_list) * 1.0 + len(mis_list) * 0.5 + len(half_list) * 0.5
     total = max(0.0, m_days - total_deductions)
     pres = max(0.0, total - hol - cl_count - od_count)
+
+    # Full month absence rule: If an employee never worked a single day, has no approved leaves, and no admin approval,
+    # they receive 0 pay days and 0 paid holidays (Full Month LOP)
+    if pres == 0.0 and cl_count == 0.0 and od_count == 0.0 and not overridden_days:
+        total = 0.0
+        hol = 0.0
+        rem = f"Full Month Absent ({int(m_days)}d LOP)" if abs_list else "No Biometric Records"
+        needs_rev = 1 if abs_list else 0
+        return 0.0, 0.0, 0.0, 0.0, 0.0, abs_list, mis_list, half_list, rem, needs_rev
 
     rem_parts = []
     if overridden_days:
