@@ -2935,8 +2935,16 @@ async function handleAttendanceInlineEdit(empCode, field, value, inputEl) {
       inputEl.classList.add('saved');
       setTimeout(() => inputEl.classList.remove('saved'), 1500);
 
+      // Fast local in-memory update without heavy reload lag
+      const emp = unifiedRecords.find(r => String(r.emp_code) === String(empCode));
+      if (emp) {
+        if (field === 'availed_leaves') emp.cl_days = numVal;
+        if (field === 'sv_od') emp.od_days = numVal;
+        emp.total_pay_days = Math.min(emp.month_days, (emp.present_days || 0) + (emp.holiday || 0) + (emp.cl_days || 0) + (emp.od_days || 0));
+        emp.lop_days = Math.max(0, Math.round((emp.month_days - emp.total_pay_days) * 10) / 10);
+      }
+
       showToast(`✔ Updated ${field === 'availed_leaves' ? 'CL (Leaves)' : 'On-Duty (OD)'} for Emp ${empCode}`);
-      await loadData();
     }
   } catch (err) {
     alert('Error saving attendance update');
@@ -3006,7 +3014,6 @@ async function handleUnifiedInlineEdit(empCode, field, value, inputEl) {
       }
 
       showToast(`✔ Updated ${field.replace('_', ' ')} for Emp ${empCode}`);
-      loadData();
     }
   } catch (err) {
     alert('Error saving inline update');
@@ -3717,38 +3724,62 @@ function switchTimelineView(mode) {
 }
 
 // 31-Day Punch Timeline Modal
+// 31-Day Punch Timeline Modal
 async function openTimelineModal(empCode) {
+  const emp = unifiedRecords.find(e => String(e.emp_code) === String(empCode)) || {};
+
+  // 1. OPEN MODAL INSTANTLY in 0ms!
+  document.getElementById('timeline-emp-name').textContent = emp.name || 'Staff Member';
+  document.getElementById('timeline-emp-meta').textContent = 
+    `Emp Code: ${emp.emp_code || empCode} | Department: ${emp.department || ''} | Designation: ${emp.designation || 'Staff'} | Month: ${currentMonth}`;
+
+  const bar = document.getElementById('timeline-summary-bar');
+  if (bar) {
+    const pDays = emp.present_days !== undefined ? emp.present_days : (emp.biometric_days || 0);
+    const hDays = emp.holiday !== undefined ? emp.holiday : 6;
+    const lDays = emp.cl_days !== undefined ? emp.cl_days : (emp.availed_leaves || 0);
+    const oDays = emp.od_days !== undefined ? emp.od_days : (emp.sv_od || 0);
+    const tDays = emp.total_pay_days || 0;
+    bar.innerHTML = `
+      <span class="badge-pill" style="background:#ecfdf5; color:#065f46; font-size: 0.78rem; padding: 0.35rem 0.85rem;">Biometric Days: ${pDays}</span>
+      <span class="badge-pill" style="background:#eff6ff; color:#1e40af; font-size: 0.78rem; padding: 0.35rem 0.85rem;">Holidays: ${hDays}</span>
+      <span class="badge-pill" style="background:#f5f3ff; color:#6b21a8; font-size: 0.78rem; padding: 0.35rem 0.85rem;">Availed Leaves: ${lDays}</span>
+      <span class="badge-pill" style="background:#f0fdfa; color:#0f766e; font-size: 0.78rem; padding: 0.35rem 0.85rem;">SV/OD: ${oDays}</span>
+      <span class="badge-pill" style="background:#dcfce7; color:#15803d; font-size: 0.82rem; font-weight:800; padding: 0.35rem 0.85rem; border:1px solid #86efac;">Total Pay Days: ${tDays}</span>
+      ${emp.remarks ? `<span class="badge-pill" style="background:#fffbeb; color:#b45309; font-size: 0.78rem; padding: 0.35rem 0.85rem; border:1px solid #fde68a;">Remarks: ${emp.remarks}</span>` : ''}
+    `;
+  }
+
+  const calGrid = document.getElementById('calendar-grid');
+  if (calGrid) {
+    calGrid.innerHTML = `
+      <div style="grid-column: 1/-1; text-align:center; padding: 2.5rem; color:#64748b; font-weight:600;">
+        <div style="display:inline-block; width:26px; height:26px; border:3px solid #e2e8f0; border-top-color:#3b82f6; border-radius:50%; animation:spin 0.6s linear infinite; margin-bottom:10px;"></div>
+        <br>Loading 31-day biometric punch logs...
+      </div>`;
+  }
+
+  document.getElementById('modal-timeline').classList.add('active');
+
+  // 2. Fetch daily logs asynchronously
   try {
     const res = await fetch(`/api/employee/${empCode}/daily?month=${encodeURIComponent(currentMonth)}`);
     const data = await res.json();
     if (data.status !== 'success') return;
 
-    const emp = data.employee;
-    const days = data.days;
-    currentTimelineEmp = emp;
+    const fullEmp = data.employee || emp;
+    const days = data.days || [];
+    currentTimelineEmp = fullEmp;
     currentTimelineDays = days;
 
-    document.getElementById('timeline-emp-name').textContent = emp.name;
-    document.getElementById('timeline-emp-meta').textContent = 
-      `Emp Code: ${emp.emp_code} | Department: ${emp.department} | Designation: ${emp.designation || 'Staff'} | Month: ${currentMonth}`;
-
-    const bar = document.getElementById('timeline-summary-bar');
-    const activeMonthData = emp.months.find(m => m.month_year === currentMonth) || {};
-    bar.innerHTML = `
-      <span class="badge-pill" style="background:#ecfdf5; color:#065f46; font-size: 0.78rem; padding: 0.35rem 0.85rem;">Biometric Days: ${activeMonthData.biometric_days || 0}</span>
-      <span class="badge-pill" style="background:#eff6ff; color:#1e40af; font-size: 0.78rem; padding: 0.35rem 0.85rem;">Holidays: ${activeMonthData.holiday || 6}</span>
-      <span class="badge-pill" style="background:#f5f3ff; color:#6b21a8; font-size: 0.78rem; padding: 0.35rem 0.85rem;">Availed Leaves: ${activeMonthData.availed_leaves || 0}</span>
-      <span class="badge-pill" style="background:#f0fdfa; color:#0f766e; font-size: 0.78rem; padding: 0.35rem 0.85rem;">SV/OD: ${activeMonthData.sv_od || 0}</span>
-      <span class="badge-pill" style="background:#dcfce7; color:#15803d; font-size: 0.82rem; font-weight:800; padding: 0.35rem 0.85rem; border:1px solid #86efac;">Total Pay Days: ${activeMonthData.total_pay_days || 0}</span>
-      ${activeMonthData.remarks ? `<span class="badge-pill" style="background:#fffbeb; color:#b45309; font-size: 0.78rem; padding: 0.35rem 0.85rem; border:1px solid #fde68a;">Remarks: ${activeMonthData.remarks}</span>` : ''}
-    `;
-
-    renderCalendarGrid(emp.emp_code, days, emp);
-    renderTimelineTable(emp, days);
+    renderCalendarGrid(empCode, days, fullEmp);
+    renderTimelineTable(fullEmp, days);
     switchTimelineView(currentTimelineViewMode);
-    document.getElementById('modal-timeline').classList.add('active');
   } catch (err) {
-    alert('Error loading employee punch details');
+    console.error('Error loading punches:', err);
+    if (calGrid) {
+      calGrid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:2rem; color:#dc2626;">Error loading punch logs. Please try again.</div>';
+    }
   }
 }
 
@@ -4344,9 +4375,32 @@ async function saveEmployeePackage(e) {
     });
     const data = await res.json();
     if (data.status === 'success') {
-      document.getElementById('modal-employee-package').classList.remove('active');
+      const modal = document.getElementById('modal-employee-package');
+      if (modal) {
+        modal.classList.remove('active');
+        modal.style.display = 'none';
+      }
       showToast(`✔ Saved 360° Profile, Attendance & Salary for ${payload.name}`);
-      await loadData();
+
+      // Fast in-place local update without heavy full table re-fetch!
+      const emp = unifiedRecords.find(e => String(e.emp_code) === String(payload.emp_code));
+      if (emp) {
+        Object.assign(emp, payload);
+        if (data.record) {
+          emp.gross_salary = data.record.gross_salary;
+          emp.net_salary = data.record.net_salary;
+          emp.total_deductions = data.record.total_deductions;
+          emp.pt_deduction = data.record.pt_deduction;
+          emp.wf_deduction = data.record.wf_deduction;
+          emp.epf_deduction = data.record.epf_deduction;
+          emp.bus_deduction = data.record.bus_deduction;
+          emp.mess_deduction = data.record.mess_deduction;
+          emp.hostel_eb_deduction = data.record.hostel_eb_deduction;
+          emp.other_deductions = data.record.other_deductions;
+        }
+        emp.lop_days = Math.max(0, Math.round((emp.month_days - emp.total_pay_days) * 10) / 10);
+      }
+      renderTable();
     } else {
       alert('Error updating profile: ' + (data.message || 'Unknown error'));
     }

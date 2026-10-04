@@ -1681,6 +1681,93 @@ def get_employee_daily_logs(emp_code: str, month_year: str) -> List[dict]:
         'override_status': r['override_status']
     } for r in rows]
 
+def get_employee_daily_and_portfolio(emp_code: str, month_year: str) -> dict:
+    """Fetch daily punch logs and employee portfolio in a single fast database connection."""
+    month_year = normalize_month_year(month_year)
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # 1. Fetch daily logs
+    cursor.execute("""
+    SELECT day_num, date_str, in_time, out_time, duration, status, override_status
+    FROM daily_logs
+    WHERE emp_code = ? AND month_year = ?
+    ORDER BY day_num ASC
+    """, (emp_code, month_year))
+    daily_rows = cursor.fetchall()
+
+    days = [{
+        'day': r['day_num'],
+        'date': r['date_str'],
+        'in_time': r['in_time'] or '',
+        'out_time': r['out_time'] or '',
+        'duration': r['duration'] or '',
+        'status': r['status'] or '',
+        'override_status': r['override_status']
+    } for r in daily_rows]
+
+    # 2. Fetch employee profile
+    cursor.execute("SELECT * FROM employees WHERE emp_code = ?", (emp_code,))
+    emp = cursor.fetchone()
+    if not emp:
+        conn.close()
+        return {'days': days, 'employee': None}
+
+    # 3. Fetch monthly records
+    cursor.execute("""
+    SELECT month_year, biometric_days, holiday, availed_leaves, sv_od, total_pay_days, remarks
+    FROM monthly_records
+    WHERE emp_code = ?
+    ORDER BY id ASC
+    """, (emp_code,))
+    months = cursor.fetchall()
+    conn.close()
+
+    total_cl_availed = 0.0
+    total_od_availed = 0.0
+    total_pay_days_cum = 0.0
+    monthly_history = []
+
+    for m in months:
+        cl = float(m['availed_leaves'] or 0.0)
+        od = float(m['sv_od'] or 0.0)
+        pay_days = float(m['total_pay_days'] or 0.0)
+        total_cl_availed += cl
+        total_od_availed += od
+        total_pay_days_cum += pay_days
+
+        monthly_history.append({
+            'month_year': m['month_year'],
+            'biometric_days': m['biometric_days'],
+            'holiday': m['holiday'],
+            'availed_leaves': cl,
+            'sv_od': od,
+            'total_pay_days': pay_days,
+            'remarks': m['remarks'] or ''
+        })
+
+    cl_quota = float(emp['annual_cl_quota'] or 12.0)
+    cl_balance = max(0.0, cl_quota - total_cl_availed)
+
+    pf = {
+        'emp_code': emp['emp_code'],
+        'name': emp['name'],
+        'designation': emp['designation'] or 'Staff',
+        'department': emp['department'],
+        'attendance_policy': emp['attendance_policy'],
+        'is_manual': bool(emp['is_manual']),
+        'annual_cl_quota': cl_quota,
+        'total_cl_availed': total_cl_availed,
+        'cl_balance': round(cl_balance, 1),
+        'is_over_leave': total_cl_availed > cl_quota,
+        'annual_od_quota': float(emp['annual_od_quota'] or 15.0),
+        'total_od_availed': total_od_availed,
+        'total_pay_days_cum': round(total_pay_days_cum, 1),
+        'months': monthly_history
+    }
+
+    return {'days': days, 'employee': pf}
+
 def create_or_update_manual_employee(emp_data: dict, current_month: str = "August -2026") -> dict:
     """Manually add an employee (Principal, visiting faculty, consultant, new joiner) with policy, profile, and initial salary."""
     current_month = normalize_month_year(current_month)

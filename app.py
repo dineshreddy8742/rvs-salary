@@ -277,15 +277,13 @@ def get_portfolio(emp_code):
 
 @app.route('/api/employee/<emp_code>/daily', methods=['GET'])
 def get_employee_daily(emp_code):
-    """Fetch 31-day punch logs for calendar modal."""
+    """Fetch 31-day punch logs for calendar modal in a single optimized connection."""
     month_year = request.args.get('month', 'August 2026')
-    days = database.get_employee_daily_logs(emp_code, month_year)
-    pf = database.get_employee_portfolio(emp_code)
-    
+    res = database.get_employee_daily_and_portfolio(emp_code, month_year)
     return jsonify({
         'status': 'success',
-        'employee': pf,
-        'days': days
+        'employee': res.get('employee'),
+        'days': res.get('days', [])
     })
 
 @app.route('/api/manual-employee', methods=['POST'])
