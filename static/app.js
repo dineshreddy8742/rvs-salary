@@ -1816,7 +1816,10 @@ function buildUnifiedRecords(attStats, salStats) {
       od = odList.length;
     }
 
-    const present = Number(att.biometric_present_days !== undefined ? att.biometric_present_days : (att.present_days || payDays));
+    const holiday = Number(payDays <= 0 ? 0 : (att.holiday !== undefined ? att.holiday : (fallbackDays === 31 ? 7 : 7)));
+    const dutyDays = Math.max(0, Math.round((payDays - cl - od) * 10) / 10);
+    const rawBio = Number(att.biometric_days !== undefined ? att.biometric_days : (att.biometric_present_days !== undefined ? att.biometric_present_days : 0));
+    const bioDays = payDays <= 0 ? 0 : Math.max(0, Math.round((payDays - holiday - cl - od) * 10) / 10);
     const lopDays = Math.max(0, Math.round((monthDays - payDays) * 10) / 10);
 
     return {
@@ -1828,7 +1831,9 @@ function buildUnifiedRecords(attStats, salStats) {
       category: sal.category || att.category || 'Non-Teaching',
       designation: att.designation || sal.designation || 'Staff',
       month_days: monthDays,
-      present_days: present,
+      present_days: dutyDays,
+      biometric_days: bioDays,
+      holiday: holiday,
       cl_days: cl,
       od_days: od,
       cl_days_list: Array.isArray(att.cl_days_list) ? att.cl_days_list : [],
@@ -2724,8 +2729,8 @@ function renderTable() {
         <td style="font-size: 0.78rem; color: #475569;">${emp.designation || 'Staff'}</td>
         <td style="color: #64748b; font-weight: 600; font-size: 0.78rem;">${emp.department}</td>
         <td style="text-align: center; color: #64748b; font-size: 0.8rem;">${emp.month_days}</td>
-        <td style="text-align: center; font-weight: 700; color: #1e3a8a;">${emp.present_days}</td>
-        <td style="text-align: center; color: #0369a1; font-size: 0.8rem;">${emp.holiday || 6}</td>
+        <td style="text-align: center; font-weight: 700; color: #1e3a8a;">${emp.biometric_days}</td>
+        <td style="text-align: center; color: #0369a1; font-size: 0.8rem;">${emp.holiday}</td>
         
         <!-- Editable CL with exact day numbers & dates -->
         <td style="text-align: center;">
@@ -2940,7 +2945,8 @@ async function handleAttendanceInlineEdit(empCode, field, value, inputEl) {
       if (emp) {
         if (field === 'availed_leaves') emp.cl_days = numVal;
         if (field === 'sv_od') emp.od_days = numVal;
-        emp.total_pay_days = Math.min(emp.month_days, (emp.present_days || 0) + (emp.holiday || 0) + (emp.cl_days || 0) + (emp.od_days || 0));
+        emp.total_pay_days = Math.min(emp.month_days, (emp.biometric_days || 0) + (emp.holiday || 0) + (emp.cl_days || 0) + (emp.od_days || 0));
+        emp.present_days = Math.max(0, Math.round((emp.total_pay_days - emp.cl_days - emp.od_days) * 10) / 10);
         emp.lop_days = Math.max(0, Math.round((emp.month_days - emp.total_pay_days) * 10) / 10);
       }
 
@@ -3735,13 +3741,13 @@ async function openTimelineModal(empCode) {
 
   const bar = document.getElementById('timeline-summary-bar');
   if (bar) {
-    const pDays = emp.present_days !== undefined ? emp.present_days : (emp.biometric_days || 0);
+    const bDays = emp.biometric_days !== undefined ? emp.biometric_days : (emp.present_days || 0);
     const hDays = emp.holiday !== undefined ? emp.holiday : 6;
     const lDays = emp.cl_days !== undefined ? emp.cl_days : (emp.availed_leaves || 0);
     const oDays = emp.od_days !== undefined ? emp.od_days : (emp.sv_od || 0);
     const tDays = emp.total_pay_days || 0;
     bar.innerHTML = `
-      <span class="badge-pill" style="background:#ecfdf5; color:#065f46; font-size: 0.78rem; padding: 0.35rem 0.85rem;">Biometric Days: ${pDays}</span>
+      <span class="badge-pill" style="background:#ecfdf5; color:#065f46; font-size: 0.78rem; padding: 0.35rem 0.85rem;">Biometric Days: ${bDays}</span>
       <span class="badge-pill" style="background:#eff6ff; color:#1e40af; font-size: 0.78rem; padding: 0.35rem 0.85rem;">Holidays: ${hDays}</span>
       <span class="badge-pill" style="background:#f5f3ff; color:#6b21a8; font-size: 0.78rem; padding: 0.35rem 0.85rem;">Availed Leaves: ${lDays}</span>
       <span class="badge-pill" style="background:#f0fdfa; color:#0f766e; font-size: 0.78rem; padding: 0.35rem 0.85rem;">SV/OD: ${oDays}</span>
@@ -4206,7 +4212,7 @@ function openEditPackageModal(empCode) {
   document.getElementById('edit-pkg-policy').value = emp.attendance_policy || (emp.is_vip ? 'exempt_full' : 'standard');
 
   // Section 2: Attendance Days
-  document.getElementById('edit-pkg-bio-days').value = emp.present_days !== undefined ? emp.present_days : (emp.biometric_days || 0);
+  document.getElementById('edit-pkg-bio-days').value = emp.biometric_days !== undefined ? emp.biometric_days : (emp.present_days || 0);
   document.getElementById('edit-pkg-holidays').value = emp.holiday !== undefined ? emp.holiday : 4;
   document.getElementById('edit-pkg-cl').value = emp.cl_days !== undefined ? emp.cl_days : (emp.availed_leaves || 0);
   document.getElementById('edit-pkg-od').value = emp.od_days !== undefined ? emp.od_days : (emp.sv_od || 0);
