@@ -1386,18 +1386,18 @@ def apply_principal_rules_to_db(month_year: str = "August 2026", force: bool = F
                 cl_count = float(len(cl_days))
                 total_duty = len(day_presence) + od_count + cl_count
 
-                threshold = 28.0
+                threshold = max(0.0, m_days - 2.0)
                 w_hol = 2.0
                 if total_duty >= threshold:
                     pay_days = m_days
-                    bio_days = m_days - w_hol - od_count - cl_count
+                    bio_days = max(0.0, m_days - w_hol - od_count - cl_count)
                     rem = ""
                     nr = 0
                     ab_json = '[]'
                 elif total_duty > 0:
                     shortfall = threshold - total_duty
                     pay_days = max(0.0, m_days - shortfall)
-                    bio_days = max(0.0, float(len(day_presence)))
+                    bio_days = max(0.0, pay_days - w_hol - od_count - cl_count)
                     all_m_days = set(range(1, int(m_days) + 1))
                     unatt = sorted(list(all_m_days - day_presence - od_days - cl_days))
                     unexcused = unatt[-int(shortfall):] if shortfall > 0 else []
@@ -1407,6 +1407,7 @@ def apply_principal_rules_to_db(month_year: str = "August 2026", force: bool = F
                 else:
                     pay_days = 0.0
                     bio_days = 0.0
+                    w_hol = 0.0
                     rem = "No Biometric Records"
                     nr = 0
                     ab_json = '[]'
@@ -1987,16 +1988,17 @@ def evaluate_employee_attendance_from_logs(ec: str, logs: list, e_data: dict, m_
                 abs_list.append(dn)
                 
         duty = duty_days + cl_count + od_count
-        if duty >= 28.0:
+        threshold = max(0.0, m_days - 2.0)
+        if duty >= threshold:
             total = m_days
             biometric_days = max(0.0, total - hol - cl_count - od_count)
             rem = f"Specific Days Present by Admin Override (Days: {', '.join(str(x) for x in overridden_days)})" if overridden_days else ""
             needs_rev = 0
             unexcused = []
         elif duty > 0:
-            shortfall = 28.0 - duty
+            shortfall = threshold - duty
             total = max(0.0, m_days - shortfall)
-            biometric_days = duty_days
+            biometric_days = max(0.0, total - hol - cl_count - od_count)
             unexcused = abs_list[-int(shortfall):] if shortfall > 0 else []
             rem_parts = []
             if overridden_days:
@@ -2008,6 +2010,7 @@ def evaluate_employee_attendance_from_logs(ec: str, logs: list, e_data: dict, m_
         else:
             total = 0.0
             biometric_days = 0.0
+            hol = 0.0
             rem = "No Biometric Records"
             needs_rev = 0
             unexcused = []
