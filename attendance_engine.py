@@ -57,11 +57,12 @@ class AttendanceEngine:
         self.target_month_year = month_year
         self.detected_month_year = None
         self.year = 2026
-        self.month = 8
-        self.num_days = 31
-        self.sundays = {2, 9, 16, 23, 30}
-        self.festival_holidays = {26}
-        self.all_holidays = self.sundays.union(self.festival_holidays)
+        self.month = 1
+        self.num_days = 30
+        self.dump_holidays = set()
+        self.sundays = set()
+        self.festival_holidays = set()
+        self.all_holidays = set()
         self.employees: Dict[str, Dict[str, Any]] = {}
         self.department_order: List[str] = list(STANDARD_DEPARTMENT_ORDER)
         self.reference_metadata: Dict[str, Dict[str, str]] = {}
@@ -108,11 +109,8 @@ class AttendanceEngine:
             self.year = y_val
             self.num_days = calendar.monthrange(self.year, self.month)[1]
             self.sundays = {d for d in range(1, self.num_days + 1) if datetime.date(self.year, self.month, d).weekday() == 6}
-            if self.month == 8:
-                self.festival_holidays = {26}
-            else:
-                self.festival_holidays = set()
-            self.all_holidays = self.sundays.union(self.festival_holidays)
+            self.all_holidays = self.sundays.union(self.dump_holidays)
+            self.festival_holidays = self.dump_holidays - self.sundays
             m_name = calendar.month_name[self.month]
             self.detected_month_year = f"{m_name} {self.year}"
 
@@ -206,6 +204,10 @@ class AttendanceEngine:
                         'manual_biometric_override': bio_count,
                         'manual_remarks_override': '🏛️ Executive Biometric Exemption\nInstitutional Head / Principal — Governing Body Biometric Exemption' if ec == '101' else '👑 Executive Full Pay Approval\nInstitutional waiver approved — 100% full salary credited'
                     }
+
+        # Dynamically compute all holidays from calendar Sundays + biometric dump holidays
+        self.all_holidays = self.sundays.union(self.dump_holidays)
+        self.festival_holidays = self.dump_holidays - self.sundays
 
         self.employees = parsed_emps
         self.calculate_all_summaries()
@@ -309,6 +311,9 @@ class AttendanceEngine:
                         status = status.replace(chr(189), '1/2')
 
                         day_num = int(m_date.group(1))
+                        if 'holiday' in status.lower():
+                            self.dump_holidays.add(day_num)
+
                         daily_records.append({
                             'day': day_num,
                             'date': str(date_val).strip(),
@@ -598,10 +603,6 @@ class AttendanceEngine:
         half_days = []
         cl_count = 0.0
         od_count = 0.0
-        aug15_attended = True
-        if self.month == 8:
-            aug15_attended = False
-
         for day in days:
             d_num = day['day']
             st = day.get('override_status') or day.get('status', '')
@@ -611,12 +612,6 @@ class AttendanceEngine:
 
             # If employee joined later in month, days before DOJ are not absences
             if doj_day and d_num < doj_day:
-                continue
-
-            # 15-Aug (Independence Day Flag Hoisting) - only check in August
-            if self.month == 8 and d_num == 15:
-                if in_t or out_t or 'PRESENT' in st_upper:
-                    aug15_attended = True
                 continue
 
             # Skip holidays for late punches and missed punch penalties
@@ -690,40 +685,23 @@ class AttendanceEngine:
         if raw_leaves > 0 and cl_count == 0:
             cl_count = raw_leaves
 
-        # Admission dept weekly shortfall
+        # Admission Department: Compensatory Credit Offset Model
         if is_admission:
-            import datetime
-            weeks = {}
-            for day in days:
-                d_num = day['day']
-                try:
-                    dt = datetime.date(self.year, self.month, d_num)
-                    w_start = dt - datetime.timedelta(days=dt.weekday())
-                    w_key = str(w_start)
-                except Exception:
-                    w_key = f"w_{d_num // 7}"
-                if w_key not in weeks:
-                    weeks[w_key] = []
-                weeks[w_key].append(day)
-
-            total_shortfall = 0.0
-            for w_key, w_days in weeks.items():
-                has_2nd_sat = any(d['day'] == 8 for d in w_days)
-                req = 5.0 if has_2nd_sat else min(float(len(w_days)), 6.0)
-                w_worked = 0.0
-                for d in w_days:
+            # 1. Any duty performed on Sunday or institutional holiday earns +1.0 compensatory day credit
+            comp_credits = 0.0
+            for d in days:
+                d_num = d.get('day')
+                if d_num in all_holidays:
                     d_in = d.get('in_time')
                     d_out = d.get('out_time')
                     d_st = (d.get('override_status') or d.get('status') or '').upper()
-                    if d_in or d_out or 'PRESENT' in d_st or 'CL' in d_st or 'LEAVE' in d_st or 'OD' in d_st:
-                        w_worked += 1.0
-                shortfall = max(0.0, req - w_worked)
-                total_shortfall += shortfall
+                    if d_in or d_out or 'PRESENT' in d_st:
+                        comp_credits += 1.0
 
-            if total_shortfall == 0.0:
-                absent_days = []
-            else:
-                absent_days = absent_days[:int(total_shortfall)]
+            # 2. Credits excuse weekday absences 1-to-1
+            num_abs = len(absent_days)
+            excused = min(int(comp_credits), num_abs)
+            absent_days = absent_days[excused:]
 
         # Apply manual overrides (Option 1 / Option 3)
         if emp.get('manual_cl_override') is not None:
@@ -747,8 +725,6 @@ class AttendanceEngine:
             late_penalty = 1.0 if len(late_punches) >= 4 else 0.0
         
         total_deductions = len(absent_days) * 1.0 + len(missed_out_punches) * 0.5 + len(half_days) * 0.5 + late_penalty
-        if not aug15_attended:
-            total_deductions += 1.0
 
         # Calculate Total Pay Days
         # Full-Month Absence Protection: If employee had 0 biometric punches, 0 leaves, and 0 OD,

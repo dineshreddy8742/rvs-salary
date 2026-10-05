@@ -71,16 +71,19 @@ def determine_employee_category(dept: str, desig: str = '', current_cat: Optiona
 
 # Days in month helper
 def get_days_in_month_str(month_year_str: str) -> int:
-    """Extract total days in month (e.g. 'August -2026' -> 31, 'June 2026' -> 30)."""
-    m_lower = month_year_str.lower()
-    if 'feb' in m_lower:
-        # Check leap year if year present
-        m = re.search(r'\d{4}', month_year_str)
-        year = int(m.group(0)) if m else 2026
-        return 29 if (year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)) else 28
-    if any(k in m_lower for k in ['apr', 'jun', 'sep', 'nov']):
-        return 30
-    return 31
+    """Extract total days in month dynamically using standard calendar."""
+    import calendar
+    y = 2026
+    m = 1
+    m_yr = re.search(r'\b(20\d{2})\b', str(month_year_str))
+    if m_yr:
+        y = int(m_yr.group(1))
+    cleaned = re.sub(r'[\-_]+', ' ', str(month_year_str)).lower()
+    for m_idx in range(1, 13):
+        if calendar.month_name[m_idx].lower() in cleaned or calendar.month_abbr[m_idx].lower() in cleaned:
+            m = m_idx
+            break
+    return calendar.monthrange(y, m)[1]
 
 # =============================================================================
 # SALARY CALCULATION FUNCTIONS

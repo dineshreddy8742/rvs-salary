@@ -883,17 +883,8 @@ def seed_from_engine(engine, month_year: str = "August 2026", overwrite: bool = 
     print(f"Seeding database for {month_year}...")
     vip_full_pay_codes = set(NON_BIOMETRIC_STAFF.keys())
 
-    m_days = float(payroll_engine.get_days_in_month_str(month_year) or 31)
-    import calendar
-    import datetime
-    y, m = 2026, 8
-    for p in month_year.split():
-        if p.isdigit() and len(p) == 4: y = int(p)
-        for m_idx in range(1, 13):
-            if calendar.month_name[m_idx].lower() == p.lower(): m = m_idx
-    sundays = {d for d in range(1, int(m_days) + 1) if datetime.date(y, m, d).weekday() == 6}
-    fest_hol = {26} if m == 8 else set()
-    holidays = float(len(sundays.union(fest_hol)))
+    m_days = float(getattr(engine, 'num_days', None) or payroll_engine.get_days_in_month_str(month_year) or 30)
+    holidays = float(len(getattr(engine, 'all_holidays', None) or [])) if getattr(engine, 'all_holidays', None) else get_month_holidays_count(cursor, month_year)
     bio_days = max(0.0, m_days - holidays)
 
     # Fetch existing master employees so manual additions (e.g. 914 D. Keertana) and custom designations are preserved
@@ -1219,17 +1210,8 @@ def apply_principal_rules_to_db(month_year: str = "August 2026", force: bool = F
         conn.close()
         return
 
-    m_days = float(payroll_engine.get_days_in_month_str(month_year) or 31)
-    import calendar
-    import datetime
-    y, m = 2026, 8
-    for p in month_year.split():
-        if p.isdigit() and len(p) == 4: y = int(p)
-        for m_idx in range(1, 13):
-            if calendar.month_name[m_idx].lower() == p.lower(): m = m_idx
-    sundays = {d for d in range(1, int(m_days) + 1) if datetime.date(y, m, d).weekday() == 6}
-    fest_hol = {26} if m == 8 else set()
-    holidays = float(len(sundays.union(fest_hol)))
+    m_days = float(payroll_engine.get_days_in_month_str(month_year) or 30)
+    holidays = get_month_holidays_count(cursor, month_year)
     bio_days = max(0.0, m_days - holidays)
 
     # Module-level NON_BIOMETRIC_STAFF has full institutional titles and descriptions
@@ -2136,34 +2118,45 @@ def bulk_create_or_update_manual_employees(staff_list: list, current_month: str 
     }
 
 def get_month_holidays_count(cursor, month_year: str) -> float:
-    """Accurately count distinct institutional holidays for a month from daily_logs, or compute dynamically."""
+    """
+    Accurately and dynamically count distinct institutional holidays for any month.
+    Extracts all festival/institutional holidays declared in the biometric dump input (daily_logs status LIKE '%Holiday%')
+    and merges them with all calendar Sundays of that specific month and year.
+    100% dynamic — no hardcoded festival sets or fixed month numbers. Works for any upcoming month.
+    """
     month_year = normalize_month_year(month_year)
-    cursor.execute("""
-    SELECT COUNT(DISTINCT day_num) as cnt 
-    FROM daily_logs 
-    WHERE month_year = ? AND status LIKE '%Holiday%'
-    """, (month_year,))
-    h_row = cursor.fetchone()
-    if h_row and h_row['cnt'] and float(h_row['cnt']) > 0:
-        return float(h_row['cnt'])
-    # Dynamic calendar fallback
     m_days = float(payroll_engine.get_days_in_month_str(month_year) or 30)
+
+    # 1. Parse year and month dynamically from month_year string
     import calendar
     import datetime
-    y, m = 2026, 9
-    for p in month_year.replace('-', ' ').split():
-        if p.isdigit() and len(p) == 4: y = int(p)
-        for m_idx in range(1, 13):
-            if calendar.month_name[m_idx].lower() == p.lower() or calendar.month_abbr[m_idx].lower() == p.lower():
-                m = m_idx
+    y = 2026
+    m = 1
+    m_yr = re.search(r'\b(20\d{2})\b', month_year)
+    if m_yr:
+        y = int(m_yr.group(1))
+    cleaned = re.sub(r'[\-_]+', ' ', str(month_year)).lower()
+    for m_idx in range(1, 13):
+        if calendar.month_name[m_idx].lower() in cleaned or calendar.month_abbr[m_idx].lower() in cleaned:
+            m = m_idx
+            break
+
+    # 2. Dynamic Sundays for that specific calendar month/year
     sundays = {d for d in range(1, int(m_days) + 1) if datetime.date(y, m, d).weekday() == 6}
-    if m == 8:
-        fest_hol = {15, 26}  # Independence Day, Varalakshmi/Janmashtami
-    elif m == 9:
-        fest_hol = {4, 12, 14}  # Milad-un-Nabi, 2nd Saturday, Vinayaka Chavithi
-    else:
-        fest_hol = set()
-    return float(len(sundays.union(fest_hol)))
+
+    # 3. Dynamic institutional holidays from daily_logs dump input
+    try:
+        cursor.execute("""
+        SELECT DISTINCT day_num 
+        FROM daily_logs 
+        WHERE month_year = ? AND status LIKE '%Holiday%'
+        """, (month_year,))
+        dump_holidays = {int(r['day_num']) for r in cursor.fetchall() if r['day_num'] is not None}
+    except Exception:
+        dump_holidays = set()
+
+    all_holidays = sundays.union(dump_holidays)
+    return float(len(all_holidays)) if all_holidays else float(len(sundays))
 
 def evaluate_employee_attendance_from_logs(ec: str, logs: list, e_data: dict, m_days: float, month_holidays: float):
     """
