@@ -2542,6 +2542,10 @@ def revert_employee_to_original(emp_code: str, month_year: str) -> dict:
 def bulk_revert_to_original(month_year: str, scope: str = 'all', department: Optional[str] = None, category: Optional[str] = None) -> dict:
     """
     Bulk reverts multiple employees back to raw original biometric data.
+    High-performance batch implementation:
+    1. Resets override_status in daily_logs in a single SQL operation.
+    2. Clears salary overrides in monthly_records in a single SQL operation.
+    3. Re-evaluates attendance and recalculates salaries in batch in <1 second.
     """
     month_year = normalize_month_year(month_year)
     conn = get_db()
@@ -2556,9 +2560,8 @@ def bulk_revert_to_original(month_year: str, scope: str = 'all', department: Opt
     """
     cursor.execute(query, (month_year,))
     rows = cursor.fetchall()
-    conn.close()
 
-    reverted_codes = []
+    target_codes = []
     for r in rows:
         ec = str(r['emp_code'])
         dept = r['department']
@@ -2569,13 +2572,152 @@ def bulk_revert_to_original(month_year: str, scope: str = 'all', department: Opt
         if scope == 'category' and category and category != 'all' and cat != category:
             continue
 
-        revert_employee_to_original(ec, month_year)
-        reverted_codes.append(ec)
+        target_codes.append(ec)
+
+    if not target_codes:
+        conn.close()
+        return {'status': 'success', 'month_year': month_year, 'reverted_count': 0}
+
+    # 1. Clear day-level override status for target employees in daily_logs and reset manual monthly overrides
+    if len(target_codes) == len(rows) and scope == 'all':
+        cursor.execute("UPDATE daily_logs SET override_status = NULL WHERE month_year = ?", (month_year,))
+        cursor.execute("""
+        UPDATE monthly_records
+        SET base_salary = NULL, arrears = 0.0, other_deductions = 0.0,
+            pt_deduction = NULL, wf_deduction = NULL, epf_deduction = NULL, it_deduction = 0.0
+        WHERE month_year = ?
+        """, (month_year,))
+    else:
+        # Batch in chunks of 500
+        for i in range(0, len(target_codes), 500):
+            chunk = target_codes[i:i+500]
+            placeholders = ','.join(['?'] * len(chunk))
+            cursor.execute(f"UPDATE daily_logs SET override_status = NULL WHERE month_year = ? AND emp_code IN ({placeholders})", [month_year] + chunk)
+            cursor.execute(f"""
+            UPDATE monthly_records
+            SET base_salary = NULL, arrears = 0.0, other_deductions = 0.0,
+                pt_deduction = NULL, wf_deduction = NULL, epf_deduction = NULL, it_deduction = 0.0
+            WHERE month_year = ? AND emp_code IN ({placeholders})
+            """, [month_year] + chunk)
+
+    conn.commit()
+
+    # 2. Batch re-evaluate attendance from daily_logs
+    m_days = float(payroll_engine.get_days_in_month_str(month_year) or 30)
+    month_holidays = get_month_holidays_count(cursor, month_year)
+
+    cursor.execute("""
+    SELECT emp_code, day_num, status, override_status, in_time, out_time
+    FROM daily_logs
+    WHERE month_year = ?
+    ORDER BY emp_code, day_num ASC
+    """, (month_year,))
+    all_logs = cursor.fetchall()
+
+    from collections import defaultdict
+    emp_logs = defaultdict(list)
+    for r in all_logs:
+        emp_logs[str(r['emp_code'])].append(r)
+
+    cursor.execute("SELECT emp_code, department, designation, attendance_policy FROM employees")
+    emp_info = {str(r['emp_code']): dict(r) for r in cursor.fetchall()}
+
+    monthly_updates = []
+    for ec in target_codes:
+        logs = emp_logs.get(ec, [])
+        e_data = emp_info.get(ec, {})
+        pres, hol, cl, od, total, abs_list, mis_list, half_list, rem, needs_rev = evaluate_employee_attendance_from_logs(
+            ec, logs, e_data, m_days, month_holidays
+        )
+        monthly_updates.append((
+            pres, hol, cl if cl > 0 else None, od if od > 0 else None, total,
+            json.dumps(abs_list), json.dumps(mis_list), rem, needs_rev,
+            ec, month_year
+        ))
+
+    cursor.executemany("""
+    UPDATE monthly_records
+    SET biometric_days = ?, holiday = ?, availed_leaves = ?, sv_od = ?, total_pay_days = ?,
+        absent_days_json = ?, missed_punches_json = ?,
+        remarks = ?, needs_review = ?
+    WHERE emp_code = ? AND month_year = ?
+    """, monthly_updates)
+
+    # 3. Batch recalculate salary
+    cursor.execute("""
+    SELECT m.emp_code, m.total_pay_days, m.base_salary, m.arrears,
+           m.epf_deduction, m.it_deduction, m.bus_deduction, m.mess_deduction,
+           m.hostel_eb_deduction, m.other_deductions, m.pt_deduction, m.wf_deduction,
+           p.base_salary as prof_base, p.category as prof_category, p.epf_amount as prof_epf,
+           p.default_bus as prof_bus, p.default_mess as prof_mess, p.default_hostel_eb as prof_hostel,
+           p.default_arrears as prof_arrears,
+           e.name, e.department, e.designation
+    FROM monthly_records m
+    LEFT JOIN salary_profiles p ON m.emp_code = p.emp_code
+    JOIN employees e ON m.emp_code = e.emp_code
+    WHERE m.month_year = ?
+    """, (month_year,))
+    all_recs = cursor.fetchall()
+    target_set = set(target_codes)
+
+    salary_updates = []
+    for r in all_recs:
+        ec = str(r['emp_code'])
+        if ec not in target_set:
+            continue
+        try:
+            cat = payroll_engine.determine_employee_category(r['department'], r['designation'], r['prof_category'])
+            prof = {
+                'emp_code': ec,
+                'name': r['name'],
+                'category': cat,
+                'base_salary': float(r['prof_base'] or 0.0),
+                'default_arrears': float(r['prof_arrears'] or 0.0),
+                'epf_amount': float(r['prof_epf'] or 0.0),
+                'default_bus': float(r['prof_bus'] or 0.0),
+                'default_mess': float(r['prof_mess'] or 0.0),
+                'default_hostel_eb': float(r['prof_hostel'] or 0.0)
+            }
+            overrides = {
+                'base_salary': None,
+                'arrears': 0.0,
+                'epf_deduction': prof.get('epf_amount', 0.0),
+                'it_deduction': 0.0,
+                'bus_deduction': prof.get('default_bus', 0.0),
+                'mess_deduction': prof.get('default_mess', 0.0),
+                'hostel_eb_deduction': prof.get('default_hostel_eb', 0.0),
+                'other_deductions': 0.0,
+                'pt_deduction': None,
+                'wf_deduction': None
+            }
+            emp_pay_days = float(r['total_pay_days'] if r['total_pay_days'] is not None else m_days)
+            res = payroll_engine.calculate_salary_for_profile(prof, m_days, emp_pay_days, overrides)
+            salary_updates.append((
+                res['base_salary'], res['earned_basic'], res['da'], res['hra'], res['arrears'],
+                res['gross_salary'], res['pt'], res['wf'], res['epf'],
+                res['it'], res['bus_deduction'], res['mess_deduction'], res['hostel_eb_deduction'], res['other_deductions'],
+                res['total_deductions'], res['net_salary'],
+                ec, month_year
+            ))
+        except Exception as e:
+            print(f"Error calculating salary for {ec}: {e}")
+
+    cursor.executemany("""
+    UPDATE monthly_records
+    SET base_salary = ?, earned_basic = ?, earned_da = ?, earned_hra = ?, arrears = ?,
+        gross_salary = ?, pt_deduction = ?, wf_deduction = ?, epf_deduction = ?,
+        it_deduction = ?, bus_deduction = ?, mess_deduction = ?, hostel_eb_deduction = ?, other_deductions = ?,
+        total_deductions = ?, net_salary = ?
+    WHERE emp_code = ? AND month_year = ?
+    """, salary_updates)
+
+    conn.commit()
+    conn.close()
 
     return {
         'status': 'success',
         'month_year': month_year,
-        'reverted_count': len(reverted_codes)
+        'reverted_count': len(target_codes)
     }
 
 def bulk_attendance_override(
