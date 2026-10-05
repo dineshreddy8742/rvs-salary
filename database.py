@@ -2254,92 +2254,78 @@ def evaluate_employee_attendance_from_logs(ec: str, logs: list, e_data: dict, m_
             
         return biometric_days, hol, cl_count, od_count, total, unexcused, [], [], rem, needs_rev
 
-    # 3. Admission Team rule: 6 days/week, 5 on 2nd Sat week, Sunday/Holiday punches offset weekday leaves
+    # 3. Admission Team rule: Sunday/Holiday punches offset weekday leaves/absences
     admission_ids = {'2005', '2006', '6001', '1040', '1017', '2011', '6000', '2010', '2007', '2013', '2514', '2512', '2511', '2503', '2502', '2505', '2051', '2508', '6004', '6005'}
     is_admission = ec_str in admission_ids or 'admission' in dept
     if is_admission:
         hol = month_holidays
         cl_count = 0.0
         od_count = 0.0
-        
-        import datetime
-        import calendar
-        y, m = 2026, 9
-        if logs and logs[0].get('date_str'):
-            ds = str(logs[0]['date_str'])
-            for m_idx in range(1, 13):
-                if calendar.month_abbr[m_idx].lower() in ds.lower() or calendar.month_name[m_idx].lower() in ds.lower():
-                    m = m_idx
-            yr_m = re.search(r'\d{4}', ds)
-            if yr_m:
-                y = int(yr_m.group(0))
+        comp_credits = 0.0
+        raw_absents = []
+        half_list = []
+        mis_list = []
 
-        sat_cnt = 0
-        sec_sat = None
-        for d in range(1, int(m_days) + 1):
-            try:
-                if datetime.date(y, m, d).weekday() == 5:
-                    sat_cnt += 1
-                    if sat_cnt == 2:
-                        sec_sat = d
-                        break
-            except Exception:
-                pass
-
-        weeks = {}
         for d in logs:
             dn = int(d['day_num']) if d.get('day_num') is not None else 0
-            try:
-                dt = datetime.date(y, m, dn)
-                w_start = dt - datetime.timedelta(days=dt.weekday())
-                w_key = str(w_start)
-            except Exception:
-                w_key = f"w_{dn // 7}"
-            if w_key not in weeks:
-                weeks[w_key] = []
-            weeks[w_key].append(d)
+            ov = (d.get('override_status') or '').upper()
+            st = (d.get('status') or '').upper()
+            in_t = (d.get('in_time') or '').strip()
+            out_t = (d.get('out_time') or '').strip()
+            eff = ov if ov else st
 
-        total_shortfall = 0.0
-        unexcused_abs = []
-        for wk, w_days in weeks.items():
-            has_2nd_sat = sec_sat is not None and any(int(d.get('day_num') or 0) == sec_sat for d in w_days)
-            req = 5.0 if has_2nd_sat else min(float(len(w_days)), 6.0)
-            w_worked = 0.0
-            w_abs = []
-            for d in w_days:
-                in_t = (d.get('in_time') or '').strip()
-                out_t = (d.get('out_time') or '').strip()
-                ov = (d.get('override_status') or '').upper()
-                st = (d.get('status') or '').upper()
-                eff = ov if ov else st
-                dn = int(d.get('day_num') or 0)
+            # Overridden days
+            if ov == 'PRESENT':
+                continue
+            if ov in ('1/2PRESENT', 'HALF_DAY', 'HALF'):
+                half_list.append(f"{dn}(1/2)")
+                continue
 
-                if 'CL' in eff or 'LEAVE' in eff:
+            # Sundays and Festival Holidays
+            if 'HOLIDAY' in eff:
+                # Credit work done on Sunday / Holiday as compensatory credit
+                if in_t or out_t or 'PRESENT' in eff:
                     if '1/2' in eff:
-                        cl_count += 0.5
-                        w_worked += 0.5
+                        comp_credits += 0.5
                     else:
-                        cl_count += 1.0
-                        w_worked += 1.0
-                elif 'OD' in eff or 'ON DUTY' in eff:
-                    od_count += 1.0
-                    w_worked += 1.0
-                elif ov == 'PRESENT' or in_t or out_t or 'PRESENT' in eff:
-                    if ov == 'PRESENT':
-                        w_worked += 1.0
-                    elif '1/2' in eff or ov in ('1/2PRESENT', 'HALF_DAY', 'HALF'):
-                        w_worked += 0.5
-                    else:
-                        w_worked += 1.0
-                elif 'ABSENT' in eff and 'HOLIDAY' not in eff:
-                    w_abs.append(dn)
+                        comp_credits += 1.0
+                continue
 
-            sf = max(0.0, req - w_worked)
-            total_shortfall += sf
-            if sf > 0:
-                unexcused_abs.extend(w_abs[-int(round(sf)):])
+            # Regular working days
+            if 'CL' in eff or 'LEAVE' in eff:
+                if '1/2' in eff:
+                    cl_count += 0.5
+                else:
+                    cl_count += 1.0
+            elif 'OD' in eff or 'ON DUTY' in eff:
+                od_count += 1.0
+            elif 'ABSENT' in eff:
+                raw_absents.append(dn)
+            elif '1/2' in eff or 'HALF' in eff:
+                half_list.append(f"{dn}(1/2)")
+            elif 'NO OUTPUNCH' in eff or 'NO OUT PUNCH' in eff:
+                mis_list.append(f"{dn}(0.5)")
 
-        total = max(0.0, m_days - total_shortfall)
+        # Offset weekday absences using compensatory credits from Sunday/holiday work
+        unexcused_abs = []
+        rem_comp = comp_credits
+        for ab_day in raw_absents:
+            if rem_comp >= 1.0:
+                rem_comp -= 1.0  # Fully excused by Sunday/holiday work
+            elif rem_comp >= 0.5:
+                rem_comp -= 0.5
+                half_list.append(f"{ab_day}(1/2)")
+            else:
+                unexcused_abs.append(ab_day)
+
+        # Offset any remaining half-days if comp credits still available
+        if rem_comp > 0 and half_list:
+            half_to_remove = int(rem_comp * 2)
+            half_list = half_list[half_to_remove:]
+            rem_comp = max(0.0, rem_comp - (half_to_remove * 0.5))
+
+        total_deductions = len(unexcused_abs) * 1.0 + len(half_list) * 0.5 + len(mis_list) * 0.5
+        total = max(0.0, m_days - total_deductions)
         biometric_days = max(0.0, total - hol - cl_count - od_count)
 
         rem_parts = []
@@ -2349,9 +2335,14 @@ def evaluate_employee_attendance_from_logs(ec: str, logs: list, e_data: dict, m_
             rem_parts.append(f"Specific Half Days by Admin Override (Days: {', '.join(str(x) for x in half_overridden_days)})")
         if unexcused_abs:
             rem_parts.append(f"ab-{','.join(str(x) for x in unexcused_abs)}")
+        if half_list:
+            rem_parts.append(", ".join(half_list))
+        if mis_list:
+            rem_parts.append(f"{len(mis_list)} no out punch")
+
         rem = ", ".join(rem_parts)
-        needs_rev = 1 if unexcused_abs else 0
-        return biometric_days, hol, cl_count, od_count, total, unexcused_abs, [], [], rem, needs_rev
+        needs_rev = 1 if (unexcused_abs or half_list or mis_list) else 0
+        return biometric_days, hol, cl_count, od_count, total, unexcused_abs, mis_list, half_list, rem, needs_rev
 
     # 4. Standard / Teaching / Academic / Transport / General Staff
     hol = month_holidays
