@@ -444,7 +444,7 @@ def bulk_attendance_override():
     scope = data.get('scope', 'all')                   # all | department | manual
     department = data.get('department', None)          # dept name if scope=department
     emp_codes = data.get('emp_codes', [])              # list if scope=manual
-    punch_filter = data.get('punch_filter', 'all')     # all | no_punch | morning_only | evening_only
+    punch_filter = data.get('punch_filter', 'all')     # all | no_punch | morning_only | evening_only | half_day
     selected_days = data.get('selected_days', [])      # list of day nums [1-31] if action=specific_dates
     specific_type = data.get('specific_type', 'full_day') # full_day | half_day
 

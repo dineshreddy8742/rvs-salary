@@ -2177,6 +2177,8 @@ def evaluate_employee_attendance_from_logs(ec: str, logs: list, e_data: dict, m_
     overridden_days = sorted(list({int(d['day_num']) for d in logs if (d.get('override_status') or '').upper() == 'PRESENT' and d.get('day_num') is not None}))
     half_overridden_days = sorted(list({int(d['day_num']) for d in logs if (d.get('override_status') or '').upper() in ('1/2PRESENT', 'HALF_DAY', 'HALF') and d.get('day_num') is not None}))
 
+    is_electrician = 'electrician' in desig or 'electrician' in dept
+
     # 1. VIP / Principal exemption
     vip_codes = set(NON_BIOMETRIC_STAFF.keys())
     if policy == 'exempt_full' or ec_str in vip_codes:
@@ -2186,9 +2188,10 @@ def evaluate_employee_attendance_from_logs(ec: str, logs: list, e_data: dict, m_
         abs_list = []
         mis_list = []
         half_list = []
+        late_list = []
         rem = "Full Attendance (VIP / Principal)"
         needs_rev = 0
-        return pres, hol, 0.0, 0.0, total, abs_list, mis_list, half_list, rem, needs_rev
+        return pres, hol, 0.0, 0.0, total, abs_list, mis_list, half_list, late_list, rem, needs_rev
 
     # 2. Security / Watchman rule (2 floating holidays, 28 duty days threshold)
     if is_sec:
@@ -2197,6 +2200,7 @@ def evaluate_employee_attendance_from_logs(ec: str, logs: list, e_data: dict, m_
         cl_count = 0.0
         od_count = 0.0
         abs_list = []
+        late_list = []
         
         for d in logs:
             dn = int(d['day_num']) if d.get('day_num') is not None else 0
@@ -2245,7 +2249,7 @@ def evaluate_employee_attendance_from_logs(ec: str, logs: list, e_data: dict, m_
             needs_rev = 0
             unexcused = []
             
-        return biometric_days, hol, cl_count, od_count, total, unexcused, [], [], rem, needs_rev
+        return biometric_days, hol, cl_count, od_count, total, unexcused, [], [], late_list, rem, needs_rev
 
     # 3. Admission Team rule: Sunday/Holiday punches offset weekday leaves/absences
     admission_ids = {'2005', '2006', '6001', '1040', '1017', '2011', '6000', '2010', '2007', '2013', '2514', '2512', '2511', '2503', '2502', '2505', '2051', '2508', '6004', '6005'}
@@ -2258,6 +2262,7 @@ def evaluate_employee_attendance_from_logs(ec: str, logs: list, e_data: dict, m_
         raw_absents = []
         half_list = []
         mis_list = []
+        late_list = []
 
         for d in logs:
             dn = int(d['day_num']) if d.get('day_num') is not None else 0
@@ -2335,7 +2340,7 @@ def evaluate_employee_attendance_from_logs(ec: str, logs: list, e_data: dict, m_
 
         rem = ", ".join(rem_parts)
         needs_rev = 1 if (unexcused_abs or half_list or mis_list) else 0
-        return biometric_days, hol, cl_count, od_count, total, unexcused_abs, mis_list, half_list, rem, needs_rev
+        return biometric_days, hol, cl_count, od_count, total, unexcused_abs, mis_list, half_list, late_list, rem, needs_rev
 
     # 4. Standard / Teaching / Academic / Transport / General Staff
     hol = month_holidays
@@ -2344,17 +2349,30 @@ def evaluate_employee_attendance_from_logs(ec: str, logs: list, e_data: dict, m_
     abs_list = []
     mis_list = []
     half_list = []
+    late_list = []
 
     transport_ids = {'625', '26', '27', '626', '627', '648', '1198', '628', '622', '6621', '606', '623', '603', '653', '605', '6623', '607', '6633', '610', '613'}
     is_transport = ec_str in transport_ids or 'transport' in dept
+
+    target_in_h, target_in_m = 9, 25
+    if ec_str == '1018':
+        target_in_h, target_in_m = 9, 35
+    elif ec_str == '109':
+        target_in_h, target_in_m = 11, 0
+    elif ec_str == '536':
+        target_in_h, target_in_m = 12, 10
+    elif 'attender' in dept or 'garden' in dept or is_electrician:
+        target_in_h, target_in_m = 8, 35
 
     for d in logs:
         dn = int(d['day_num']) if d.get('day_num') is not None else 0
         ov = (d.get('override_status') or '').upper()
         st = (d.get('status') or '').upper()
+        in_t = (d.get('in_time') or '').strip()
+        out_t = (d.get('out_time') or '').strip()
         eff = ov if ov else st
 
-        # If day is overridden to Present by admin, it is 100% EXCUSED (no deduction!)
+        # If day is overridden to Present by admin, it is 100% EXCUSED (no deduction, no late penalty!)
         if ov == 'PRESENT':
             continue
 
@@ -2364,6 +2382,21 @@ def evaluate_employee_attendance_from_logs(ec: str, logs: list, e_data: dict, m_
 
         if 'HOLIDAY' in eff:
             continue
+
+        # Check late punch on regular working days if NOT overridden to Present
+        if in_t and re.match(r'^\d{2}:\d{2}$', in_t) and not is_transport:
+            parts = in_t.split(':')
+            in_h, in_m = int(parts[0]), int(parts[1])
+            if is_electrician:
+                if in_h < 8 or (in_h == 8 and in_m <= 35):
+                    pass
+                elif (in_h == 9 and in_m <= 25) or in_h < 9:
+                    pass
+                elif 9 < in_h < 13 or (in_h == 9 and in_m > 25):
+                    late_list.append(f"Day {dn} ({in_h}:{in_m:02d})")
+            else:
+                if (in_h == target_in_h and in_m > target_in_m) or (target_in_h < in_h < 13):
+                    late_list.append(f"Day {dn} ({in_h}:{in_m:02d})")
 
         if 'CL' in eff or 'LEAVE' in eff:
             if '1/2' in eff:
@@ -2381,7 +2414,7 @@ def evaluate_employee_attendance_from_logs(ec: str, logs: list, e_data: dict, m_
             abs_list.append(dn)
 
     if not logs:
-        return 0.0, 0.0, 0.0, 0.0, 0.0, [], [], [], "No Biometric Records", 0
+        return 0.0, 0.0, 0.0, 0.0, 0.0, [], [], [], [], "No Biometric Records", 0
 
     total_deductions = len(abs_list) * 1.0 + len(mis_list) * 0.5 + len(half_list) * 0.5
     total = max(0.0, m_days - total_deductions)
@@ -2394,7 +2427,7 @@ def evaluate_employee_attendance_from_logs(ec: str, logs: list, e_data: dict, m_
         hol = 0.0
         rem = f"Full Month Absent ({int(m_days)}d LOP)" if abs_list else "No Biometric Records"
         needs_rev = 1 if abs_list else 0
-        return 0.0, 0.0, 0.0, 0.0, 0.0, abs_list, mis_list, half_list, rem, needs_rev
+        return 0.0, 0.0, 0.0, 0.0, 0.0, abs_list, mis_list, half_list, [], rem, needs_rev
 
     rem_parts = []
     if overridden_days:
@@ -2411,7 +2444,7 @@ def evaluate_employee_attendance_from_logs(ec: str, logs: list, e_data: dict, m_
     rem = ", ".join(rem_parts)
     needs_rev = 1 if (abs_list or mis_list or half_list) else 0
 
-    return pres, hol, cl_count, od_count, total, abs_list, mis_list, half_list, rem, needs_rev
+    return pres, hol, cl_count, od_count, total, abs_list, mis_list, half_list, late_list, rem, needs_rev
 
 def set_employee_policy(emp_code: str, policy: str, month_year: str = "August -2026"):
     """Update policy for an employee and recalculate monthly pay days if exempt."""
@@ -2494,7 +2527,7 @@ def revert_employee_to_original(emp_code: str, month_year: str) -> dict:
     """, (emp_code, month_year))
     days = cursor.fetchall()
 
-    pres, hol, cl, od, total, abs_list, mis_list, half_list, rem, needs_rev = evaluate_employee_attendance_from_logs(
+    pres, hol, cl, od, total, abs_list, mis_list, half_list, late_list, rem, needs_rev = evaluate_employee_attendance_from_logs(
         emp_code, days, e_data, m_days, month_holidays
     )
 
@@ -2508,6 +2541,7 @@ def revert_employee_to_original(emp_code: str, month_year: str) -> dict:
         total_pay_days = ?,
         absent_days_json = ?,
         missed_punches_json = ?,
+        late_punches_json = ?,
         remarks = ?,
         needs_review = ?,
         base_salary = NULL,
@@ -2526,6 +2560,7 @@ def revert_employee_to_original(emp_code: str, month_year: str) -> dict:
         total,
         json.dumps(abs_list),
         json.dumps(mis_list),
+        json.dumps(late_list),
         rem,
         needs_rev,
         emp_code,
@@ -2626,19 +2661,19 @@ def bulk_revert_to_original(month_year: str, scope: str = 'all', department: Opt
     for ec in target_codes:
         logs = emp_logs.get(ec, [])
         e_data = emp_info.get(ec, {})
-        pres, hol, cl, od, total, abs_list, mis_list, half_list, rem, needs_rev = evaluate_employee_attendance_from_logs(
+        pres, hol, cl, od, total, abs_list, mis_list, half_list, late_list, rem, needs_rev = evaluate_employee_attendance_from_logs(
             ec, logs, e_data, m_days, month_holidays
         )
         monthly_updates.append((
             pres, hol, cl if cl > 0 else None, od if od > 0 else None, total,
-            json.dumps(abs_list), json.dumps(mis_list), rem, needs_rev,
+            json.dumps(abs_list), json.dumps(mis_list), json.dumps(late_list), rem, needs_rev,
             ec, month_year
         ))
 
     cursor.executemany("""
     UPDATE monthly_records
     SET biometric_days = ?, holiday = ?, availed_leaves = ?, sv_od = ?, total_pay_days = ?,
-        absent_days_json = ?, missed_punches_json = ?,
+        absent_days_json = ?, missed_punches_json = ?, late_punches_json = ?,
         remarks = ?, needs_review = ?
     WHERE emp_code = ? AND month_year = ?
     """, monthly_updates)
@@ -2779,6 +2814,8 @@ def bulk_attendance_override(
             cond_sql = "AND (out_time IS NOT NULL AND TRIM(out_time) != '') AND (in_time IS NULL OR TRIM(in_time) = '')"
         elif punch_filter == 'no_punch':
             cond_sql = "AND (in_time IS NULL OR TRIM(in_time) = '') AND (out_time IS NULL OR TRIM(out_time) = '')"
+        elif punch_filter in ('half_day', 'late_punch'):
+            cond_sql = "AND (status LIKE '%1/2%' OR status LIKE '%Half%' OR status LIKE '%No OutPunch%' OR (in_time IS NOT NULL AND in_time > '09:25'))"
 
         cursor.execute(f"""
         SELECT DISTINCT emp_code
@@ -2815,6 +2852,14 @@ def bulk_attendance_override(
         HAVING MAX(CASE WHEN (in_time IS NOT NULL AND TRIM(in_time) != '') OR (out_time IS NOT NULL AND TRIM(out_time) != '') THEN 1 ELSE 0 END) = 0
         """, [month_year] + candidates)
         filtered_codes = [str(r['emp_code']) for r in cursor.fetchall()]
+    elif punch_filter in ('half_day', 'late_punch'):
+        cursor.execute(f"""
+        SELECT DISTINCT emp_code
+        FROM daily_logs
+        WHERE month_year = ? AND emp_code IN ({c_placeholders})
+          AND (status LIKE '%1/2%' OR status LIKE '%Half%' OR status LIKE '%No OutPunch%' OR (in_time IS NOT NULL AND in_time > '09:25'))
+        """, [month_year] + candidates)
+        filtered_codes = [str(r['emp_code']) for r in cursor.fetchall()]
 
     if not filtered_codes:
         conn.close()
@@ -2843,6 +2888,8 @@ def bulk_attendance_override(
             cond_sql = "AND (out_time IS NOT NULL AND TRIM(out_time) != '') AND (in_time IS NULL OR TRIM(in_time) = '')"
         elif punch_filter == 'no_punch':
             cond_sql = "AND (in_time IS NULL OR TRIM(in_time) = '') AND (out_time IS NULL OR TRIM(out_time) = '')"
+        elif punch_filter in ('half_day', 'late_punch'):
+            cond_sql = "AND (status LIKE '%1/2%' OR status LIKE '%Half%' OR status LIKE '%No OutPunch%' OR (in_time IS NOT NULL AND in_time > '09:25'))"
 
         update_query = f"""
         UPDATE daily_logs
@@ -2876,12 +2923,12 @@ def bulk_attendance_override(
         for ec in filtered_codes:
             logs = emp_logs.get(ec, [])
             e_data = emp_info.get(ec, {})
-            pres, hol, cl, od, total, abs_list, mis_list, half_list, rem, needs_rev = evaluate_employee_attendance_from_logs(
+            pres, hol, cl, od, total, abs_list, mis_list, half_list, late_list, rem, needs_rev = evaluate_employee_attendance_from_logs(
                 ec, logs, e_data, m_days, month_holidays
             )
             monthly_updates.append((
                 pres, hol, cl if cl > 0 else None, od if od > 0 else None, total,
-                json.dumps(abs_list), json.dumps(mis_list),
+                json.dumps(abs_list), json.dumps(mis_list), json.dumps(late_list),
                 rem, needs_rev,
                 ec, month_year
             ))
@@ -2889,7 +2936,7 @@ def bulk_attendance_override(
         cursor.executemany("""
         UPDATE monthly_records
         SET biometric_days = ?, holiday = ?, availed_leaves = ?, sv_od = ?, total_pay_days = ?,
-            absent_days_json = ?, missed_punches_json = ?,
+            absent_days_json = ?, missed_punches_json = ?, late_punches_json = ?,
             remarks = ?, needs_review = ?
         WHERE emp_code = ? AND month_year = ?
         """, monthly_updates)
@@ -2914,12 +2961,12 @@ def bulk_attendance_override(
         for ec in filtered_codes:
             cl, od = existing_leaves.get(ec, (0.0, 0.0))
             bio_days = max(0.0, total - holiday - cl - od)
-            update_tuples.append((bio_days, holiday, total, '[]', '[]', remark, 0, ec, month_year))
+            update_tuples.append((bio_days, holiday, total, '[]', '[]', '[]', remark, 0, ec, month_year))
 
         cursor.executemany("""
         UPDATE monthly_records
         SET biometric_days = ?, holiday = ?, total_pay_days = ?,
-            absent_days_json = ?, missed_punches_json = ?,
+            absent_days_json = ?, missed_punches_json = ?, late_punches_json = ?,
             remarks = ?, needs_review = ?
         WHERE emp_code = ? AND month_year = ?
         """, update_tuples)
@@ -2937,12 +2984,12 @@ def bulk_attendance_override(
         for ec in filtered_codes:
             cl, od = existing_leaves.get(ec, (0.0, 0.0))
             bio_days = max(0.0, total - holiday - cl - od)
-            update_tuples.append((bio_days, holiday, total, '[]', '[]', remark, 0, ec, month_year))
+            update_tuples.append((bio_days, holiday, total, '[]', '[]', '[]', remark, 0, ec, month_year))
 
         cursor.executemany("""
         UPDATE monthly_records
         SET biometric_days = ?, holiday = ?, total_pay_days = ?,
-            absent_days_json = ?, missed_punches_json = ?,
+            absent_days_json = ?, missed_punches_json = ?, late_punches_json = ?,
             remarks = ?, needs_review = ?
         WHERE emp_code = ? AND month_year = ?
         """, update_tuples)
@@ -3107,18 +3154,18 @@ def regularize_day_in_db(emp_code: str, month_year: str, day_num: int, action: s
     """, (emp_code, month_year))
     days = cursor.fetchall()
 
-    pres, hol, cl, od, total, abs_list, mis_list, half_list, rem, needs_rev = evaluate_employee_attendance_from_logs(
+    pres, hol, cl, od, total, abs_list, mis_list, half_list, late_list, rem, needs_rev = evaluate_employee_attendance_from_logs(
         emp_code, days, e_data, m_days, month_holidays
     )
 
     cursor.execute("""
     UPDATE monthly_records
     SET biometric_days = ?, holiday = ?, availed_leaves = ?, sv_od = ?, total_pay_days = ?,
-        absent_days_json = ?, missed_punches_json = ?, remarks = ?, needs_review = ?
+        absent_days_json = ?, missed_punches_json = ?, late_punches_json = ?, remarks = ?, needs_review = ?
     WHERE emp_code = ? AND month_year = ?
     """, (
         pres, hol, cl if cl > 0 else None, od if od > 0 else None, total,
-        json.dumps(abs_list), json.dumps(mis_list), rem, needs_rev,
+        json.dumps(abs_list), json.dumps(mis_list), json.dumps(late_list), rem, needs_rev,
         emp_code, month_year
     ))
 
@@ -3170,19 +3217,19 @@ def recalculate_month_attendance_and_salaries(month_year: str) -> dict:
     for ec in target_codes:
         logs = emp_logs.get(ec, [])
         e_data = emp_info.get(ec, {})
-        pres, hol, cl, od, total, abs_list, mis_list, half_list, rem, needs_rev = evaluate_employee_attendance_from_logs(
+        pres, hol, cl, od, total, abs_list, mis_list, half_list, late_list, rem, needs_rev = evaluate_employee_attendance_from_logs(
             ec, logs, e_data, m_days, month_holidays
         )
         monthly_updates.append((
             pres, hol, cl if cl > 0 else None, od if od > 0 else None, total,
-            json.dumps(abs_list), json.dumps(mis_list), rem, needs_rev,
+            json.dumps(abs_list), json.dumps(mis_list), json.dumps(late_list), rem, needs_rev,
             ec, month_year
         ))
 
     cursor.executemany("""
     UPDATE monthly_records
     SET biometric_days = ?, holiday = ?, availed_leaves = ?, sv_od = ?, total_pay_days = ?,
-        absent_days_json = ?, missed_punches_json = ?,
+        absent_days_json = ?, missed_punches_json = ?, late_punches_json = ?,
         remarks = ?, needs_review = ?
     WHERE emp_code = ? AND month_year = ?
     """, monthly_updates)

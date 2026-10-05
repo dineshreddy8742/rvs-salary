@@ -5523,7 +5523,13 @@ function updateBovPreview() {
     : scope === 'department' ? `Department: ${dept === 'all' ? 'All' : dept}`
     : `${bovSelectedCodes.size} Manually Selected`;
 
-  const punchLabel = { all: 'All punch types', no_punch: 'No biometric', morning_only: 'Morning punch only', evening_only: 'Evening punch only' }[punch] || punch;
+  const punchLabel = {
+    all: 'All punch types',
+    half_day: 'Half Day / Late Punch',
+    morning_only: 'Morning punch only',
+    evening_only: 'Evening punch only',
+    no_punch: 'No biometric'
+  }[punch] || punch;
 
   const preview = document.getElementById('bov-preview-text');
   if (preview) {

@@ -621,8 +621,11 @@ class AttendanceEngine:
                     pass
                 continue
 
-            # Check late punch on regular working days
-            if in_t and re.match(r'^\d{2}:\d{2}$', in_t) and not is_transport:
+            # Check late punch on regular working days (skip if overridden to Present by admin)
+            ov_st = (day.get('override_status') or '').upper()
+            if ov_st == 'PRESENT':
+                pass
+            elif in_t and re.match(r'^\d{2}:\d{2}$', in_t) and not is_transport:
                 parts = in_t.split(':')
                 in_h, in_m = int(parts[0]), int(parts[1])
                 if is_electrician:
