@@ -1754,13 +1754,22 @@ async function loadData() {
   }
 }
 
-// Helper to determine exact days in active month string (e.g. "September 2026" -> 30)
+// Helper to determine exact days in active month string (e.g. "September 2026" -> 30, "August-2026" -> 31)
 function getDaysInActiveMonth(monthStr) {
   if (!monthStr) return 30;
-  const parts = String(monthStr).trim().split(/\s+/);
+  const cleaned = String(monthStr).toLowerCase().replace(/[-_]+/g, ' ').trim();
+  const parts = cleaned.split(/\s+/);
   const monthNames = ['january','february','march','april','may','june','july','august','september','october','november','december'];
-  const mIdx = monthNames.indexOf(parts[0].toLowerCase());
-  const yr = parseInt(parts[1]) || new Date().getFullYear();
+  const monthShorts = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+  let mIdx = -1;
+  let yr = 2026;
+  for (const p of parts) {
+    const idx = monthNames.indexOf(p);
+    if (idx >= 0) mIdx = idx;
+    const sIdx = monthShorts.indexOf(p);
+    if (sIdx >= 0) mIdx = sIdx;
+    if (/^\d{4}$/.test(p)) yr = parseInt(p);
+  }
   if (mIdx >= 0) {
     return new Date(yr, mIdx + 1, 0).getDate();
   }
@@ -4212,8 +4221,9 @@ function openEditPackageModal(empCode) {
   document.getElementById('edit-pkg-policy').value = emp.attendance_policy || (emp.is_vip ? 'exempt_full' : 'standard');
 
   // Section 2: Attendance Days
+  const defaultHols = (allEmployees.find(e => e.holiday && Number(e.holiday) > 2) || {}).holiday || 7;
   document.getElementById('edit-pkg-bio-days').value = emp.biometric_days !== undefined ? emp.biometric_days : (emp.present_days || 0);
-  document.getElementById('edit-pkg-holidays').value = emp.holiday !== undefined ? emp.holiday : 4;
+  document.getElementById('edit-pkg-holidays').value = (emp.holiday !== undefined && emp.holiday !== null) ? emp.holiday : defaultHols;
   document.getElementById('edit-pkg-cl').value = emp.cl_days !== undefined ? emp.cl_days : (emp.availed_leaves || 0);
   document.getElementById('edit-pkg-od').value = emp.od_days !== undefined ? emp.od_days : (emp.sv_od || 0);
   document.getElementById('edit-pkg-pay-days').value = emp.total_pay_days !== undefined ? emp.total_pay_days : monthDays;
@@ -5467,6 +5477,9 @@ function openBulkOverrideModal() {
   updateBovManualCount();
   document.getElementById('bov-dept-picker').style.display = 'none';
   document.getElementById('bov-manual-info').style.display = 'none';
+  const typeWrapper = document.getElementById('bov-specific-type-wrapper');
+  if (typeWrapper) typeWrapper.style.display = 'none';
+  document.querySelectorAll('input[name="bov-specific-type"]').forEach(r => { if (r.value === 'full_day') r.checked = true; });
   document.getElementById('bov-calendar-wrapper').style.display = 'none';
 
   // Reset progress bar
@@ -5494,6 +5507,7 @@ function updateBovPreview() {
   const punch  = (document.querySelector('input[name="bov-punch"]:checked') || {}).value || 'all';
   const action = (document.querySelector('input[name="bov-action"]:checked') || {}).value || 'full_present';
   const dept   = document.getElementById('bov-dept-select') ? document.getElementById('bov-dept-select').value : 'all';
+  const specType = (document.querySelector('input[name="bov-specific-type"]:checked') || {}).value || 'full_day';
 
   const curDays = getDaysInActiveMonth(currentMonth);
   let actionLabel;
@@ -5501,7 +5515,8 @@ function updateBovPreview() {
   else if (action === 'half_present') actionLabel = `Half Present (${curDays / 2} days)`;
   else {
     const cnt = bovSelectedDays.size;
-    actionLabel = cnt > 0 ? `Present for ${cnt} selected day(s)` : 'Specific Dates (none selected yet)';
+    const typeLabel = specType === 'half_day' ? 'Half Day (0.5d)' : 'Full Day Present (1.0d)';
+    actionLabel = cnt > 0 ? `${typeLabel} for ${cnt} selected day(s)` : `Specific Dates (${typeLabel})`;
   }
 
   const scopeLabel = scope === 'all' ? 'All Employees'
@@ -5540,12 +5555,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (groupId === 'bov-action-group') {
         const calWrapper = document.getElementById('bov-calendar-wrapper');
+        const tw = document.getElementById('bov-specific-type-wrapper');
         if (radio.value === 'specific_dates') {
-          calWrapper.style.display = 'block';
+          if (tw) tw.style.display = 'block';
+          if (calWrapper) calWrapper.style.display = 'block';
           bovSelectedDays.clear();
           bovBuildCalendar();
         } else {
-          calWrapper.style.display = 'none';
+          if (tw) tw.style.display = 'none';
+          if (calWrapper) calWrapper.style.display = 'none';
           bovSelectedDays.clear();
         }
       }
@@ -5566,6 +5584,7 @@ async function applyBulkOverride() {
   const punch  = (document.querySelector('input[name="bov-punch"]:checked') || {}).value || 'all';
   const action = (document.querySelector('input[name="bov-action"]:checked') || {}).value || 'full_present';
   const dept   = document.getElementById('bov-dept-select') ? document.getElementById('bov-dept-select').value : 'all';
+  const specificType = (document.querySelector('input[name="bov-specific-type"]:checked') || {}).value || 'full_day';
 
   if (scope === 'manual' && bovSelectedCodes.size === 0) {
     showToast('⚠️ Please select employees from the table first!', 'warning'); return;
@@ -5578,7 +5597,10 @@ async function applyBulkOverride() {
   let actionLabel;
   if (action === 'full_present') actionLabel = `Full Present (${curDays} days)`;
   else if (action === 'half_present') actionLabel = `Half Present (${curDays / 2} days)`;
-  else actionLabel = `Present for days: ${Array.from(bovSelectedDays).sort((a,b)=>a-b).join(', ')}`;
+  else {
+    const typeLabel = specificType === 'half_day' ? 'Half Day' : 'Full Day Present';
+    actionLabel = `${typeLabel} for days: ${Array.from(bovSelectedDays).sort((a,b)=>a-b).join(', ')}`;
+  }
 
   if (!confirm(`Apply ${actionLabel} in ${currentMonth}?\n\nThis will approve attendance and recalculate salary.`)) return;
 
@@ -5626,7 +5648,8 @@ async function applyBulkOverride() {
       department:    dept === 'all' ? null : dept,
       emp_codes:     scope === 'manual' ? Array.from(bovSelectedCodes) : [],
       punch_filter:  punch,
-      selected_days: action === 'specific_dates' ? Array.from(bovSelectedDays).sort((a,b) => a-b) : []
+      selected_days: action === 'specific_dates' ? Array.from(bovSelectedDays).sort((a,b) => a-b) : [],
+      specific_type: specificType
     };
 
     const res  = await fetch('/api/bulk-attendance-override', {

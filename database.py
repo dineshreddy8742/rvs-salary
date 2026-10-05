@@ -2150,13 +2150,19 @@ def get_month_holidays_count(cursor, month_year: str) -> float:
     m_days = float(payroll_engine.get_days_in_month_str(month_year) or 30)
     import calendar
     import datetime
-    y, m = 2026, 8
-    for p in month_year.split():
+    y, m = 2026, 9
+    for p in month_year.replace('-', ' ').split():
         if p.isdigit() and len(p) == 4: y = int(p)
         for m_idx in range(1, 13):
-            if calendar.month_name[m_idx].lower() == p.lower(): m = m_idx
+            if calendar.month_name[m_idx].lower() == p.lower() or calendar.month_abbr[m_idx].lower() == p.lower():
+                m = m_idx
     sundays = {d for d in range(1, int(m_days) + 1) if datetime.date(y, m, d).weekday() == 6}
-    fest_hol = {26} if m == 8 else set()
+    if m == 8:
+        fest_hol = {15, 26}  # Independence Day, Varalakshmi/Janmashtami
+    elif m == 9:
+        fest_hol = {4, 12, 14}  # Milad-un-Nabi, 2nd Saturday, Vinayaka Chavithi
+    else:
+        fest_hol = set()
     return float(len(sundays.union(fest_hol)))
 
 def evaluate_employee_attendance_from_logs(ec: str, logs: list, e_data: dict, m_days: float, month_holidays: float):
@@ -2168,15 +2174,19 @@ def evaluate_employee_attendance_from_logs(ec: str, logs: list, e_data: dict, m_
       total_pay_days   = max(0.0, m_days - total_deductions)
       biometric_days   = max(0.0, total_pay_days - hol - cl_count - od_count)
     """
+    ec_str = str(ec).strip()
     policy = (e_data.get('attendance_policy') or 'standard')
     dept = (e_data.get('department') or '').lower()
     desig = (e_data.get('designation') or '').lower()
     is_sec = 'security' in dept or 'security' in desig or 'watchman' in desig or 'watch man' in desig or 'water man' in desig or 'water woman' in desig
 
-    # Collect overridden days (days admin specifically approved as Present)
+    # Collect overridden days (days admin specifically approved as Present or Half Day)
     overridden_days = sorted(list({int(d['day_num']) for d in logs if (d.get('override_status') or '').upper() == 'PRESENT' and d.get('day_num') is not None}))
+    half_overridden_days = sorted(list({int(d['day_num']) for d in logs if (d.get('override_status') or '').upper() in ('1/2PRESENT', 'HALF_DAY', 'HALF') and d.get('day_num') is not None}))
 
-    if policy == 'exempt_full':
+    # 1. VIP / Principal exemption
+    vip_codes = set(NON_BIOMETRIC_STAFF.keys())
+    if policy == 'exempt_full' or ec_str in vip_codes:
         total = m_days
         pres = max(0.0, m_days - month_holidays)
         hol = month_holidays
@@ -2187,6 +2197,7 @@ def evaluate_employee_attendance_from_logs(ec: str, logs: list, e_data: dict, m_
         needs_rev = 0
         return pres, hol, 0.0, 0.0, total, abs_list, mis_list, half_list, rem, needs_rev
 
+    # 2. Security / Watchman rule (2 floating holidays, 28 duty days threshold)
     if is_sec:
         hol = 2.0
         duty_days = 0.0
@@ -2243,13 +2254,115 @@ def evaluate_employee_attendance_from_logs(ec: str, logs: list, e_data: dict, m_
             
         return biometric_days, hol, cl_count, od_count, total, unexcused, [], [], rem, needs_rev
 
-    # Standard / Teaching / Academic / General Staff
+    # 3. Admission Team rule: 6 days/week, 5 on 2nd Sat week, Sunday/Holiday punches offset weekday leaves
+    admission_ids = {'2005', '2006', '6001', '1040', '1017', '2011', '6000', '2010', '2007', '2013', '2514', '2512', '2511', '2503', '2502', '2505', '2051', '2508', '6004', '6005'}
+    is_admission = ec_str in admission_ids or 'admission' in dept
+    if is_admission:
+        hol = month_holidays
+        cl_count = 0.0
+        od_count = 0.0
+        
+        import datetime
+        import calendar
+        y, m = 2026, 9
+        if logs and logs[0].get('date_str'):
+            ds = str(logs[0]['date_str'])
+            for m_idx in range(1, 13):
+                if calendar.month_abbr[m_idx].lower() in ds.lower() or calendar.month_name[m_idx].lower() in ds.lower():
+                    m = m_idx
+            yr_m = re.search(r'\d{4}', ds)
+            if yr_m:
+                y = int(yr_m.group(0))
+
+        sat_cnt = 0
+        sec_sat = None
+        for d in range(1, int(m_days) + 1):
+            try:
+                if datetime.date(y, m, d).weekday() == 5:
+                    sat_cnt += 1
+                    if sat_cnt == 2:
+                        sec_sat = d
+                        break
+            except Exception:
+                pass
+
+        weeks = {}
+        for d in logs:
+            dn = int(d['day_num']) if d.get('day_num') is not None else 0
+            try:
+                dt = datetime.date(y, m, dn)
+                w_start = dt - datetime.timedelta(days=dt.weekday())
+                w_key = str(w_start)
+            except Exception:
+                w_key = f"w_{dn // 7}"
+            if w_key not in weeks:
+                weeks[w_key] = []
+            weeks[w_key].append(d)
+
+        total_shortfall = 0.0
+        unexcused_abs = []
+        for wk, w_days in weeks.items():
+            has_2nd_sat = sec_sat is not None and any(int(d.get('day_num') or 0) == sec_sat for d in w_days)
+            req = 5.0 if has_2nd_sat else min(float(len(w_days)), 6.0)
+            w_worked = 0.0
+            w_abs = []
+            for d in w_days:
+                in_t = (d.get('in_time') or '').strip()
+                out_t = (d.get('out_time') or '').strip()
+                ov = (d.get('override_status') or '').upper()
+                st = (d.get('status') or '').upper()
+                eff = ov if ov else st
+                dn = int(d.get('day_num') or 0)
+
+                if 'CL' in eff or 'LEAVE' in eff:
+                    if '1/2' in eff:
+                        cl_count += 0.5
+                        w_worked += 0.5
+                    else:
+                        cl_count += 1.0
+                        w_worked += 1.0
+                elif 'OD' in eff or 'ON DUTY' in eff:
+                    od_count += 1.0
+                    w_worked += 1.0
+                elif ov == 'PRESENT' or in_t or out_t or 'PRESENT' in eff:
+                    if ov == 'PRESENT':
+                        w_worked += 1.0
+                    elif '1/2' in eff or ov in ('1/2PRESENT', 'HALF_DAY', 'HALF'):
+                        w_worked += 0.5
+                    else:
+                        w_worked += 1.0
+                elif 'ABSENT' in eff and 'HOLIDAY' not in eff:
+                    w_abs.append(dn)
+
+            sf = max(0.0, req - w_worked)
+            total_shortfall += sf
+            if sf > 0:
+                unexcused_abs.extend(w_abs[-int(round(sf)):])
+
+        total = max(0.0, m_days - total_shortfall)
+        biometric_days = max(0.0, total - hol - cl_count - od_count)
+
+        rem_parts = []
+        if overridden_days:
+            rem_parts.append(f"Specific Days Present by Admin Override (Days: {', '.join(str(x) for x in overridden_days)})")
+        if half_overridden_days:
+            rem_parts.append(f"Specific Half Days by Admin Override (Days: {', '.join(str(x) for x in half_overridden_days)})")
+        if unexcused_abs:
+            rem_parts.append(f"ab-{','.join(str(x) for x in unexcused_abs)}")
+        rem = ", ".join(rem_parts)
+        needs_rev = 1 if unexcused_abs else 0
+        return biometric_days, hol, cl_count, od_count, total, unexcused_abs, [], [], rem, needs_rev
+
+    # 4. Standard / Teaching / Academic / Transport / General Staff
     hol = month_holidays
     cl_count = 0.0
     od_count = 0.0
     abs_list = []
     mis_list = []
     half_list = []
+
+    transport_ids = {'625', '26', '27', '626', '627', '648', '1198', '628', '622', '6621', '606', '623', '603', '653', '605', '6623', '607', '6633', '610', '613'}
+    is_transport = ec_str in transport_ids or 'transport' in dept
 
     for d in logs:
         dn = int(d['day_num']) if d.get('day_num') is not None else 0
@@ -2259,6 +2372,10 @@ def evaluate_employee_attendance_from_logs(ec: str, logs: list, e_data: dict, m_
 
         # If day is overridden to Present by admin, it is 100% EXCUSED (no deduction!)
         if ov == 'PRESENT':
+            continue
+
+        if ov in ('1/2PRESENT', 'HALF_DAY', 'HALF'):
+            half_list.append(f"{dn}(1/2)")
             continue
 
         if 'HOLIDAY' in eff:
@@ -2272,7 +2389,8 @@ def evaluate_employee_attendance_from_logs(ec: str, logs: list, e_data: dict, m_
         elif 'OD' in eff or 'ON DUTY' in eff:
             od_count += 1.0
         elif 'NO OUTPUNCH' in eff or 'NO OUT PUNCH' in eff:
-            mis_list.append(f"{dn}(0.5)")
+            if not is_transport:
+                mis_list.append(f"{dn}(0.5)")
         elif '1/2' in eff or 'HALF' in eff:
             half_list.append(f"{dn}(1/2)")
         elif 'ABSENT' in eff:
@@ -2287,7 +2405,7 @@ def evaluate_employee_attendance_from_logs(ec: str, logs: list, e_data: dict, m_
 
     # Full month absence rule: If an employee never worked a single day, has no approved leaves, and no admin approval,
     # they receive 0 pay days and 0 paid holidays (Full Month LOP)
-    if pres == 0.0 and cl_count == 0.0 and od_count == 0.0 and not overridden_days:
+    if pres == 0.0 and cl_count == 0.0 and od_count == 0.0 and not overridden_days and not half_overridden_days:
         total = 0.0
         hol = 0.0
         rem = f"Full Month Absent ({int(m_days)}d LOP)" if abs_list else "No Biometric Records"
@@ -2297,6 +2415,8 @@ def evaluate_employee_attendance_from_logs(ec: str, logs: list, e_data: dict, m_
     rem_parts = []
     if overridden_days:
         rem_parts.append(f"Specific Days Present by Admin Override (Days: {', '.join(str(x) for x in overridden_days)})")
+    if half_overridden_days:
+        rem_parts.append(f"Specific Half Days by Admin Override (Days: {', '.join(str(x) for x in half_overridden_days)})")
     if abs_list:
         rem_parts.append(f"ab-{','.join(str(x) for x in abs_list)}")
     if mis_list:
@@ -2481,7 +2601,8 @@ def bulk_attendance_override(
     department: Optional[str] = None,
     emp_codes: list = None,
     punch_filter: str = 'all',
-    selected_days: list = None
+    selected_days: list = None,
+    specific_type: str = 'full_day'
 ) -> dict:
     """
     Bulk override attendance for employees.
@@ -2489,6 +2610,7 @@ def bulk_attendance_override(
     scope: 'all' | 'department' | 'manual'
     punch_filter: 'all' | 'no_punch' | 'morning_only' | 'evening_only'
     selected_days: list of day numbers [1, 2, 29, 30] for specific_dates action
+    specific_type: 'full_day' (1.0 day / Present) | 'half_day' (0.5 day / 1/2Present)
     """
     month_year = normalize_month_year(month_year)
     conn = get_db()
@@ -2573,18 +2695,19 @@ def bulk_attendance_override(
     # Step 4: apply action
     if action == 'specific_dates':
         selected_days = selected_days or []
+        target_status = '1/2Present' if specific_type in ('half_day', 'half') else 'Present'
         # 4a. Update daily_logs for selected days for these filtered employees
         if len(filtered_codes) == len(all_rows) and scope == 'all' and punch_filter == 'all':
             cursor.execute(f"""
             UPDATE daily_logs
-            SET override_status = 'Present'
+            SET override_status = ?
             WHERE month_year = ? AND day_num IN ({','.join(['?'] * len(selected_days))})
-            """, [month_year] + list(selected_days))
+            """, [target_status, month_year] + list(selected_days))
         else:
-            log_updates = [(ec, month_year, d) for d in selected_days for ec in filtered_codes]
+            log_updates = [(target_status, ec, month_year, d) for d in selected_days for ec in filtered_codes]
             cursor.executemany("""
             UPDATE daily_logs
-            SET override_status = 'Present'
+            SET override_status = ?
             WHERE emp_code = ? AND month_year = ? AND day_num = ?
             """, log_updates)
 
@@ -2629,28 +2752,45 @@ def bulk_attendance_override(
         WHERE emp_code = ? AND month_year = ?
         """, monthly_updates)
 
-        # Query existing leaves and ODs to keep biometric_days + holiday + cl + od == total
+    elif action == 'full_present':
+        total = m_days
+        holiday = month_holidays
+        remark = 'Full Attendance Approved by Admin'
+        # Also update daily_logs for these employees so absent is cleared
+        dl_updates = [(ec, month_year) for ec in filtered_codes]
+        cursor.executemany("""
+        UPDATE daily_logs
+        SET override_status = 'Present'
+        WHERE emp_code = ? AND month_year = ? AND (status LIKE '%Absent%' OR status LIKE '%No OutPunch%')
+        """, dl_updates)
+
         s_placeholders = ','.join(['?'] * len(filtered_codes))
         cursor.execute(f"SELECT emp_code, availed_leaves, sv_od FROM monthly_records WHERE month_year = ? AND emp_code IN ({s_placeholders})", [month_year] + filtered_codes)
         existing_leaves = {str(r['emp_code']): (float(r['availed_leaves'] or 0.0), float(r['sv_od'] or 0.0)) for r in cursor.fetchall()}
 
-        if action == 'full_present':
-            total = m_days
-            holiday = month_holidays
-            remark = 'Full Attendance Approved by Admin'
-            # Also update daily_logs for these employees so absent is cleared
-            dl_updates = [(ec, month_year) for ec in filtered_codes]
-            cursor.executemany("""
-            UPDATE daily_logs
-            SET override_status = 'Present'
-            WHERE emp_code = ? AND month_year = ? AND (status LIKE '%Absent%' OR status LIKE '%No OutPunch%')
-            """, dl_updates)
-        else:  # half_present
-            total = round(m_days / 2.0, 1)
-            holiday = round(month_holidays / 2.0, 1)
-            remark = 'Half Attendance Approved by Admin'
+        update_tuples = []
+        for ec in filtered_codes:
+            cl, od = existing_leaves.get(ec, (0.0, 0.0))
+            bio_days = max(0.0, total - holiday - cl - od)
+            update_tuples.append((bio_days, holiday, total, '[]', '[]', remark, 0, ec, month_year))
 
-        # Batch update monthly_records attendance with exact biometric balance
+        cursor.executemany("""
+        UPDATE monthly_records
+        SET biometric_days = ?, holiday = ?, total_pay_days = ?,
+            absent_days_json = ?, missed_punches_json = ?,
+            remarks = ?, needs_review = ?
+        WHERE emp_code = ? AND month_year = ?
+        """, update_tuples)
+
+    elif action == 'half_present':
+        total = round(m_days / 2.0, 1)
+        holiday = round(month_holidays / 2.0, 1)
+        remark = 'Half Attendance Approved by Admin'
+
+        s_placeholders = ','.join(['?'] * len(filtered_codes))
+        cursor.execute(f"SELECT emp_code, availed_leaves, sv_od FROM monthly_records WHERE month_year = ? AND emp_code IN ({s_placeholders})", [month_year] + filtered_codes)
+        existing_leaves = {str(r['emp_code']): (float(r['availed_leaves'] or 0.0), float(r['sv_od'] or 0.0)) for r in cursor.fetchall()}
+
         update_tuples = []
         for ec in filtered_codes:
             cl, od = existing_leaves.get(ec, (0.0, 0.0))

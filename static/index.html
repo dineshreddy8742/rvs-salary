@@ -673,6 +673,21 @@
               </label>
             </div>
 
+            <!-- Type selection for Specific Dates (Full Day vs Half Day) -->
+            <div id="bov-specific-type-wrapper" style="display:none; margin-top:0.7rem; background:#f8fafc; border:1.5px solid #cbd5e1; border-radius:8px; padding:0.6rem 0.8rem;">
+              <span style="font-size:0.8rem; font-weight:700; color:#1e3a8a; display:block; margin-bottom:0.4rem;">Mark selected date(s) as:</span>
+              <div style="display:flex; gap:1.2rem;">
+                <label style="display:flex; align-items:center; gap:0.4rem; font-size:0.82rem; font-weight:600; color:#15803d; cursor:pointer;">
+                  <input type="radio" name="bov-specific-type" value="full_day" checked onchange="updateBovPreview()">
+                  🟢 Full Day Present (1.0 day pay)
+                </label>
+                <label style="display:flex; align-items:center; gap:0.4rem; font-size:0.82rem; font-weight:600; color:#b45309; cursor:pointer;">
+                  <input type="radio" name="bov-specific-type" value="half_day" onchange="updateBovPreview()">
+                  🟡 Half Day (0.5 day pay)
+                </label>
+              </div>
+            </div>
+
             <!-- Calendar — shown only when Specific Dates is selected -->
             <div id="bov-calendar-wrapper" style="display:none; margin-top:0.7rem;">
               <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.5rem;">

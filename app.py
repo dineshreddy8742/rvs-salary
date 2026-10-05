@@ -446,6 +446,7 @@ def bulk_attendance_override():
     emp_codes = data.get('emp_codes', [])              # list if scope=manual
     punch_filter = data.get('punch_filter', 'all')     # all | no_punch | morning_only | evening_only
     selected_days = data.get('selected_days', [])      # list of day nums [1-31] if action=specific_dates
+    specific_type = data.get('specific_type', 'full_day') # full_day | half_day
 
     try:
         result = database.bulk_attendance_override(
@@ -455,7 +456,8 @@ def bulk_attendance_override():
             department=department,
             emp_codes=emp_codes,
             punch_filter=punch_filter,
-            selected_days=selected_days
+            selected_days=selected_days,
+            specific_type=specific_type
         )
         return jsonify(result)
     except Exception as e:
