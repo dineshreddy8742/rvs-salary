@@ -2229,7 +2229,7 @@ def evaluate_employee_attendance_from_logs(ec: str, logs: list, e_data: dict, m_
         if duty >= threshold:
             total = m_days
             biometric_days = max(0.0, total - hol - cl_count - od_count)
-            rem = f"Specific Days Present by Admin Override (Days: {', '.join(str(x) for x in overridden_days)})" if overridden_days else ""
+            rem = f"SDP-{','.join(str(x) for x in overridden_days)}" if overridden_days else ""
             needs_rev = 0
             unexcused = []
         elif duty > 0:
@@ -2239,7 +2239,7 @@ def evaluate_employee_attendance_from_logs(ec: str, logs: list, e_data: dict, m_
             unexcused = abs_list[-int(shortfall):] if shortfall > 0 else []
             rem_parts = []
             if overridden_days:
-                rem_parts.append(f"Specific Days Present by Admin Override (Days: {', '.join(str(x) for x in overridden_days)})")
+                rem_parts.append(f"SDP-{','.join(str(x) for x in overridden_days)}")
             if unexcused:
                 rem_parts.append(f"ab-{','.join(str(x) for x in unexcused)}")
             rem = ", ".join(rem_parts)
@@ -2330,9 +2330,9 @@ def evaluate_employee_attendance_from_logs(ec: str, logs: list, e_data: dict, m_
 
         rem_parts = []
         if overridden_days:
-            rem_parts.append(f"Specific Days Present by Admin Override (Days: {', '.join(str(x) for x in overridden_days)})")
+            rem_parts.append(f"SDP-{','.join(str(x) for x in overridden_days)}")
         if half_overridden_days:
-            rem_parts.append(f"Specific Half Days by Admin Override (Days: {', '.join(str(x) for x in half_overridden_days)})")
+            rem_parts.append(f"SDH-{','.join(str(x) for x in half_overridden_days)}")
         if unexcused_abs:
             rem_parts.append(f"ab-{','.join(str(x) for x in unexcused_abs)}")
         if half_list:
@@ -2405,9 +2405,9 @@ def evaluate_employee_attendance_from_logs(ec: str, logs: list, e_data: dict, m_
 
     rem_parts = []
     if overridden_days:
-        rem_parts.append(f"Specific Days Present by Admin Override (Days: {', '.join(str(x) for x in overridden_days)})")
+        rem_parts.append(f"SDP-{','.join(str(x) for x in overridden_days)}")
     if half_overridden_days:
-        rem_parts.append(f"Specific Half Days by Admin Override (Days: {', '.join(str(x) for x in half_overridden_days)})")
+        rem_parts.append(f"SDH-{','.join(str(x) for x in half_overridden_days)}")
     if abs_list:
         rem_parts.append(f"ab-{','.join(str(x) for x in abs_list)}")
     if mis_list:
