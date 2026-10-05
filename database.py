@@ -2765,45 +2765,56 @@ def bulk_attendance_override(
             continue
         candidates.append(ec)
 
-    # Step 3: filter by punch type
+    # Step 3: filter candidates by punch type
+    c_placeholders = ','.join(['?'] * len(candidates))
     if punch_filter == 'all':
         filtered_codes = candidates
-    else:
-        if action == 'specific_dates' and selected_days:
-            # Check punch filters specifically on the selected override dates
-            query_sql = f"""
-            SELECT emp_code,
-                   MAX(CASE WHEN in_time IS NOT NULL AND TRIM(in_time) != '' THEN 1 ELSE 0 END) AS has_in,
-                   MAX(CASE WHEN out_time IS NOT NULL AND TRIM(out_time) != '' THEN 1 ELSE 0 END) AS has_out
-            FROM daily_logs
-            WHERE month_year = ? AND day_num IN ({','.join(['?'] * len(selected_days))})
-            GROUP BY emp_code
-            """
-            cursor.execute(query_sql, [month_year] + list(selected_days))
-        else:
-            cursor.execute("""
-            SELECT emp_code,
-                   MAX(CASE WHEN in_time IS NOT NULL AND TRIM(in_time) != '' THEN 1 ELSE 0 END) AS has_in,
-                   MAX(CASE WHEN out_time IS NOT NULL AND TRIM(out_time) != '' THEN 1 ELSE 0 END) AS has_out
-            FROM daily_logs
-            WHERE month_year = ?
-            GROUP BY emp_code
-            """, (month_year,))
-        punch_map = {str(r['emp_code']): (bool(r['has_in']), bool(r['has_out'])) for r in cursor.fetchall()}
+    elif action == 'specific_dates' and selected_days:
+        # Match candidates who have this punch type on ANY of the selected override dates
+        days_placeholders = ','.join(['?'] * len(selected_days))
+        cond_sql = ""
+        if punch_filter == 'morning_only':
+            cond_sql = "AND (in_time IS NOT NULL AND TRIM(in_time) != '') AND (out_time IS NULL OR TRIM(out_time) = '')"
+        elif punch_filter == 'evening_only':
+            cond_sql = "AND (out_time IS NOT NULL AND TRIM(out_time) != '') AND (in_time IS NULL OR TRIM(in_time) = '')"
+        elif punch_filter == 'no_punch':
+            cond_sql = "AND (in_time IS NULL OR TRIM(in_time) = '') AND (out_time IS NULL OR TRIM(out_time) = '')"
 
-        filtered_codes = []
-        for ec in candidates:
-            has_in, has_out = punch_map.get(ec, (False, False))
-            if punch_filter == 'no_punch':
-                if has_in or has_out:
-                    continue
-            elif punch_filter == 'morning_only':
-                if not (has_in and not has_out):
-                    continue
-            elif punch_filter == 'evening_only':
-                if not (has_out and not has_in):
-                    continue
-            filtered_codes.append(ec)
+        cursor.execute(f"""
+        SELECT DISTINCT emp_code
+        FROM daily_logs
+        WHERE month_year = ? AND day_num IN ({days_placeholders})
+          AND emp_code IN ({c_placeholders})
+          {cond_sql}
+        """, [month_year] + list(selected_days) + candidates)
+        filtered_codes = [str(r['emp_code']) for r in cursor.fetchall()]
+    elif punch_filter == 'morning_only':
+        cursor.execute(f"""
+        SELECT DISTINCT emp_code
+        FROM daily_logs
+        WHERE month_year = ? AND emp_code IN ({c_placeholders})
+          AND (in_time IS NOT NULL AND TRIM(in_time) != '')
+          AND (out_time IS NULL OR TRIM(out_time) = '')
+        """, [month_year] + candidates)
+        filtered_codes = [str(r['emp_code']) for r in cursor.fetchall()]
+    elif punch_filter == 'evening_only':
+        cursor.execute(f"""
+        SELECT DISTINCT emp_code
+        FROM daily_logs
+        WHERE month_year = ? AND emp_code IN ({c_placeholders})
+          AND (out_time IS NOT NULL AND TRIM(out_time) != '')
+          AND (in_time IS NULL OR TRIM(in_time) = '')
+        """, [month_year] + candidates)
+        filtered_codes = [str(r['emp_code']) for r in cursor.fetchall()]
+    elif punch_filter == 'no_punch':
+        cursor.execute(f"""
+        SELECT emp_code
+        FROM daily_logs
+        WHERE month_year = ? AND emp_code IN ({c_placeholders})
+        GROUP BY emp_code
+        HAVING MAX(CASE WHEN (in_time IS NOT NULL AND TRIM(in_time) != '') OR (out_time IS NOT NULL AND TRIM(out_time) != '') THEN 1 ELSE 0 END) = 0
+        """, [month_year] + candidates)
+        filtered_codes = [str(r['emp_code']) for r in cursor.fetchall()]
 
     if not filtered_codes:
         conn.close()
@@ -2822,20 +2833,25 @@ def bulk_attendance_override(
     if action == 'specific_dates':
         selected_days = selected_days or []
         target_status = '1/2Present' if specific_type in ('half_day', 'half') else 'Present'
-        # 4a. Update daily_logs for selected days for these filtered employees
-        if len(filtered_codes) == len(all_rows) and scope == 'all' and punch_filter == 'all':
-            cursor.execute(f"""
-            UPDATE daily_logs
-            SET override_status = ?
-            WHERE month_year = ? AND day_num IN ({','.join(['?'] * len(selected_days))})
-            """, [target_status, month_year] + list(selected_days))
-        else:
-            log_updates = [(target_status, ec, month_year, d) for d in selected_days for ec in filtered_codes]
-            cursor.executemany("""
-            UPDATE daily_logs
-            SET override_status = ?
-            WHERE emp_code = ? AND month_year = ? AND day_num = ?
-            """, log_updates)
+        days_placeholders = ','.join(['?'] * len(selected_days))
+        fc_placeholders = ','.join(['?'] * len(filtered_codes))
+
+        cond_sql = ""
+        if punch_filter == 'morning_only':
+            cond_sql = "AND (in_time IS NOT NULL AND TRIM(in_time) != '') AND (out_time IS NULL OR TRIM(out_time) = '')"
+        elif punch_filter == 'evening_only':
+            cond_sql = "AND (out_time IS NOT NULL AND TRIM(out_time) != '') AND (in_time IS NULL OR TRIM(in_time) = '')"
+        elif punch_filter == 'no_punch':
+            cond_sql = "AND (in_time IS NULL OR TRIM(in_time) = '') AND (out_time IS NULL OR TRIM(out_time) = '')"
+
+        update_query = f"""
+        UPDATE daily_logs
+        SET override_status = ?
+        WHERE month_year = ? AND day_num IN ({days_placeholders})
+          AND emp_code IN ({fc_placeholders})
+          {cond_sql}
+        """
+        cursor.execute(update_query, [target_status, month_year] + list(selected_days) + filtered_codes)
 
         # 4b. Re-evaluate attendance from daily_logs for all filtered employees
         cursor.execute("""
