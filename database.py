@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import math
 import datetime
 from typing import Dict, List, Any, Optional
 import payroll_engine
@@ -2199,8 +2200,8 @@ def evaluate_employee_attendance_from_logs(ec: str, logs: list, e_data: dict, m_
         duty_days = 0.0
         cl_count = 0.0
         od_count = 0.0
-        abs_list = []
         late_list = []
+        attended_days = set()
         
         for d in logs:
             dn = int(d['day_num']) if d.get('day_num') is not None else 0
@@ -2218,11 +2219,14 @@ def evaluate_employee_attendance_from_logs(ec: str, logs: list, e_data: dict, m_
             elif ov == 'PRESENT' or in_t or out_t or 'PRESENT' in eff:
                 if '1/2' in eff: duty_days += 0.5
                 else: duty_days += 1.0
-            elif 'ABSENT' in eff and 'HOLIDAY' not in eff:
-                abs_list.append(dn)
+                attended_days.add(dn)
                 
         duty = duty_days + cl_count + od_count
         threshold = max(0.0, m_days - month_holidays)
+        all_month_days = set(range(1, int(m_days) + 1))
+        unattended = sorted(list(all_month_days - attended_days - set(overridden_days)))
+
+        half_list = []
         if duty >= threshold:
             total = m_days
             biometric_days = max(0.0, total - hol - cl_count - od_count)
@@ -2233,14 +2237,31 @@ def evaluate_employee_attendance_from_logs(ec: str, logs: list, e_data: dict, m_
             shortfall = threshold - duty
             total = max(0.0, m_days - shortfall)
             biometric_days = max(0.0, total - hol - cl_count - od_count)
-            unexcused = abs_list[-int(shortfall):] if shortfall > 0 else []
+            
+            whole_shortfall = int(math.floor(shortfall))
+            has_half = (round(shortfall - whole_shortfall, 1) == 0.5)
+            needed = whole_shortfall + (1 if has_half else 0)
+            
+            if len(unattended) >= needed:
+                selected = unattended[-needed:]
+            else:
+                other_avail = [d for d in sorted(list(all_month_days)) if d not in set(overridden_days) and d not in unattended]
+                missing = needed - len(unattended)
+                selected = unattended + other_avail[:missing]
+
+            unexcused = selected[:whole_shortfall]
+            if has_half and len(selected) > whole_shortfall:
+                half_list = [f"{selected[whole_shortfall]}(1/2)"]
+                
             rem_parts = []
             if overridden_days:
                 rem_parts.append(f"SDP-{','.join(str(x) for x in overridden_days)}")
             if unexcused:
-                rem_parts.append(f"ab-{','.join(str(x) for x in unexcused)}")
+                rem_parts.append(f"ab-{','.join(str(x) for x in sorted(unexcused))}")
+            if half_list:
+                rem_parts.append(", ".join(half_list))
             rem = ", ".join(rem_parts)
-            needs_rev = 1 if unexcused else 0
+            needs_rev = 1 if (unexcused or half_list) else 0
         else:
             total = 0.0
             biometric_days = 0.0
@@ -2249,7 +2270,7 @@ def evaluate_employee_attendance_from_logs(ec: str, logs: list, e_data: dict, m_
             needs_rev = 0
             unexcused = []
             
-        return biometric_days, hol, cl_count, od_count, total, unexcused, [], [], late_list, rem, needs_rev
+        return biometric_days, hol, cl_count, od_count, total, unexcused, [], half_list, late_list, rem, needs_rev
 
     # 3. Admission Team rule: Sunday/Holiday punches offset weekday leaves/absences
     admission_ids = {'2005', '2006', '6001', '1040', '1017', '2011', '6000', '2010', '2007', '2013', '2514', '2512', '2511', '2503', '2502', '2505', '2051', '2508', '6004', '6005'}

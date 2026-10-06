@@ -549,8 +549,14 @@ class AttendanceEngine:
                 if doj_day:
                     all_month_days = set(range(doj_day, int(self.num_days) + 1))
                 unattended = sorted(list(all_month_days - day_presence - od_days - cl_days))
-                unexcused_absents = unattended[-int(shortfall):] if shortfall > 0 else []
-                remarks_str = f"ab-{self._format_day_ranges(unexcused_absents)}" if unexcused_absents else ""
+                needed_shortfall = int(shortfall)
+                if len(unattended) >= needed_shortfall:
+                    unexcused_absents = unattended[-needed_shortfall:] if needed_shortfall > 0 else []
+                else:
+                    other_avail = [d for d in sorted(list(all_month_days)) if d not in unattended]
+                    missing = needed_shortfall - len(unattended)
+                    unexcused_absents = unattended + other_avail[:missing]
+                remarks_str = f"ab-{self._format_day_ranges(sorted(unexcused_absents))}" if unexcused_absents else ""
                 needs_review = len(unexcused_absents) > 0
             else:
                 total_pay_days = 0.0
