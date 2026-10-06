@@ -3,6 +3,7 @@ import re
 import json
 import math
 import datetime
+import calendar
 from typing import Dict, List, Any, Optional
 import payroll_engine
 
@@ -1092,6 +1093,7 @@ def seed_from_engine(engine, month_year: str = "August 2026", overwrite: bool = 
     print(f"Database seeded successfully for {month_year}.")
     apply_principal_rules_to_db(month_year, from_upload=True)
     purge_zero_working_days_employees(month_year)
+    recalculate_month_attendance_and_salaries(month_year)
 
 def purge_zero_working_days_employees(month_year: Optional[str] = None) -> dict:
     """
@@ -1180,6 +1182,21 @@ def purge_zero_working_days_employees(month_year: Optional[str] = None) -> dict:
         'purged_by_month': purged_by_month
     }
 
+def get_month_sundays(month_year: str, m_days: float = 30.0):
+    """Dynamically compute the set of Sunday day numbers for any month/year."""
+    y = 2026
+    m = 1
+    m_yr = re.search(r'\b(20\d{2})\b', str(month_year))
+    if m_yr:
+        y = int(m_yr.group(1))
+    cleaned = re.sub(r'[\-_]+', ' ', str(month_year)).lower()
+    for m_idx in range(1, 13):
+        if calendar.month_name[m_idx].lower() in cleaned or calendar.month_abbr[m_idx].lower() in cleaned:
+            m = m_idx
+            break
+    sundays = {d for d in range(1, int(m_days) + 1) if datetime.date(y, m, d).weekday() == 6}
+    return sundays, y, m
+
 _PRINCIPAL_RULES_APPLIED = set()
 
 def apply_principal_rules_to_db(month_year: str = "August 2026", force: bool = False, from_upload: bool = False):
@@ -1214,6 +1231,7 @@ def apply_principal_rules_to_db(month_year: str = "August 2026", force: bool = F
     m_days = float(payroll_engine.get_days_in_month_str(month_year) or 30)
     holidays = get_month_holidays_count(cursor, month_year)
     bio_days = max(0.0, m_days - holidays)
+    sundays, y, m = get_month_sundays(month_year, m_days)
 
     # Module-level NON_BIOMETRIC_STAFF has full institutional titles and descriptions
 
@@ -1488,8 +1506,8 @@ def apply_principal_rules_to_db(month_year: str = "August 2026", force: bool = F
                 cl_count = float(len(cl_days))
                 total_duty = len(day_presence) + od_count + cl_count
 
-                threshold = max(0.0, m_days - 2.0)
-                w_hol = 2.0
+                threshold = max(0.0, m_days - holidays)
+                w_hol = holidays
                 if total_duty >= threshold:
                     pay_days = m_days
                     bio_days = max(0.0, m_days - w_hol - od_count - cl_count)
@@ -1502,9 +1520,23 @@ def apply_principal_rules_to_db(month_year: str = "August 2026", force: bool = F
                     bio_days = max(0.0, pay_days - w_hol - od_count - cl_count)
                     all_m_days = set(range(1, int(m_days) + 1))
                     unatt = sorted(list(all_m_days - day_presence - od_days - cl_days))
-                    unexcused = unatt[-int(shortfall):] if shortfall > 0 else []
-                    rem = f"ab-{','.join(str(x) for x in unexcused)}" if unexcused else ""
-                    nr = 1 if unexcused else 0
+                    whole_shortfall = int(math.floor(shortfall))
+                    has_half = (round(shortfall - whole_shortfall, 1) == 0.5)
+                    needed = whole_shortfall + (1 if has_half else 0)
+                    if len(unatt) >= needed:
+                        selected = unatt[-needed:]
+                    else:
+                        other_avail = [d for d in sorted(list(all_m_days)) if d not in unatt]
+                        selected = unatt + other_avail[:needed - len(unatt)]
+                    unexcused = selected[:whole_shortfall]
+                    half_list = [f"{selected[whole_shortfall]}(1/2)"] if (has_half and len(selected) > whole_shortfall) else []
+                    rem_parts = []
+                    if unexcused:
+                        rem_parts.append(f"ab-{','.join(str(x) for x in sorted(unexcused))}")
+                    if half_list:
+                        rem_parts.append(", ".join(half_list))
+                    rem = ", ".join(rem_parts)
+                    nr = 1 if (unexcused or half_list) else 0
                     ab_json = json.dumps(unexcused)
                 else:
                     pay_days = 0.0
@@ -2128,22 +2160,8 @@ def get_month_holidays_count(cursor, month_year: str) -> float:
     month_year = normalize_month_year(month_year)
     m_days = float(payroll_engine.get_days_in_month_str(month_year) or 30)
 
-    # 1. Parse year and month dynamically from month_year string
-    import calendar
-    import datetime
-    y = 2026
-    m = 1
-    m_yr = re.search(r'\b(20\d{2})\b', month_year)
-    if m_yr:
-        y = int(m_yr.group(1))
-    cleaned = re.sub(r'[\-_]+', ' ', str(month_year)).lower()
-    for m_idx in range(1, 13):
-        if calendar.month_name[m_idx].lower() in cleaned or calendar.month_abbr[m_idx].lower() in cleaned:
-            m = m_idx
-            break
-
-    # 2. Dynamic Sundays for that specific calendar month/year
-    sundays = {d for d in range(1, int(m_days) + 1) if datetime.date(y, m, d).weekday() == 6}
+    # 1. Dynamic Sundays for that specific calendar month/year
+    sundays, y, m = get_month_sundays(month_year, m_days)
 
     # 3. Dynamic institutional holidays from daily_logs dump input
     try:
