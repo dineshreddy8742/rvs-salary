@@ -494,12 +494,11 @@ class AttendanceEngine:
 
         if is_watchman:
             # Watchman / Security Staff Attendance Rules:
-            # 1. 2 Floating Holidays anytime per month (holiday = 2.0).
-            # 2. Continuous 2-Day Shifts: No penalties for missing out punch, late arrival, or overnight shifts.
-            # 3. 28-Day Full Attendance: If attended days + OD + CL >= 28, mark Full Attendance (Full Pay Days = self.num_days).
-            # 4. Shortfall / Absents: If total duty < 28, only deduct genuine shortfall (28 - total_duty).
-            # 5. The 2 allowed holidays excuse first 2 off days; only excess absences are listed.
-            w_holiday = float(emp['manual_holiday_override']) if emp.get('manual_holiday_override') is not None else 2.0
+            # 1. Full month holidays dynamically matched from calendar (self.all_holidays).
+            # 2. Continuous Day & Night Shifts: No penalties for missing out punch, late arrival, or overnight shifts.
+            # 3. Target Duty Days: self.num_days - len(self.all_holidays). If total duty >= threshold, Full Month Pay!
+            # 4. Shortfall / Absents: If total duty < threshold, only deduct genuine shortfall (threshold - total_duty).
+            w_holiday = float(emp['manual_holiday_override']) if emp.get('manual_holiday_override') is not None else float(len(self.all_holidays))
             
             day_presence = set()
             od_days = set()
@@ -524,15 +523,16 @@ class AttendanceEngine:
                 cl_count = raw_leaves
                 
             total_duty = len(day_presence) + od_count + cl_count
+            standard_threshold = max(0.0, float(self.num_days - len(self.all_holidays)))
             
             # Proration if joined midway through month
             if doj_day:
                 working_days_in_period = self.num_days - doj_day + 1
-                threshold = round(28.0 * working_days_in_period / float(self.num_days))
+                threshold = round(standard_threshold * working_days_in_period / float(self.num_days))
                 max_pay = float(working_days_in_period)
                 w_holiday = max(0.0, min(w_holiday, round(w_holiday * working_days_in_period / float(self.num_days))))
             else:
-                threshold = 28.0
+                threshold = standard_threshold
                 max_pay = float(self.num_days)
                 
             if total_duty >= threshold:

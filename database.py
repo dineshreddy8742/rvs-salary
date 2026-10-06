@@ -2193,9 +2193,9 @@ def evaluate_employee_attendance_from_logs(ec: str, logs: list, e_data: dict, m_
         needs_rev = 0
         return pres, hol, 0.0, 0.0, total, abs_list, mis_list, half_list, late_list, rem, needs_rev
 
-    # 2. Security / Watchman rule (2 floating holidays, 28 duty days threshold)
+    # 2. Security / Watchman rule (Continuous Day & Night Shifts)
     if is_sec:
-        hol = 2.0
+        hol = month_holidays
         duty_days = 0.0
         cl_count = 0.0
         od_count = 0.0
@@ -2222,7 +2222,7 @@ def evaluate_employee_attendance_from_logs(ec: str, logs: list, e_data: dict, m_
                 abs_list.append(dn)
                 
         duty = duty_days + cl_count + od_count
-        threshold = max(0.0, m_days - 2.0)
+        threshold = max(0.0, m_days - month_holidays)
         if duty >= threshold:
             total = m_days
             biometric_days = max(0.0, total - hol - cl_count - od_count)

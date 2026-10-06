@@ -3490,9 +3490,9 @@ function renderVipOrExemptionLines(emp) {
   } else if (emp.emp_code === '109') {
     title = '⚙️ Shift Regularization Approved';
     desc = 'Civil Engineering morning punch before 11:00 AM credited';
-  } else if (emp.department && emp.department.toLowerCase().includes('security') && emp.total_pay_days >= 31) {
+  } else if (emp.department && emp.department.toLowerCase().includes('security') && emp.total_pay_days >= (emp.days_in_month || 30)) {
     title = '🛡️ Watchman Duty Policy Met';
-    desc = '28 duty days target achieved (2 floating offs + continuous shift allowance)';
+    desc = 'Continuous day and night duty completed (Full salary credited)';
   } else if (emp.attendance_policy === 'visiting_twice_weekly') {
     title = '🏫 Visiting Faculty Schedule';
     desc = 'Twice weekly academic lectures completed (Full pay waiver)';
