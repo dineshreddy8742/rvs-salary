@@ -1359,7 +1359,7 @@ def apply_principal_rules_to_db(month_year: str = "August 2026", force: bool = F
     cursor.execute(f"SELECT * FROM daily_logs WHERE emp_code IN ({t_placeholders}) AND month_year = ? ORDER BY emp_code, day_num", (*transport_ids, month_year))
     t_days_map = defaultdict(list)
     for r in cursor.fetchall():
-        t_days_map[str(r['emp_code'])].append(r)
+        t_days_map[str(r['emp_code'])].append(dict(r))
 
     transport_updates = []
     transport_empty_updates = []
@@ -1423,7 +1423,7 @@ def apply_principal_rules_to_db(month_year: str = "August 2026", force: bool = F
     cursor.execute(f"SELECT * FROM daily_logs WHERE emp_code IN ({a_placeholders}) AND month_year = ? ORDER BY emp_code, day_num", (*admission_ids, month_year))
     a_days_map = defaultdict(list)
     for r in cursor.fetchall():
-        a_days_map[str(r['emp_code'])].append(r)
+        a_days_map[str(r['emp_code'])].append(dict(r))
 
     admission_updates = []
     for aid in admission_ids:
@@ -1496,7 +1496,7 @@ def apply_principal_rules_to_db(month_year: str = "August 2026", force: bool = F
         cursor.execute(f"SELECT * FROM daily_logs WHERE emp_code IN ({s_placeholders}) AND month_year = ? ORDER BY emp_code, day_num", (*sec_ids, month_year))
         s_days_map = defaultdict(list)
         for r in cursor.fetchall():
-            s_days_map[str(r['emp_code'])].append(r)
+            s_days_map[str(r['emp_code'])].append(dict(r))
 
         for sid in sec_ids:
             sdays = s_days_map.get(sid, [])
@@ -2200,6 +2200,10 @@ def evaluate_employee_attendance_from_logs(ec: str, logs: list, e_data: dict, m_
       total_pay_days   = max(0.0, m_days - total_deductions)
       biometric_days   = max(0.0, total_pay_days - hol - cl_count - od_count)
     """
+    # Normalize logs and e_data to dicts in case they are sqlite3.Row objects
+    logs = [dict(d) if not isinstance(d, dict) else d for d in (logs or [])]
+    if not isinstance(e_data, dict):
+        e_data = dict(e_data) if e_data else {}
     ec_str = str(ec).strip()
     policy = (e_data.get('attendance_policy') or 'standard')
     dept = (e_data.get('department') or '').lower()
@@ -2700,7 +2704,7 @@ def bulk_revert_to_original(month_year: str, scope: str = 'all', department: Opt
     WHERE month_year = ?
     ORDER BY emp_code, day_num ASC
     """, (month_year,))
-    all_logs = cursor.fetchall()
+    all_logs = [dict(r) for r in cursor.fetchall()]
 
     from collections import defaultdict
     emp_logs = defaultdict(list)
@@ -2960,7 +2964,7 @@ def bulk_attendance_override(
         WHERE month_year = ?
         ORDER BY emp_code, day_num ASC
         """, (month_year,))
-        all_logs = cursor.fetchall()
+        all_logs = [dict(r) for r in cursor.fetchall()]
 
         from collections import defaultdict
         emp_logs = defaultdict(list)
@@ -3249,7 +3253,7 @@ def recalculate_month_attendance_and_salaries(month_year: str) -> dict:
     WHERE month_year = ?
     ORDER BY emp_code, day_num ASC
     """, (month_year,))
-    all_logs = cursor.fetchall()
+    all_logs = [dict(r) for r in cursor.fetchall()]
 
     from collections import defaultdict
     emp_logs = defaultdict(list)
