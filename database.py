@@ -445,6 +445,20 @@ def init_db():
         WHERE name IS NULL
     """)
 
+    # Clean up test base salary for employee 914 and ensure category is Teaching
+    try:
+        cursor.execute("UPDATE salary_profiles SET base_salary = 0.0 WHERE emp_code = '914' AND base_salary = 35000.0")
+        cursor.execute("""
+            UPDATE monthly_records SET 
+                base_salary = 0.0, earned_basic = 0.0, earned_da = 0.0, earned_hra = 0.0,
+                gross_salary = 0.0, pt_deduction = 0.0, wf_deduction = 0.0, total_deductions = 0.0,
+                net_salary = 0.0
+            WHERE emp_code = '914' AND base_salary = 35000.0
+        """)
+        cursor.execute("UPDATE salary_profiles SET category = 'Teaching' WHERE emp_code = '914'")
+    except Exception as e:
+        pass
+
     conn.commit()
     conn.close()
 
@@ -1121,7 +1135,7 @@ def purge_zero_working_days_employees(month_year: Optional[str] = None) -> dict:
             JOIN employees e ON m.emp_code = e.emp_code
             WHERE m.month_year = ?
         """, (norm_m,))
-        rows = cursor.fetchall()
+        rows = [dict(r) for r in cursor.fetchall()]
         
         cursor.execute("""
             SELECT DISTINCT emp_code
@@ -3787,7 +3801,7 @@ def update_monthly_salary_field(emp_code: str, month_year: str, field: str, valu
         cursor.execute(f"UPDATE monthly_records SET {col} = ? WHERE emp_code = ? AND month_year = ?", (val_float, emp_code, month_year))
 
     # Also update salary_profiles if base_salary changed
-    if field == 'base_salary' and val_float > 0:
+    if field == 'base_salary':
         cursor.execute("UPDATE salary_profiles SET base_salary = ? WHERE emp_code = ?", (val_float, emp_code))
 
     conn.commit()

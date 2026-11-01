@@ -2995,37 +2995,68 @@ async function handleUnifiedInlineEdit(empCode, field, value, inputEl) {
         if (field === 'total_pay_days') {
           emp.total_pay_days = numVal;
           emp.lop_days = Math.max(0, Math.round((emp.month_days - numVal) * 10) / 10);
-          emp.gross_salary = Math.round((emp.base_salary / emp.month_days) * numVal);
-          // Recalculate statutory PT and WF
-          emp.pt_deduction = emp.gross_salary > 20000 ? 200 : (emp.gross_salary > 15000 ? 150 : 0);
-          emp.wf_deduction = (emp.category === 'Teaching') ? (emp.gross_salary > 0 ? 75 : 0) : (emp.gross_salary > 0 ? 30 : 0);
-        } else if (field === 'base_salary') {
-          emp.base_salary = numVal;
-          emp.gross_salary = Math.round((numVal / emp.month_days) * emp.total_pay_days);
-          emp.pt_deduction = emp.gross_salary > 20000 ? 200 : (emp.gross_salary > 15000 ? 150 : 0);
-          emp.wf_deduction = (emp.category === 'Teaching') ? (emp.gross_salary > 0 ? 75 : 0) : (emp.gross_salary > 0 ? 30 : 0);
-        } else if (field === 'bus_deduction') {
-          emp.bus_deduction = numVal;
-        } else if (field === 'hostel_eb_deduction') {
-          emp.hostel_eb_deduction = numVal;
-        } else if (field === 'mess_deduction') {
-          emp.mess_deduction = numVal;
-        } else if (field === 'other_deductions') {
-          emp.other_deductions = numVal;
         }
 
-        emp.total_deductions = (emp.pt_deduction || 0) + (emp.wf_deduction || 0) + (emp.epf_deduction || 0) + (emp.it_deduction || 0) + (emp.bus_deduction || 0) + (emp.hostel_eb_deduction || 0) + (emp.mess_deduction || 0) + (emp.other_deductions || 0);
-        emp.net_salary = Math.max(0, emp.gross_salary - emp.total_deductions);
+        if (data.record) {
+          emp.base_salary = data.record.base_salary !== undefined ? Number(data.record.base_salary) : emp.base_salary;
+          emp.gross_salary = data.record.gross_salary !== undefined ? Number(data.record.gross_salary) : emp.gross_salary;
+          emp.pt_deduction = data.record.pt !== undefined ? Number(data.record.pt) : (emp.pt_deduction || 0);
+          emp.wf_deduction = data.record.wf !== undefined ? Number(data.record.wf) : (emp.wf_deduction || 0);
+          emp.bus_deduction = data.record.bus_deduction !== undefined ? Number(data.record.bus_deduction) : (emp.bus_deduction || 0);
+          emp.hostel_eb_deduction = data.record.hostel_eb_deduction !== undefined ? Number(data.record.hostel_eb_deduction) : (emp.hostel_eb_deduction || 0);
+          emp.mess_deduction = data.record.mess_deduction !== undefined ? Number(data.record.mess_deduction) : (emp.mess_deduction || 0);
+          emp.other_deductions = data.record.other_deductions !== undefined ? Number(data.record.other_deductions) : (emp.other_deductions || 0);
+          emp.total_deductions = data.record.total_deductions !== undefined ? Number(data.record.total_deductions) : emp.total_deductions;
+          emp.net_salary = data.record.net_salary !== undefined ? Number(data.record.net_salary) : emp.net_salary;
+        } else {
+          if (field === 'total_pay_days') {
+            emp.gross_salary = Math.round((emp.base_salary / emp.month_days) * numVal);
+            emp.pt_deduction = emp.gross_salary > 20000 ? 200 : (emp.gross_salary > 15000 ? 150 : 0);
+            emp.wf_deduction = (emp.category === 'Teaching') ? (emp.gross_salary > 0 ? 75 : 0) : (emp.gross_salary > 0 ? 30 : 0);
+          } else if (field === 'base_salary') {
+            emp.base_salary = numVal;
+            emp.gross_salary = Math.round((numVal / emp.month_days) * emp.total_pay_days);
+            emp.pt_deduction = emp.gross_salary > 20000 ? 200 : (emp.gross_salary > 15000 ? 150 : 0);
+            emp.wf_deduction = (emp.category === 'Teaching') ? (emp.gross_salary > 0 ? 75 : 0) : (emp.gross_salary > 0 ? 30 : 0);
+          } else if (field === 'bus_deduction') {
+            emp.bus_deduction = numVal;
+          } else if (field === 'hostel_eb_deduction') {
+            emp.hostel_eb_deduction = numVal;
+          } else if (field === 'mess_deduction') {
+            emp.mess_deduction = numVal;
+          } else if (field === 'other_deductions') {
+            emp.other_deductions = numVal;
+          }
+          emp.total_deductions = (emp.pt_deduction || 0) + (emp.wf_deduction || 0) + (emp.epf_deduction || 0) + (emp.it_deduction || 0) + (emp.bus_deduction || 0) + (emp.hostel_eb_deduction || 0) + (emp.mess_deduction || 0) + (emp.other_deductions || 0);
+          emp.net_salary = Math.max(0, emp.gross_salary - emp.total_deductions);
+        }
 
         // Update DOM row elements directly for instant feedback
         const elGross = document.getElementById(`gross-${empCode}`);
         if (elGross) elGross.textContent = `₹${Math.round(emp.gross_salary).toLocaleString('en-IN')}`;
+
+        const elPt = document.getElementById(`pt-${empCode}`);
+        if (elPt) elPt.textContent = `₹${emp.pt_deduction || 0}`;
+
+        const elWf = document.getElementById(`wf-${empCode}`);
+        if (elWf) elWf.textContent = `₹${emp.wf_deduction || 0}`;
 
         const elDed = document.getElementById(`ded-${empCode}`);
         if (elDed) elDed.textContent = `₹${Math.round(emp.total_deductions).toLocaleString('en-IN')}`;
 
         const elNet = document.getElementById(`net-${empCode}`);
         if (elNet) elNet.textContent = `₹${Math.round(emp.net_salary).toLocaleString('en-IN')}`;
+
+        // Real-time recalculate and update KPI summary header cards
+        if (window._kpiSalaryData && Array.isArray(unifiedRecords)) {
+          window._kpiSalaryData.budget = unifiedRecords.reduce((acc, r) => acc + (Number(r.base_salary) || 0), 0);
+          window._kpiSalaryData.gross = unifiedRecords.reduce((acc, r) => acc + (Number(r.gross_salary) || 0), 0);
+          window._kpiSalaryData.ded = unifiedRecords.reduce((acc, r) => acc + (Number(r.total_deductions) || 0), 0);
+          window._kpiSalaryData.net = unifiedRecords.reduce((acc, r) => acc + (Number(r.net_salary) || 0), 0);
+          if (typeof updateSalaryKPIMask === 'function') {
+            updateSalaryKPIMask();
+          }
+        }
       }
 
       showToast(`✔ Updated ${field.replace('_', ' ')} for Emp ${empCode}`);
